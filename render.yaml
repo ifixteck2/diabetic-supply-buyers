@@ -1,0 +1,6 @@
+services:
+  - type: web
+    name: diabetic-supply-buyers
+    runtime: static
+    staticPublishPath: .
+    pullRequestPreviewsEnabled: false
