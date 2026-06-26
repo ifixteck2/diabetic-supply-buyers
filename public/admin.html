@@ -19,68 +19,19 @@
 
     <section id="app" class="hidden">
       <div class="admin-shell">
-        <aside class="admin-side">
-          <div class="brand admin-brand"><span class="mark">DSB</span><span>Admin Portal<small>Private records</small></span></div>
-          <nav class="tabs" aria-label="Admin sections">
-            <button class="tab active" data-tab="dashboard">Dashboard</button>
-            <button class="tab" data-tab="purchase">New Purchase</button>
-            <button class="tab" data-tab="invoices">Active Invoices</button>
-            <button class="tab" data-tab="customers">Customers</button>
-          </nav>
-          <button class="btn danger logout" id="logoutBtn">Log Out</button>
-        </aside>
-
+        <aside class="admin-side"><div class="brand admin-brand"><span class="mark">DSB</span><span>Admin Portal<small>Private records</small></span></div><nav class="tabs" aria-label="Admin sections"><button class="tab active" data-tab="dashboard">Dashboard</button><button class="tab" data-tab="purchase">New Purchase</button><button class="tab" data-tab="invoices">Active Invoices</button><button class="tab" data-tab="customers">Customers</button></nav><button class="btn danger logout" id="logoutBtn">Log Out</button></aside>
         <section class="admin-main">
-          <header class="admin-header">
-            <div><p class="eyebrow">Diabetic Supply Buyers</p><h1 id="pageTitle">Dashboard</h1></div>
-            <button class="btn secondary" id="refreshBtn">Refresh</button>
-          </header>
-
-          <section id="dashboardTab" class="tab-panel">
-            <div class="stats">
-              <article class="stat"><span>Active invoices</span><strong id="activeCount">0</strong></article>
-              <article class="stat"><span>Sold invoices</span><strong id="soldCount">0</strong></article>
-              <article class="stat"><span>Shipped invoices</span><strong id="shippedCount">0</strong></article>
-              <article class="stat"><span>Active value</span><strong id="activeValue">$0.00</strong></article>
-            </div>
-            <section class="panel"><div class="panel-head"><div><h2>Needs Attention</h2><p>Open invoices that still have purchases inside them.</p></div><button class="btn secondary" data-open-tab="invoices">View All</button></div><div id="dashboardInvoices" class="invoice-list"></div></section>
-          </section>
-
+          <header class="admin-header"><div><p class="eyebrow">Diabetic Supply Buyers</p><h1 id="pageTitle">Dashboard</h1></div><button class="btn secondary" id="refreshBtn">Refresh</button></header>
+          <section id="dashboardTab" class="tab-panel"><div class="stats"><article class="stat"><span>Active invoices</span><strong id="activeCount">0</strong></article><article class="stat"><span>Sold invoices</span><strong id="soldCount">0</strong></article><article class="stat"><span>Shipped invoices</span><strong id="shippedCount">0</strong></article><article class="stat"><span>Active value</span><strong id="activeValue">$0.00</strong></article></div><section class="panel"><div class="panel-head"><div><h2>Needs Attention</h2><p>Open invoices that still have purchases inside them.</p></div><button class="btn secondary" data-open-tab="invoices">View All</button></div><div id="dashboardInvoices" class="invoice-list"></div></section></section>
           <section id="purchaseTab" class="tab-panel hidden">
-            <section class="panel">
-              <div class="panel-head"><div><h2>Customer</h2><p>Enter the phone number first to pull up history.</p></div><button class="btn secondary" id="newPurchaseBtn">Clear Form</button></div>
-              <div class="form-grid two"><label>Phone number<input id="lookupPhone" placeholder="561-510-1236"></label><label>Customer name<input id="customerName" placeholder="New or existing customer"></label></div>
-              <div class="form-grid two"><label>Email<input id="customerEmail" placeholder="Optional"></label><label>Customer notes<input id="customerNotes" placeholder="Optional"></label></div>
-              <div id="customerStatus"></div>
-            </section>
-
-            <section class="panel">
-              <h2>Purchase Details</h2>
-              <div class="form-grid three"><label>Add to invoice<select id="activeBatchSelect"></select></label><label>Purchase date<input id="purchaseDate" type="date"></label><label>Payout method<select id="payoutMethod"><option>Cash</option><option>Zelle</option><option>Cash App</option><option>Venmo</option><option>Check</option><option>Other</option></select></label></div>
-              <div class="form-grid two"><label>Purchase notes<input id="invoiceNotes" placeholder="Pickup, payment, follow-up notes"></label><label>New invoice name<input id="newBatchLabel" placeholder="Example: Week of Jan 5"></label></div>
-              <div class="actions"><button class="btn secondary" id="createBatchBtn">Create New Active Invoice</button></div>
-            </section>
-
-            <section class="panel">
-              <h2>Add Supply Item</h2>
-              <div class="form-grid three"><label>Category<select id="category"><option>Diabetic Pods</option><option>CGM Supplies</option><option>Test Strips</option><option>Glucose Meter</option><option>Lancets</option><option>Supply Kit</option><option>Other</option></select></label><label>Brand / item<input id="brand" placeholder="Omnipod, Dexcom, OneTouch"></label><label>Model / description<input id="model" placeholder="G7 sensor, Verio 50ct"></label></div>
-              <div class="form-grid three"><label>Quantity<input id="quantity" type="number" min="1" value="1"></label><label>Expiration<input id="expiration" type="month"></label><label>Condition<select id="condition"><option>Sealed</option><option>New / Open Box</option><option>Damaged Box</option><option>Short Date</option></select></label></div>
-              <div class="form-grid three"><label>Paid each<input id="unitCost" type="number" min="0" step="0.01"></label><label>Expected sell each<input id="expectedSell" type="number" min="0" step="0.01"></label><label>Item notes<input id="itemNotes"></label></div>
-              <div class="actions"><button class="btn" id="addItemBtn">Add Item</button><button class="btn secondary" id="clearItemBtn">Clear Item</button></div>
-            </section>
-
-            <section class="panel">
-              <div class="panel-head"><div><h2>Current Purchase</h2><p>Saving adds this purchase into the selected invoice.</p></div><strong id="invoiceTotal" class="big-total">$0.00</strong></div>
-              <div class="table"><table><thead><tr><th>Category</th><th>Brand</th><th>Model</th><th>Qty</th><th>Exp</th><th>Condition</th><th>Paid Each</th><th>Total</th><th></th></tr></thead><tbody id="itemsBody"></tbody></table></div>
-              <div class="actions"><button class="btn" id="savePurchaseBtn">Add Purchase To Invoice</button><button class="btn danger" id="clearInvoiceBtn">Clear Purchase</button></div>
-              <div id="saveStatus"></div>
-            </section>
-
+            <section class="panel"><div class="panel-head"><div><h2>Customer</h2><p>Enter the phone number first to pull up history.</p></div><button class="btn secondary" id="newPurchaseBtn">Clear Form</button></div><div class="form-grid two"><label>Phone number<input id="lookupPhone" placeholder="561-510-1236"></label><label>Customer name<input id="customerName" placeholder="New or existing customer"></label></div><div class="form-grid two"><label>Email<input id="customerEmail" placeholder="Optional"></label><label>Location<input id="customerLocation" placeholder="City, area, or address notes"></label></div><div class="form-grid two"><label>How you found them<input id="customerSource" placeholder="Facebook, referral, repeat seller..."></label><label>Customer notes<input id="customerNotes" placeholder="Follow-up notes, preferences, reminders"></label></div><div id="customerStatus"></div></section>
+            <section class="panel"><h2>Purchase Details</h2><div class="form-grid three"><label>Add to invoice<select id="activeBatchSelect"></select></label><label>Purchase date<input id="purchaseDate" type="date"></label><label>Payout method<select id="payoutMethod"><option>Cash</option><option>Zelle</option><option>Cash App</option><option>Venmo</option><option>Check</option><option>Other</option></select></label></div><div class="form-grid two"><label>Invoice notes<input id="invoiceNotes" placeholder="Pickup, payment, follow-up notes"></label><label>New invoice name<input id="newBatchLabel" placeholder="Example: Week of Jan 5"></label></div><div class="actions"><button class="btn secondary" id="createBatchBtn">Create New Active Invoice</button></div></section>
+            <section class="panel"><h2>Add Supply Item</h2><div class="form-grid three"><label>Category<select id="category"><option>Diabetic Pods</option><option>CGM Supplies</option><option>Test Strips</option><option>Glucose Meter</option><option>Lancets</option><option>Supply Kit</option><option>Other</option></select></label><label>Brand / item<input id="brand" placeholder="Omnipod, Dexcom, OneTouch"></label><label>Model / description<input id="model" placeholder="G7 sensor, Verio 50ct"></label></div><div class="form-grid three"><label>Quantity<input id="quantity" type="number" min="1" value="1"></label><label>Expiration<input id="expiration" type="month"></label><label>Condition<select id="condition"><option>Sealed</option><option>New / Open Box</option><option>Damaged Box</option><option>Short Date</option></select></label></div><div class="form-grid three"><label>Paid each<input id="unitCost" type="number" min="0" step="0.01"></label><label>Expected sell each<input id="expectedSell" type="number" min="0" step="0.01"></label><label>Item notes<input id="itemNotes"></label></div><div class="actions"><button class="btn" id="addItemBtn">Add Item</button><button class="btn secondary" id="clearItemBtn">Clear Item</button></div></section>
+            <section class="panel"><div class="panel-head"><div><h2>Current Purchase</h2><p>Saving adds this purchase into the selected invoice.</p></div><strong id="invoiceTotal" class="big-total">$0.00</strong></div><div class="table"><table><thead><tr><th>Category</th><th>Brand</th><th>Model</th><th>Qty</th><th>Exp</th><th>Condition</th><th>Paid Each</th><th>Total</th><th></th></tr></thead><tbody id="itemsBody"></tbody></table></div><div class="actions"><button class="btn" id="savePurchaseBtn">Add Purchase To Invoice</button><button class="btn danger" id="clearInvoiceBtn">Clear Purchase</button></div><div id="saveStatus"></div></section>
             <section class="panel"><h2>Customer History</h2><div id="history" class="history"><p>No customer loaded yet.</p></div></section>
           </section>
-
           <section id="invoicesTab" class="tab-panel hidden"><section class="panel"><div class="panel-head"><div><h2>Invoices</h2><p>Each invoice can hold multiple purchases until the invoice is Shipped.</p></div><select id="invoiceFilter" class="compact-select"><option>Active</option><option>Sold</option><option>Shipped</option><option>All</option></select></div><div id="invoiceList" class="invoice-list"></div></section></section>
-          <section id="customersTab" class="tab-panel hidden"><section class="panel"><div class="panel-head"><div><h2>Customers</h2><p>Search by name, phone, or email.</p></div><input id="customerSearch" class="search-input" placeholder="Search customers"></div><div id="customerList" class="customer-list"></div></section></section>
+          <section id="customersTab" class="tab-panel hidden"><section class="panel"><div class="panel-head"><div><h2>Customer Profile</h2><p>Add or update customer details without creating a purchase.</p></div><button class="btn secondary" id="clearCustomerProfileBtn">Clear</button></div><div class="form-grid three"><label>Phone<input id="profilePhone" placeholder="561-510-1236"></label><label>Name<input id="profileName" placeholder="Customer name"></label><label>Email<input id="profileEmail" placeholder="Optional"></label></div><div class="form-grid two"><label>Location<input id="profileLocation" placeholder="Where they live / pickup area"></label><label>How you found them<input id="profileSource" placeholder="Facebook, referral, ad, repeat seller"></label></div><label>Notes<input id="profileNotes" placeholder="Follow-up notes, preferences, reminders"></label><div class="actions"><button class="btn" id="saveCustomerProfileBtn">Save Customer</button></div><div id="profileStatus"></div></section><section class="panel"><div class="panel-head"><div><h2>Customers</h2><p>Search by name, phone, email, location, source, or notes.</p></div><input id="customerSearch" class="search-input" placeholder="Search customers"></div><div id="customerList" class="customer-list"></div></section></section>
         </section>
       </div>
     </section>
