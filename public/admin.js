@@ -45,6 +45,7 @@ function bindEvents() {
   $("refreshFollowupsBtn").onclick = loadFollowups;
   $("saveCustomerProfileBtn").onclick = saveCustomerProfile;
   $("clearCustomerProfileBtn").onclick = clearCustomerProfile;
+  $("backToCustomersBtn").onclick = showCustomerList;
   $("photoInput").onchange = handlePhotoInput;
   $("clearPhotosBtn").onclick = clearPhotos;
   $("invoiceFilter").onchange = loadBatches;
@@ -94,7 +95,10 @@ function openTab(name) {
   $(`${name}Tab`).classList.remove("hidden");
   $("pageTitle").textContent = titles[name] || "Admin";
   if (name === "invoices") loadBatches();
-  if (name === "customers") loadCustomers();
+  if (name === "customers") {
+    showCustomerList();
+    loadCustomers();
+  }
   if (name === "followups") loadFollowups();
 }
 
@@ -401,7 +405,7 @@ function renderCustomerRow(customer) {
         <strong>${money(customer.total_paid)}</strong>
         <span>${customer.invoice_count} invoice(s)</span>
         <button class="mini-btn" onclick="editCustomerProfile('${customer.phone}')">Edit</button>
-        <button class="mini-btn" onclick="loadCustomerIntoPurchase('${customer.phone}')">View History</button>
+        <button class="mini-btn" onclick="openCustomerManager('${customer.phone}')">View History</button>
         <button class="mini-btn" onclick="markFollowedUp(${customer.id})">Followed Up</button>
       </div>
     </article>
@@ -414,12 +418,78 @@ window.loadCustomerIntoPurchase = async (phone) => {
   await lookupCustomer();
 };
 
+window.openCustomerManager = async (phone) => {
+  const result = await api(`/api/customers/lookup?phone=${cleanPhone(phone)}`);
+  if (!result.customer) return alert("Customer not found.");
+  openTab("customers");
+  showCustomerManager(result.customer, result.invoices || []);
+};
+
 window.editCustomerProfile = async (phone) => {
   const result = await api(`/api/customers/lookup?phone=${cleanPhone(phone)}`);
   if (!result.customer) return;
   openTab("customers");
+  showCustomerList();
   fillCustomerProfile(result.customer);
 };
+
+function showCustomerList() {
+  $("customerManagerPanel").classList.add("hidden");
+  $("customerProfilePanel").classList.remove("hidden");
+  $("customerListPanel").classList.remove("hidden");
+}
+
+function showCustomerManager(customer, invoices) {
+  $("customerProfilePanel").classList.add("hidden");
+  $("customerListPanel").classList.add("hidden");
+  $("customerManagerPanel").classList.remove("hidden");
+  $("customerManager").innerHTML = renderCustomerManager(customer, invoices);
+}
+
+function renderCustomerManager(customer, invoices) {
+  const totalPaid = invoices.reduce((sum, invoice) => sum + Number(invoice.total_paid || 0), 0);
+  const itemCount = invoices.reduce((sum, invoice) => sum + (invoice.items || []).reduce((itemSum, item) => itemSum + Number(item.quantity || 0), 0), 0);
+  return `
+    <div class="stats customer-stats">
+      <article class="stat"><span>Total paid</span><strong>${money(totalPaid)}</strong></article>
+      <article class="stat"><span>Purchases</span><strong>${invoices.length}</strong></article>
+      <article class="stat"><span>Items bought</span><strong>${itemCount}</strong></article>
+      <article class="stat"><span>Follow up</span><strong>${customer.next_follow_up_at ? new Date(`${customer.next_follow_up_at}T00:00:00`).toLocaleDateString() : "None"}</strong></article>
+      <article class="stat"><span>Source</span><strong>${escapeHtml(customer.source || "Unknown")}</strong></article>
+    </div>
+    <article class="history-card">
+      <h3>${escapeHtml(customer.name || "No name yet")}</h3>
+      <p class="mini"><b>Phone:</b> ${formatPhone(customer.phone)} ${customer.email ? `<b>Email:</b> ${escapeHtml(customer.email)}` : ""}</p>
+      ${customer.address ? `<p class="mini"><b>Home address:</b> ${escapeHtml(customer.address)}</p>` : ""}
+      ${customer.location ? `<p class="mini"><b>Location notes:</b> ${escapeHtml(customer.location)}</p>` : ""}
+      ${customer.notes ? `<p class="mini"><b>Notes:</b> ${escapeHtml(customer.notes)}</p>` : ""}
+      <div class="actions">
+        <button class="mini-btn" onclick="editCustomerProfile('${customer.phone}')">Edit Customer</button>
+        <button class="mini-btn" onclick="loadCustomerIntoPurchase('${customer.phone}')">New Purchase</button>
+        <button class="mini-btn" onclick="markFollowedUp(${customer.id})">Followed Up</button>
+      </div>
+    </article>
+    <section class="history">
+      ${renderManagerHistory(invoices)}
+    </section>
+  `;
+}
+
+function renderManagerHistory(invoices) {
+  if (!invoices.length) return `<div class="empty">No purchase history yet.</div>`;
+  return invoices.map((invoice) => `
+    <article class="history-card">
+      <div class="invoice-top">
+        <h3>Purchase #${invoice.id} - ${new Date(invoice.purchase_date).toLocaleDateString()} - ${money(invoice.total_paid)}</h3>
+        <span class="pill ${invoice.batch_status?.toLowerCase()}">${escapeHtml(invoice.batch_status || "Active")}</span>
+      </div>
+      <p class="mini"><b>Invoice:</b> #${invoice.batch_id || ""} ${escapeHtml(invoice.batch_label || "")}</p>
+      <p class="mini"><b>Payout:</b> ${escapeHtml(invoice.payout_method)} ${invoice.notes ? "- " + escapeHtml(invoice.notes) : ""}</p>
+      <ul>${invoice.items.map((item) => `<li>${item.quantity}x ${escapeHtml(item.brand)} ${escapeHtml(item.model)} - ${escapeHtml(item.condition)} - paid ${money(item.unit_cost)} each${item.expiration ? " - exp " + escapeHtml(item.expiration) : ""}</li>`).join("")}</ul>
+      ${renderPhotoStrip(invoice.photos || [])}
+    </article>
+  `).join("");
+}
 
 function fillCustomerProfile(customer) {
   $("profilePhone").value = formatPhone(customer.phone);
