@@ -225,7 +225,7 @@ app.get("/api/batches/:id/buyer-pdf", requireAuth, async (req, res) => {
 
   const batches = await attachPurchases([batch]);
   const fullBatch = batches[0];
-  const mercuryPrices = /mercury/i.test(fullBatch.sold_to || "") ? await getMercuryPrices() : [];
+  const mercuryPrices = await getMercuryPrices();
   const pdf = createBuyerInvoicePdf(fullBatch, mercuryPrices);
 
   res.setHeader("Content-Type", "application/pdf");
@@ -958,10 +958,9 @@ function monthsFromTier(label) {
 }
 
 function normalizeMatchText(value) {
-  return String(value || "")
+  return cleanMercuryProductName(value)
     .toLowerCase()
-    .replace(/\[[^\]]*]/g, "")
-    .replace(/\([^)]*\)/g, "")
+    .replace(/\[[^\]]*]/g, " ")
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
 }
@@ -1029,7 +1028,7 @@ function createBuyerInvoicePdf(batch, mercuryPrices = []) {
     if (y < 142) break;
   }
 
-  const total = mercuryPrices.length && mercuryTotal > 0 ? mercuryTotal : Number(batch.sale_price || 0);
+  const total = mercuryTotal > 0 ? mercuryTotal : Number(batch.sale_price || 0);
   lines.push({ text: `Invoice Total: ${formatCurrency(total)}`, x: 360, y: 108, size: 14, font: "bold" });
   if (batch.sale_notes) {
     lines.push({ text: `Notes: ${batch.sale_notes}`, x: 50, y: 86, size: 9 });

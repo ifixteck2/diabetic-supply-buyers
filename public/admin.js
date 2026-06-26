@@ -223,7 +223,7 @@ function renderPriceProductOptions() {
   const select = $("priceProductSelect");
   if (!select) return;
   select.innerHTML = `<option value="">Manual item / choose Mercury product</option>` + mercuryPrices.map((item) => (
-    `<option value="${escapeAttr(item.id)}">${escapeHtml(item.product)}</option>`
+    `<option value="${escapeAttr(item.id)}">${escapeHtml(cleanMercuryProductName(item.product))}</option>`
   )).join("");
 }
 
@@ -239,7 +239,7 @@ function applySelectedPriceProduct() {
     return;
   }
   $("category").value = product.category || "Other";
-  $("brand").value = product.product || "";
+  $("brand").value = cleanMercuryProductName(product.product) || "";
   $("model").value = "";
   updateBuyerPricePreview();
 }
@@ -703,7 +703,7 @@ function renderPurchaseEditor(invoice) {
 
 function renderMercuryProductOptions(selectedId = "") {
   return `<option value="">Choose Mercury match</option>` + mercuryPrices.map((product) => (
-    `<option value="${escapeAttr(product.id)}"${product.id === selectedId ? " selected" : ""}>${escapeHtml(product.product)}</option>`
+    `<option value="${escapeAttr(product.id)}"${product.id === selectedId ? " selected" : ""}>${escapeHtml(cleanMercuryProductName(product.product))}</option>`
   )).join("");
 }
 
@@ -714,7 +714,7 @@ window.applyEditMercuryProduct = (id, index) => {
   const product = mercuryPrices.find((entry) => entry.id === productId);
   if (!product) return;
   row.querySelector('[data-field="category"]').value = product.category || "Other";
-  row.querySelector('[data-field="brand"]').value = product.product;
+  row.querySelector('[data-field="brand"]').value = cleanMercuryProductName(product.product);
   row.querySelector('[data-field="model"]').value = "";
   updateEditMercuryPrice(id, index);
 };
@@ -987,7 +987,11 @@ function monthsFromTier(label) {
 }
 
 function normalizeMatchText(value) {
-  return String(value || "").toLowerCase().replace(/\[[^\]]*]/g, "").replace(/\([^)]*\)/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+  return cleanMercuryProductName(value).toLowerCase().replace(/\[[^\]]*]/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function cleanMercuryProductName(value) {
+  return String(value || "").replace(/\s*\[\s*ding\s*-\s*\$?\d+(?:\.\d+)?\s*]/gi, "").trim();
 }
 
 async function api(url, options = {}) {
