@@ -163,7 +163,7 @@
                 <div><h2>Product Photos</h2><p>Photos save to this customer history and the selected invoice.</p></div>
                 <button class="btn secondary" id="clearPhotosBtn">Clear Photos</button>
               </div>
-              <input id="photoInput" type="file" accept="image/*" capture="environment" multiple>
+              <input id="photoInput" type="file" accept="image/*" multiple>
               <div id="photoPreview" class="photo-grid"></div>
             </section>
 
@@ -194,7 +194,15 @@
           </section>
 
           <section id="customersTab" class="tab-panel hidden">
-            <section class="panel">
+            <section id="customerManagerPanel" class="panel hidden">
+              <div class="panel-head">
+                <div><h2>Customer Manager</h2><p>Customer details, purchase history, prices, and product photos.</p></div>
+                <button class="btn secondary" id="backToCustomersBtn">Back To Customers</button>
+              </div>
+              <div id="customerManager"></div>
+            </section>
+
+            <section id="customerProfilePanel" class="panel">
               <div class="panel-head">
                 <div><h2>Customer Profile</h2><p>Add or update customer details without creating a purchase.</p></div>
                 <button class="btn secondary" id="clearCustomerProfileBtn">Clear</button>
@@ -217,7 +225,7 @@
               <div id="profileStatus"></div>
             </section>
 
-            <section class="panel">
+            <section id="customerListPanel" class="panel">
               <div class="panel-head">
                 <div><h2>Customers</h2><p>Search by name, phone, email, location, source, or notes.</p></div>
                 <input id="customerSearch" class="search-input" placeholder="Search customers">
