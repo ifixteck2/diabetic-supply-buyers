@@ -791,6 +791,7 @@ function addDays(dateValue, days) {
 
 function createBuyerInvoicePdf(batch) {
   const itemRows = [];
+  const photos = [];
   for (const purchase of batch.purchases || []) {
     for (const item of purchase.items || []) {
       itemRows.push({
@@ -799,6 +800,10 @@ function createBuyerInvoicePdf(batch) {
         condition: item.condition || "Sealed",
         expiration: formatExpiration(item.expiration),
       });
+    }
+    for (const photo of purchase.photos || []) {
+      const image = parsePdfPhoto(photo);
+      if (image) photos.push(image);
     }
   }
 
@@ -838,13 +843,37 @@ function createBuyerInvoicePdf(batch) {
   if (batch.sale_notes) {
     lines.push({ text: `Notes: ${batch.sale_notes}`, x: 50, y: 86, size: 9 });
   }
+  if (photos.length) {
+    lines.push({ text: `Photos: Included on final page`, x: 50, y: 72, size: 9 });
+  }
   lines.push({ text: "Thank you for your business.", x: 50, y: 58, size: 10, font: "bold" });
 
-  return buildProfessionalPdf(lines);
+  return buildProfessionalPdf(lines, photos);
 }
 
-function buildProfessionalPdf(lines) {
+function buildProfessionalPdf(lines, photos = []) {
   const objects = [];
+  const reserveObject = () => {
+    objects.push(null);
+    return objects.length;
+  };
+  const setObject = (ref, value) => {
+    objects[ref - 1] = Buffer.isBuffer(value) ? value : Buffer.from(value, "binary");
+  };
+  const catalogRef = reserveObject();
+  const pagesRef = reserveObject();
+  const fontRef = reserveObject();
+  const boldFontRef = reserveObject();
+  const invoiceContentRef = reserveObject();
+  const invoicePageRef = reserveObject();
+  const imageRefs = photos.map((photo, index) => {
+    const ref = reserveObject();
+    setObject(ref, makePdfImageObject(photo, index));
+    return ref;
+  });
+  const photoContentRef = photos.length ? reserveObject() : null;
+  const photoPageRef = photos.length ? reserveObject() : null;
+
   const content = [
     "0.95 0.98 0.95 rg",
     "40 660 532 104 re f",
@@ -864,26 +893,97 @@ function buildProfessionalPdf(lines) {
     "ET",
   ].join("\n");
 
-  objects.push("<< /Type /Catalog /Pages 2 0 R >>");
-  objects.push("<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
-  objects.push("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R /F2 5 0 R >> >> /Contents 6 0 R >>");
-  objects.push("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
-  objects.push("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>");
-  objects.push(`<< /Length ${Buffer.byteLength(content)} >>\nstream\n${content}\nendstream`);
+  setObject(fontRef, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
+  setObject(boldFontRef, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>");
+  setObject(invoiceContentRef, makePdfStreamObject(content));
+  setObject(
+    invoicePageRef,
+    `<< /Type /Page /Parent ${pagesRef} 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 ${fontRef} 0 R /F2 ${boldFontRef} 0 R >> >> /Contents ${invoiceContentRef} 0 R >>`
+  );
 
-  let pdf = "%PDF-1.4\n";
+  if (photos.length) {
+    const photoContent = buildPhotoPageContent(photos);
+    const imageResources = imageRefs.map((ref, index) => `/Im${index + 1} ${ref} 0 R`).join(" ");
+    setObject(photoContentRef, makePdfStreamObject(photoContent));
+    setObject(
+      photoPageRef,
+      `<< /Type /Page /Parent ${pagesRef} 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 ${fontRef} 0 R /F2 ${boldFontRef} 0 R >> /XObject << ${imageResources} >> >> /Contents ${photoContentRef} 0 R >>`
+    );
+  }
+
+  const pageRefs = [invoicePageRef, ...(photoPageRef ? [photoPageRef] : [])];
+  setObject(catalogRef, `<< /Type /Catalog /Pages ${pagesRef} 0 R >>`);
+  setObject(pagesRef, `<< /Type /Pages /Kids [${pageRefs.map((ref) => `${ref} 0 R`).join(" ")}] /Count ${pageRefs.length} >>`);
+
+  const chunks = [Buffer.from("%PDF-1.4\n", "binary")];
   const offsets = [0];
   objects.forEach((object, index) => {
-    offsets.push(Buffer.byteLength(pdf));
-    pdf += `${index + 1} 0 obj\n${object}\nendobj\n`;
+    offsets.push(Buffer.concat(chunks).length);
+    chunks.push(Buffer.from(`${index + 1} 0 obj\n`, "binary"));
+    chunks.push(object);
+    chunks.push(Buffer.from("\nendobj\n", "binary"));
   });
-  const xrefOffset = Buffer.byteLength(pdf);
-  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  const xrefOffset = Buffer.concat(chunks).length;
+  chunks.push(Buffer.from(`xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`, "binary"));
   offsets.slice(1).forEach((offset) => {
-    pdf += `${String(offset).padStart(10, "0")} 00000 n \n`;
+    chunks.push(Buffer.from(`${String(offset).padStart(10, "0")} 00000 n \n`, "binary"));
   });
-  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
-  return Buffer.from(pdf, "binary");
+  chunks.push(Buffer.from(`trailer\n<< /Size ${objects.length + 1} /Root ${catalogRef} 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`, "binary"));
+  return Buffer.concat(chunks);
+}
+
+function buildPhotoPageContent(photos) {
+  const safePhotos = photos;
+  const columns = safePhotos.length <= 4 ? 2 : safePhotos.length <= 12 ? 3 : 4;
+  const rows = Math.ceil(safePhotos.length / columns);
+  const left = 50;
+  const top = 632;
+  const gap = columns === 4 ? 12 : 18;
+  const cellWidth = columns === 2 ? 238 : columns === 3 ? 154 : 119;
+  const cellHeight = Math.max(50, Math.min(154, Math.floor((520 - gap * (rows - 1)) / rows)));
+  const commands = [
+    "0.95 0.98 0.95 rg",
+    "40 686 532 58 re f",
+    "0.05 0.44 0.18 rg",
+    "40 686 532 5 re f",
+    "0 0 0 rg",
+    "BT",
+    "/F2 18 Tf 50 718 Td (Product Photos) Tj -50 -718 Td",
+    "/F1 10 Tf 50 700 Td (Grouped product photos for this buyer invoice.) Tj -50 -700 Td",
+    "ET",
+  ];
+
+  safePhotos.forEach((photo, index) => {
+    const column = index % columns;
+    const row = Math.floor(index / columns);
+    const cellX = left + column * (cellWidth + gap);
+    const cellTop = top - row * (cellHeight + 34 + gap);
+    const scale = Math.min(cellWidth / photo.width, cellHeight / photo.height);
+    const width = Math.max(1, Math.round(photo.width * scale));
+    const height = Math.max(1, Math.round(photo.height * scale));
+    const x = cellX + Math.round((cellWidth - width) / 2);
+    const y = cellTop - height;
+    commands.push("0.82 0.90 0.84 RG");
+    commands.push(`${cellX} ${cellTop - cellHeight} ${cellWidth} ${cellHeight} re S`);
+    commands.push(`q ${width} 0 0 ${height} ${x} ${y} cm /Im${index + 1} Do Q`);
+    commands.push("0 0 0 rg");
+    commands.push("BT");
+    commands.push(`/F1 8 Tf ${cellX} ${cellTop - cellHeight - 14} Td (${escapePdfText(photo.name)}) Tj ${-cellX} ${-(cellTop - cellHeight - 14)} Td`);
+    commands.push("ET");
+  });
+  return commands.join("\n");
+}
+
+function makePdfStreamObject(content) {
+  return `<< /Length ${Buffer.byteLength(content)} >>\nstream\n${content}\nendstream`;
+}
+
+function makePdfImageObject(photo) {
+  return Buffer.concat([
+    Buffer.from(`<< /Type /XObject /Subtype /Image /Width ${photo.width} /Height ${photo.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${photo.bytes.length} >>\nstream\n`, "binary"),
+    photo.bytes,
+    Buffer.from("\nendstream", "binary"),
+  ]);
 }
 
 function wrapPdfLine(value, maxLength) {
@@ -906,6 +1006,48 @@ function wrapPdfLine(value, maxLength) {
 
 function escapePdfText(value) {
   return String(value).replace(/[\\()]/g, "\\$&");
+}
+
+function parsePdfPhoto(photo) {
+  const dataUrl = String(photo?.data_url || "");
+  const match = dataUrl.match(/^data:image\/jpe?g;base64,(.+)$/);
+  if (!match) return null;
+  const bytes = Buffer.from(match[1], "base64");
+  const size = getJpegSize(bytes);
+  if (!size) return null;
+  return {
+    bytes,
+    width: size.width,
+    height: size.height,
+    name: String(photo.file_name || "Product photo").slice(0, 80),
+  };
+}
+
+function getJpegSize(bytes) {
+  if (!bytes || bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8) return null;
+  let offset = 2;
+  while (offset < bytes.length) {
+    while (bytes[offset] === 0xff) offset += 1;
+    const marker = bytes[offset];
+    offset += 1;
+    if (marker === 0xd8 || marker === 0xd9) continue;
+    if (offset + 2 > bytes.length) return null;
+    const length = bytes.readUInt16BE(offset);
+    if (length < 2 || offset + length > bytes.length) return null;
+    const isStartOfFrame =
+      (marker >= 0xc0 && marker <= 0xc3) ||
+      (marker >= 0xc5 && marker <= 0xc7) ||
+      (marker >= 0xc9 && marker <= 0xcb) ||
+      (marker >= 0xcd && marker <= 0xcf);
+    if (isStartOfFrame && length >= 7) {
+      return {
+        height: bytes.readUInt16BE(offset + 3),
+        width: bytes.readUInt16BE(offset + 5),
+      };
+    }
+    offset += length;
+  }
+  return null;
 }
 
 function formatExpiration(value) {
