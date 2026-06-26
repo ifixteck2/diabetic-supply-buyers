@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Secure Admin | Diabetic Supply Buyers</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="admin-body">
+  <main class="wrap">
+    <section id="login" class="panel" style="max-width:520px;margin:12vh auto 0">
+      <div class="brand"><span class="mark">DSB</span><span>Secure Admin<small>Customer database</small></span></div>
+      <label>Username<input id="username" autocomplete="username"></label>
+      <label style="margin-top:14px">Password<input id="password" type="password" autocomplete="current-password"></label>
+      <label class="remember"><input id="remember" type="checkbox"> Remember this device</label>
+      <div class="actions"><button class="btn" id="loginBtn">Log In</button></div>
+      <div id="loginMsg"></div>
+    </section>
+
+    <section id="app" class="hidden">
+      <div class="admin-top">
+        <div class="brand"><span class="mark">DSB</span><span>Customer Database<small>Private purchase records</small></span></div>
+        <button class="btn danger" id="logoutBtn">Log Out</button>
+      </div>
+
+      <section class="panel">
+        <h2>Find Customer</h2>
+        <p>Type a phone number to pull up the customer and their purchase history.</p>
+        <div class="form-grid two">
+          <label>Phone number<input id="lookupPhone" placeholder="561-510-1236"></label>
+          <label>Customer name<input id="customerName" placeholder="New or existing customer"></label>
+        </div>
+        <div class="form-grid two" style="margin-top:14px">
+          <label>Email<input id="customerEmail" placeholder="Optional"></label>
+          <label>Customer notes<input id="customerNotes" placeholder="Optional"></label>
+        </div>
+        <div id="customerStatus"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Add Purchase</h2>
+        <div class="form-grid three">
+          <label>Purchase date<input id="purchaseDate" type="date"></label>
+          <label>Payout method<select id="payoutMethod"><option>Cash</option><option>Zelle</option><option>Cash App</option><option>Venmo</option><option>Check</option><option>Other</option></select></label>
+          <label>Invoice notes<input id="invoiceNotes" placeholder="Pickup, payment, follow-up notes"></label>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Supply Item</h2>
+        <div class="form-grid three">
+          <label>Category<select id="category"><option>Diabetic Pods</option><option>CGM Supplies</option><option>Test Strips</option><option>Glucose Meter</option><option>Lancets</option><option>Supply Kit</option><option>Other</option></select></label>
+          <label>Brand / item<input id="brand" placeholder="Omnipod, Dexcom, OneTouch"></label>
+          <label>Model / description<input id="model" placeholder="G7 sensor, Verio 50ct"></label>
+        </div>
+        <div class="form-grid three" style="margin-top:14px">
+          <label>Quantity<input id="quantity" type="number" min="1" value="1"></label>
+          <label>Expiration<input id="expiration" type="month"></label>
+          <label>Condition<select id="condition"><option>Sealed</option><option>New / Open Box</option><option>Damaged Box</option><option>Short Date</option></select></label>
+        </div>
+        <div class="form-grid three" style="margin-top:14px">
+          <label>Paid each<input id="unitCost" type="number" min="0" step="0.01"></label>
+          <label>Expected sell each<input id="expectedSell" type="number" min="0" step="0.01"></label>
+          <label>Item notes<input id="itemNotes"></label>
+        </div>
+        <div class="actions"><button class="btn" id="addItemBtn">Add Item</button><button class="btn secondary" id="clearItemBtn">Clear Item</button></div>
+      </section>
+
+      <section class="panel">
+        <h2>Current Invoice</h2>
+        <div class="table"><table><thead><tr><th>Category</th><th>Brand</th><th>Model</th><th>Qty</th><th>Exp</th><th>Condition</th><th>Paid Each</th><th>Total</th><th></th></tr></thead><tbody id="itemsBody"></tbody></table></div>
+        <div class="total"><span>Invoice total paid</span><strong id="invoiceTotal">$0.00</strong></div>
+        <div class="actions"><button class="btn" id="savePurchaseBtn">Save Purchase</button><button class="btn danger" id="clearInvoiceBtn">Clear Invoice</button></div>
+        <div id="saveStatus"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Customer History</h2>
+        <div id="history" class="history"><p>No customer loaded yet.</p></div>
+      </section>
+    </section>
+  </main>
+  <script src="/admin.js"></script>
+</body>
+</html>
