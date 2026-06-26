@@ -225,7 +225,8 @@ app.get("/api/batches/:id/buyer-pdf", requireAuth, async (req, res) => {
 
   const batches = await attachPurchases([batch]);
   const fullBatch = batches[0];
-  const pdf = createBuyerInvoicePdf(fullBatch);
+  const mercuryPrices = /mercury/i.test(fullBatch.sold_to || "") ? await getMercuryPrices() : [];
+  const pdf = createBuyerInvoicePdf(fullBatch, mercuryPrices);
 
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader("Content-Disposition", `attachment; filename="buyer-invoice-${id}.pdf"`);
@@ -922,16 +923,64 @@ function addDays(dateValue, days) {
   return date.toISOString().slice(0, 10);
 }
 
-function createBuyerInvoicePdf(batch) {
+function findMercuryProductForItem(item, mercuryPrices) {
+  const itemText = normalizeMatchText(`${item.brand || ""} ${item.model || ""}`);
+  if (!itemText) return null;
+  return mercuryPrices.find((product) => normalizeMatchText(product.product) === itemText)
+    || mercuryPrices.find((product) => itemText.includes(normalizeMatchText(product.product)))
+    || mercuryPrices.find((product) => normalizeMatchText(product.product).includes(itemText))
+    || null;
+}
+
+function getMercuryPriceForItem(product, expiration, condition) {
+  const damaged = /damaged/i.test(condition || "");
+  const prices = (product.prices || []).filter((entry) => entry.damaged === damaged && entry.price !== null);
+  const fallback = prices[0] || (product.prices || []).find((entry) => entry.price !== null) || null;
+  const months = monthsUntilExpiration(expiration);
+  if (months === null) return fallback;
+  return prices.find((entry) => months >= monthsFromTier(entry.label)) || fallback;
+}
+
+function monthsUntilExpiration(expiration) {
+  if (!/^\d{4}-\d{2}$/.test(String(expiration || ""))) return null;
+  const [year, month] = expiration.split("-").map(Number);
+  const now = new Date();
+  return (year - now.getFullYear()) * 12 + (month - (now.getMonth() + 1));
+}
+
+function monthsFromTier(label) {
+  const match = String(label || "").match(/(\d+)\+?\s*MO/i);
+  return match ? Number(match[1]) : 0;
+}
+
+function normalizeMatchText(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/\[[^\]]*]/g, "")
+    .replace(/\([^)]*\)/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function createBuyerInvoicePdf(batch, mercuryPrices = []) {
   const itemRows = [];
   const photos = [];
+  let mercuryTotal = 0;
   for (const purchase of batch.purchases || []) {
     for (const item of purchase.items || []) {
+      const product = findMercuryProductForItem(item, mercuryPrices);
+      const quote = product ? getMercuryPriceForItem(product, item.expiration, item.condition) : null;
+      const savedPrice = Number(item.expected_sell_each || 0);
+      const unitPrice = quote?.price ?? (savedPrice > 0 ? savedPrice : null);
+      const lineTotal = unitPrice === null ? null : Number(item.quantity || 0) * unitPrice;
+      if (lineTotal !== null) mercuryTotal += lineTotal;
       itemRows.push({
         quantity: item.quantity || 0,
         description: [item.brand, item.model].filter(Boolean).join(" ") || item.category || "Diabetic supply",
         condition: item.condition || "Sealed",
         expiration: formatExpiration(item.expiration),
+        unitPrice,
+        lineTotal,
       });
     }
     for (const photo of purchase.photos || []) {
@@ -951,28 +1000,32 @@ function createBuyerInvoicePdf(batch) {
     { text: batch.sold_to ? `Buyer: ${batch.sold_to}` : "Buyer: ", x: 410, y: 692, size: 10 },
     ...(batch.tracking_number ? [{ text: `Tracking: ${batch.tracking_number}`, x: 410, y: 674, size: 10 }] : []),
     { text: "Itemized Supplies", x: 50, y: 640, size: 14, font: "bold" },
-    { text: "Qty", x: 54, y: 612, size: 9, font: "bold" },
-    { text: "Description", x: 94, y: 612, size: 9, font: "bold" },
-    { text: "Condition", x: 360, y: 612, size: 9, font: "bold" },
-    { text: "Expiration", x: 456, y: 612, size: 9, font: "bold" },
+    { text: "Qty", x: 54, y: 612, size: 8, font: "bold" },
+    { text: "Description", x: 82, y: 612, size: 8, font: "bold" },
+    { text: "Condition", x: 294, y: 612, size: 8, font: "bold" },
+    { text: "Expiration", x: 370, y: 612, size: 8, font: "bold" },
+    { text: "Unit Price", x: 448, y: 612, size: 8, font: "bold" },
+    { text: "Line Total", x: 512, y: 612, size: 8, font: "bold" },
   ];
 
   let y = 590;
   for (const row of itemRows) {
-    const descriptionLines = wrapPdfLine(row.description, 42).slice(0, 2);
-    lines.push({ text: String(row.quantity), x: 54, y, size: 9 });
-    lines.push({ text: descriptionLines[0] || "", x: 94, y, size: 9 });
-    lines.push({ text: row.condition, x: 360, y, size: 9 });
-    lines.push({ text: row.expiration, x: 456, y, size: 9 });
+    const descriptionLines = wrapPdfLine(row.description, 31).slice(0, 2);
+    lines.push({ text: String(row.quantity), x: 54, y, size: 8 });
+    lines.push({ text: descriptionLines[0] || "", x: 82, y, size: 8 });
+    lines.push({ text: row.condition, x: 294, y, size: 8 });
+    lines.push({ text: row.expiration, x: 370, y, size: 8 });
+    lines.push({ text: row.unitPrice === null ? "" : formatCurrency(row.unitPrice), x: 448, y, size: 8 });
+    lines.push({ text: row.lineTotal === null ? "" : formatCurrency(row.lineTotal), x: 512, y, size: 8 });
     if (descriptionLines[1]) {
       y -= 13;
-      lines.push({ text: descriptionLines[1], x: 94, y, size: 9 });
+      lines.push({ text: descriptionLines[1], x: 82, y, size: 8 });
     }
     y -= 24;
     if (y < 142) break;
   }
 
-  const total = Number(batch.sale_price || 0);
+  const total = Number(batch.sale_price || 0) || mercuryTotal;
   lines.push({ text: `Invoice Total: ${formatCurrency(total)}`, x: 360, y: 108, size: 14, font: "bold" });
   if (batch.sale_notes) {
     lines.push({ text: `Notes: ${batch.sale_notes}`, x: 50, y: 86, size: 9 });
