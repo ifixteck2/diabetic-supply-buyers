@@ -966,7 +966,7 @@ function normalizeMatchText(value) {
 }
 
 function createBuyerInvoicePdf(batch, mercuryPrices = []) {
-  const itemRows = [];
+  const groupedRows = new Map();
   const photos = [];
   let mercuryTotal = 0;
   for (const purchase of batch.purchases || []) {
@@ -975,22 +975,37 @@ function createBuyerInvoicePdf(batch, mercuryPrices = []) {
       const quote = product ? getMercuryPriceForItem(product, item.expiration, item.condition) : null;
       const savedPrice = Number(item.expected_sell_each || 0);
       const unitPrice = quote?.price ?? (savedPrice > 0 ? savedPrice : null);
-      const lineTotal = unitPrice === null ? null : Number(item.quantity || 0) * unitPrice;
+      const quantity = Number(item.quantity || 0);
+      const lineTotal = unitPrice === null ? null : quantity * unitPrice;
       if (lineTotal !== null) mercuryTotal += lineTotal;
-      itemRows.push({
-        quantity: item.quantity || 0,
+      const row = {
+        quantity,
         description: cleanMercuryProductName([item.brand, item.model].filter(Boolean).join(" ")) || item.category || "Diabetic supply",
         condition: item.condition || "Sealed",
         expiration: formatExpiration(item.expiration),
         unitPrice,
         lineTotal,
-      });
+      };
+      const rowKey = [
+        normalizeMatchText(row.description),
+        row.condition.toLowerCase(),
+        row.expiration,
+        unitPrice === null ? "" : unitPrice.toFixed(2),
+      ].join("|");
+      const existing = groupedRows.get(rowKey);
+      if (existing) {
+        existing.quantity += row.quantity;
+        existing.lineTotal = existing.lineTotal === null || row.lineTotal === null ? null : existing.lineTotal + row.lineTotal;
+      } else {
+        groupedRows.set(rowKey, row);
+      }
     }
     for (const photo of purchase.photos || []) {
       const image = parsePdfPhoto(photo);
       if (image) photos.push(image);
     }
   }
+  const itemRows = Array.from(groupedRows.values());
 
   const lines = [
     { text: "SELL DIABETICS LLC", x: 50, y: 746, size: 20, font: "bold" },
