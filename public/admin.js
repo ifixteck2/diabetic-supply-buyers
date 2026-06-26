@@ -780,8 +780,41 @@ window.removePhoto = (index) => {
 
 function renderPhotoStrip(savedPhotos) {
   if (!savedPhotos.length) return "";
-  return `<div class="photo-strip">${savedPhotos.map((photo) => `<img src="${photo.data_url}" alt="${escapeAttr(photo.file_name || "Product photo")}">`).join("")}</div>`;
+  return `<div class="photo-strip">${savedPhotos.map((photo) => `
+    <button class="photo-view-btn" type="button" data-name="${escapeAttr(photo.file_name || "Product photo")}" onclick="openPhotoViewer(this)">
+      <img src="${photo.data_url}" alt="${escapeAttr(photo.file_name || "Product photo")}">
+    </button>
+  `).join("")}</div>`;
 }
+
+window.openPhotoViewer = (button) => {
+  const image = button.querySelector("img");
+  if (!image?.src) return;
+  let viewer = $("photoViewer");
+  if (!viewer) {
+    viewer = document.createElement("div");
+    viewer.id = "photoViewer";
+    viewer.className = "photo-viewer hidden";
+    viewer.innerHTML = `
+      <div class="photo-viewer-backdrop" onclick="closePhotoViewer()"></div>
+      <div class="photo-viewer-panel">
+        <button class="photo-viewer-close" onclick="closePhotoViewer()">Close</button>
+        <img id="photoViewerImg" alt="">
+        <p id="photoViewerName"></p>
+      </div>
+    `;
+    document.body.appendChild(viewer);
+  }
+  $("photoViewerImg").src = image.src;
+  $("photoViewerImg").alt = image.alt || "Product photo";
+  $("photoViewerName").textContent = button.dataset.name || image.alt || "Product photo";
+  viewer.classList.remove("hidden");
+};
+
+window.closePhotoViewer = () => {
+  const viewer = $("photoViewer");
+  if (viewer) viewer.classList.add("hidden");
+};
 
 function compressImage(file) {
   return new Promise((resolve, reject) => {
