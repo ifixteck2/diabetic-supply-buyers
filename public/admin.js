@@ -332,9 +332,13 @@ function renderBatchCard(batch) {
         <div class="form-grid three">
           <label>Sold to<input id="soldTo-${batch.id}" value="${escapeAttr(batch.sold_to || "")}" placeholder="Buyer name / company"></label>
           <label>Sold for<input id="salePrice-${batch.id}" type="number" min="0" step="0.01" value="${batch.sale_price || ""}" placeholder="0.00"></label>
-          <label>Sale notes<input id="saleNotes-${batch.id}" value="${escapeAttr(batch.sale_notes || "")}" placeholder="Tracking, marketplace, payment notes"></label>
+          <label>Tracking number<input id="trackingNumber-${batch.id}" value="${escapeAttr(batch.tracking_number || "")}" placeholder="UPS / FedEx / USPS tracking"></label>
+        </div>
+        <div class="form-grid">
+          <label>Sale notes<input id="saleNotes-${batch.id}" value="${escapeAttr(batch.sale_notes || "")}" placeholder="Marketplace, payment notes, buyer notes"></label>
         </div>
         <div class="sale-summary"><span>Paid: ${money(batch.total_paid)}</span><span>Sold: ${money(batch.sale_price)}</span><strong>Profit: ${money(profit)}</strong></div>
+        ${batch.tracking_number ? `<p class="mini"><b>Tracking:</b> ${escapeHtml(batch.tracking_number)}</p>` : ""}
       </div>
       <div class="invoice-actions">
         <strong>${money(batch.total_paid)}</strong>
@@ -357,6 +361,7 @@ window.setBatchStatus = async (id, nextStatus) => {
       sold_to: $(`soldTo-${id}`).value.trim(),
       sale_price: $(`salePrice-${id}`).value,
       sale_notes: $(`saleNotes-${id}`).value.trim(),
+      tracking_number: $(`trackingNumber-${id}`).value.trim(),
     },
   });
   if (result?.ok) await loadBatches();

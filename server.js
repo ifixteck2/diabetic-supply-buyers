@@ -175,6 +175,7 @@ app.patch("/api/batches/:id/status", requireAuth, async (req, res) => {
   const nextStatus = String(req.body?.status || "").trim();
   const soldTo = String(req.body?.sold_to || "").trim();
   const saleNotes = String(req.body?.sale_notes || "").trim();
+  const trackingNumber = String(req.body?.tracking_number || "").trim();
   const salePrice = req.body?.sale_price === undefined || req.body?.sale_price === "" ? null : Number(req.body.sale_price);
   const allowed = new Set(["Active", "Sold", "Shipped"]);
   if (!id) return res.status(400).json({ error: "Invoice ID is required." });
@@ -189,12 +190,13 @@ app.patch("/api/batches/:id/status", requireAuth, async (req, res) => {
        sold_to = coalesce(nullif($3,''), sold_to),
        sale_price = coalesce($4, sale_price),
        sale_notes = coalesce(nullif($5,''), sale_notes),
+       tracking_number = coalesce(nullif($6,''), tracking_number),
        sold_at = case when $1 in ('Sold','Shipped') and sold_at is null then now() else sold_at end,
        status_updated_at = now(),
        shipped_at = case when $1 = 'Shipped' then now() else shipped_at end
      where id = $2
      returning *`,
-    [nextStatus, id, soldTo, salePrice, saleNotes]
+    [nextStatus, id, soldTo, salePrice, saleNotes, trackingNumber]
   );
   if (!result.rows[0]) return res.status(404).json({ error: "Invoice not found." });
   res.json({ ok: true, batch: result.rows[0] });
@@ -492,6 +494,7 @@ async function migrate() {
       sold_to text not null default '',
       sale_price numeric(12,2),
       sale_notes text not null default '',
+      tracking_number text not null default '',
       sold_at timestamptz,
       status_updated_at timestamptz not null default now(),
       shipped_at timestamptz,
@@ -564,6 +567,7 @@ async function migrate() {
     alter table invoice_batches add column if not exists sold_to text not null default '';
     alter table invoice_batches add column if not exists sale_price numeric(12,2);
     alter table invoice_batches add column if not exists sale_notes text not null default '';
+    alter table invoice_batches add column if not exists tracking_number text not null default '';
     alter table invoice_batches add column if not exists sold_at timestamptz;
     alter table invoices add column if not exists batch_id integer references invoice_batches(id) on delete set null;
     alter table invoices add column if not exists status text not null default 'Active';
@@ -816,6 +820,7 @@ function createBuyerInvoicePdf(batch) {
     { text: `Date: ${new Date().toLocaleDateString("en-US")}`, x: 410, y: 728, size: 10 },
     { text: `Status: ${batch.status || "Active"}`, x: 410, y: 710, size: 10 },
     { text: batch.sold_to ? `Buyer: ${batch.sold_to}` : "Buyer: ", x: 410, y: 692, size: 10 },
+    ...(batch.tracking_number ? [{ text: `Tracking: ${batch.tracking_number}`, x: 410, y: 674, size: 10 }] : []),
     { text: "Itemized Supplies", x: 50, y: 640, size: 14, font: "bold" },
     { text: "Qty", x: 54, y: 612, size: 9, font: "bold" },
     { text: "Description", x: 94, y: 612, size: 9, font: "bold" },
