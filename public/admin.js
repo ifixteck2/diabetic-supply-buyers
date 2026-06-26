@@ -13,6 +13,9 @@ let batchesCache = [];
 let allBatchesCache = [];
 let customersCache = [];
 let followupsCache = [];
+let managerPhone = "";
+let managerInvoicesCache = [];
+let editItemsByPurchase = {};
 
 init();
 
@@ -440,6 +443,8 @@ function showCustomerList() {
 }
 
 function showCustomerManager(customer, invoices) {
+  managerPhone = cleanPhone(customer.phone);
+  managerInvoicesCache = invoices || [];
   $("customerProfilePanel").classList.add("hidden");
   $("customerListPanel").classList.add("hidden");
   $("customerManagerPanel").classList.remove("hidden");
@@ -487,8 +492,167 @@ function renderManagerHistory(invoices) {
       <p class="mini"><b>Payout:</b> ${escapeHtml(invoice.payout_method)} ${invoice.notes ? "- " + escapeHtml(invoice.notes) : ""}</p>
       <ul>${invoice.items.map((item) => `<li>${item.quantity}x ${escapeHtml(item.brand)} ${escapeHtml(item.model)} - ${escapeHtml(item.condition)} - paid ${money(item.unit_cost)} each${item.expiration ? " - exp " + escapeHtml(item.expiration) : ""}</li>`).join("")}</ul>
       ${renderPhotoStrip(invoice.photos || [])}
+      <div class="actions">
+        <button class="mini-btn" onclick="editPurchase(${invoice.id})">Edit Purchase</button>
+        <button class="mini-btn" onclick="addPhotosToPurchase(${invoice.id})">Add Photos</button>
+      </div>
+      <div id="purchaseEditor-${invoice.id}"></div>
     </article>
   `).join("");
+}
+
+window.editPurchase = (id) => {
+  const invoice = managerInvoicesCache.find((entry) => Number(entry.id) === Number(id));
+  if (!invoice) return alert("Purchase not found. Refresh the customer and try again.");
+  editItemsByPurchase[id] = (invoice.items || []).map((item) => ({ ...item }));
+  renderPurchaseEditor(invoice);
+};
+
+window.addEditPurchaseItem = (id) => {
+  const invoice = managerInvoicesCache.find((entry) => Number(entry.id) === Number(id));
+  if (!invoice) return;
+  editItemsByPurchase[id] = readEditPurchaseItems(id);
+  editItemsByPurchase[id].push({
+    category: "Diabetic Pods",
+    brand: "",
+    model: "",
+    quantity: 1,
+    expiration: "",
+    condition: "Sealed",
+    unit_cost: 0,
+    expected_sell_each: 0,
+    notes: "",
+  });
+  renderPurchaseEditor(invoice);
+};
+
+window.removeEditPurchaseItem = (id, index) => {
+  const invoice = managerInvoicesCache.find((entry) => Number(entry.id) === Number(id));
+  if (!invoice) return;
+  editItemsByPurchase[id] = readEditPurchaseItems(id).filter((_, itemIndex) => itemIndex !== index);
+  renderPurchaseEditor(invoice);
+};
+
+window.cancelEditPurchase = (id) => {
+  editItemsByPurchase[id] = [];
+  const editor = $(`purchaseEditor-${id}`);
+  if (editor) editor.innerHTML = "";
+};
+
+window.saveEditedPurchase = async (id) => {
+  const itemsToSave = readEditPurchaseItems(id);
+  if (!itemsToSave.length) return status(`editStatus-${id}`, "Add at least one item.", "bad");
+  const result = await api(`/api/purchases/${id}`, {
+    method: "PATCH",
+    body: {
+      invoice: {
+        purchase_date: $(`editDate-${id}`).value,
+        payout_method: $(`editPayout-${id}`).value,
+        notes: $(`editNotes-${id}`).value.trim(),
+      },
+      items: itemsToSave,
+    },
+  });
+  if (!result?.ok) return status(`editStatus-${id}`, result?.error || "Could not update purchase.", "bad");
+  status(`editStatus-${id}`, "Purchase updated.");
+  await reloadCustomerManager();
+};
+
+window.addPhotosToPurchase = (id) => {
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = "image/*";
+  input.multiple = true;
+  input.onchange = async () => {
+    const files = Array.from(input.files || []);
+    const newPhotos = [];
+    for (const file of files) {
+      if (!file.type.startsWith("image/")) continue;
+      const dataUrl = await compressImage(file);
+      newPhotos.push({ file_name: file.name, data_url: dataUrl, notes: "" });
+    }
+    if (!newPhotos.length) return;
+    const result = await api(`/api/purchases/${id}/photos`, {
+      method: "POST",
+      body: { photos: newPhotos },
+    });
+    if (!result?.ok) return alert(result?.error || "Could not add photos.");
+    await reloadCustomerManager();
+  };
+  input.click();
+};
+
+function renderPurchaseEditor(invoice) {
+  const id = invoice.id;
+  const editor = $(`purchaseEditor-${id}`);
+  if (!editor) return;
+  const editableItems = editItemsByPurchase[id] || [];
+  editor.innerHTML = `
+    <div class="edit-purchase-box">
+      <div class="form-grid three">
+        <label>Purchase date<input id="editDate-${id}" type="date" value="${String(invoice.purchase_date || "").slice(0, 10)}"></label>
+        <label>Payout method<input id="editPayout-${id}" value="${escapeAttr(invoice.payout_method || "Cash")}"></label>
+        <label>Purchase notes<input id="editNotes-${id}" value="${escapeAttr(invoice.notes || "")}"></label>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Category</th><th>Brand</th><th>Model</th><th>Qty</th><th>Exp</th><th>Condition</th><th>Paid Each</th><th>Expected</th><th></th></tr></thead>
+          <tbody>
+            ${editableItems.map((item, index) => `
+              <tr data-edit-item="${index}">
+                <td><input data-field="category" value="${escapeAttr(item.category || "")}"></td>
+                <td><input data-field="brand" value="${escapeAttr(item.brand || "")}"></td>
+                <td><input data-field="model" value="${escapeAttr(item.model || "")}"></td>
+                <td><input data-field="quantity" type="number" min="1" step="1" value="${Number(item.quantity || 1)}"></td>
+                <td><input data-field="expiration" value="${escapeAttr(item.expiration || "")}"></td>
+                <td><input data-field="condition" value="${escapeAttr(item.condition || "Sealed")}"></td>
+                <td><input data-field="unit_cost" type="number" min="0" step="0.01" value="${Number(item.unit_cost || 0)}"></td>
+                <td><input data-field="expected_sell_each" type="number" min="0" step="0.01" value="${Number(item.expected_sell_each || 0)}"></td>
+                <td><button class="mini-btn" onclick="removeEditPurchaseItem(${id}, ${index})">Remove</button></td>
+              </tr>
+              <tr data-edit-item-notes="${index}">
+                <td colspan="9"><input data-field="notes" value="${escapeAttr(item.notes || "")}" placeholder="Item notes"></td>
+              </tr>
+            `).join("") || `<tr><td colspan="9">No items yet.</td></tr>`}
+          </tbody>
+        </table>
+      </div>
+      <div class="actions">
+        <button class="mini-btn" onclick="addEditPurchaseItem(${id})">Add Item</button>
+        <button class="mini-btn" onclick="saveEditedPurchase(${id})">Save Purchase</button>
+        <button class="mini-btn" onclick="cancelEditPurchase(${id})">Cancel</button>
+      </div>
+      <div id="editStatus-${id}"></div>
+    </div>
+  `;
+}
+
+function readEditPurchaseItems(id) {
+  return Array.from(document.querySelectorAll(`#purchaseEditor-${id} [data-edit-item]`)).map((row) => {
+    const index = row.dataset.editItem;
+    const notesRow = document.querySelector(`#purchaseEditor-${id} [data-edit-item-notes="${index}"]`);
+    const get = (field) => row.querySelector(`[data-field="${field}"]`)?.value || "";
+    return {
+      category: get("category"),
+      brand: get("brand").trim(),
+      model: get("model").trim(),
+      quantity: Number(get("quantity") || 0),
+      expiration: get("expiration").trim(),
+      condition: get("condition").trim() || "Sealed",
+      unit_cost: Number(get("unit_cost") || 0),
+      expected_sell_each: Number(get("expected_sell_each") || 0),
+      notes: notesRow?.querySelector('[data-field="notes"]')?.value.trim() || "",
+    };
+  }).filter((item) => item.quantity > 0 && (item.brand || item.model || item.category));
+}
+
+async function reloadCustomerManager() {
+  if (!managerPhone) return loadCustomers();
+  const result = await api(`/api/customers/lookup?phone=${managerPhone}`);
+  if (!result.customer) return;
+  showCustomerManager(result.customer, result.invoices || []);
+  await Promise.all([loadCustomers(), loadBatches(), loadFollowups()]);
+  renderDashboard();
 }
 
 function fillCustomerProfile(customer) {

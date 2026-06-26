@@ -326,6 +326,118 @@ app.post("/api/purchases", requireAuth, async (req, res) => {
   }
 });
 
+app.patch("/api/purchases/:id", requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  const body = req.body || {};
+  const invoiceInput = body.invoice || {};
+  const items = Array.isArray(body.items) ? body.items : [];
+
+  if (!id) return res.status(400).json({ error: "Purchase ID is required." });
+  if (!items.length) return res.status(400).json({ error: "Add at least one item." });
+
+  const totalPaid = items.reduce(
+    (sum, item) => sum + Number(item.quantity || 0) * Number(item.unit_cost || 0),
+    0
+  );
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+
+    const invoiceResult = await client.query(
+      `update invoices
+       set purchase_date = $2,
+         payout_method = $3,
+         total_paid = $4,
+         notes = $5
+       where id = $1
+       returning *`,
+      [
+        id,
+        invoiceInput.purchase_date || new Date().toISOString().slice(0, 10),
+        invoiceInput.payout_method || "Cash",
+        totalPaid,
+        invoiceInput.notes || "",
+      ]
+    );
+    const invoice = invoiceResult.rows[0];
+    if (!invoice) {
+      await client.query("rollback");
+      return res.status(404).json({ error: "Purchase not found." });
+    }
+
+    await client.query("delete from purchase_items where invoice_id = $1", [id]);
+    for (const item of items) {
+      await client.query(
+        `insert into purchase_items
+         (invoice_id, category, brand, model, quantity, expiration, condition, unit_cost, expected_sell_each, notes)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+        [
+          invoice.id,
+          item.category || "",
+          item.brand || "",
+          item.model || "",
+          Number(item.quantity || 0),
+          item.expiration || null,
+          item.condition || "Sealed",
+          Number(item.unit_cost || 0),
+          Number(item.expected_sell_each || 0),
+          item.notes || "",
+        ]
+      );
+    }
+
+    await client.query(
+      `update customers
+       set updated_at = now()
+       where id = $1`,
+      [invoice.customer_id]
+    );
+
+    await client.query("commit");
+    const updated = await getPurchaseById(id);
+    res.json({ ok: true, invoice: updated });
+  } catch (error) {
+    await client.query("rollback");
+    console.error(error);
+    res.status(500).json({ error: "Could not update purchase." });
+  } finally {
+    client.release();
+  }
+});
+
+app.post("/api/purchases/:id/photos", requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  const photos = Array.isArray(req.body?.photos) ? req.body.photos : [];
+  if (!id) return res.status(400).json({ error: "Purchase ID is required." });
+  if (!photos.length) return res.status(400).json({ error: "Choose at least one photo." });
+
+  const invoiceResult = await pool.query("select * from invoices where id = $1", [id]);
+  const invoice = invoiceResult.rows[0];
+  if (!invoice) return res.status(404).json({ error: "Purchase not found." });
+
+  let saved = 0;
+  for (const photo of photos.slice(0, 8)) {
+    const dataUrl = String(photo.data_url || "");
+    if (!/^data:image\/(png|jpeg|jpg|webp);base64,/.test(dataUrl)) continue;
+    await pool.query(
+      `insert into purchase_photos (customer_id, invoice_id, batch_id, file_name, data_url, notes)
+       values ($1,$2,$3,$4,$5,$6)`,
+      [
+        invoice.customer_id,
+        invoice.id,
+        invoice.batch_id,
+        String(photo.file_name || "product-photo").slice(0, 160),
+        dataUrl,
+        String(photo.notes || "").slice(0, 500),
+      ]
+    );
+    saved += 1;
+  }
+
+  const updated = await getPurchaseById(id);
+  res.json({ ok: true, photos_saved: saved, invoice: updated });
+});
+
 app.get("/api/invoices", requireAuth, async (req, res) => {
   const status = String(req.query.status || "").trim();
   const params = [];
@@ -550,6 +662,18 @@ async function getCustomerHistory(customerId) {
     items: items.rows.filter((item) => item.invoice_id === invoice.id),
     photos: photos.rows.filter((photo) => photo.invoice_id === invoice.id),
   }));
+}
+
+async function getPurchaseById(id) {
+  const result = await pool.query(
+    `select i.*, b.status as batch_status, b.label as batch_label, b.id as batch_id
+     from invoices i
+     left join invoice_batches b on b.id = i.batch_id
+     where i.id = $1`,
+    [id]
+  );
+  const invoices = await attachItems(result.rows);
+  return invoices[0] || null;
 }
 
 async function attachPurchases(batches) {
