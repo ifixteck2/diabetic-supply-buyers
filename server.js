@@ -806,7 +806,7 @@ function createBuyerInvoicePdf(batch) {
     { text: "SELL DIABETICS LLC", x: 50, y: 746, size: 20, font: "bold" },
     { text: "Buyer Invoice", x: 50, y: 724, size: 12, font: "bold" },
     { text: "Phone: 561-510-1236", x: 50, y: 706, size: 10 },
-    { text: process.env.COMPANY_ADDRESS || "Address available upon request", x: 50, y: 690, size: 10 },
+    { text: process.env.COMPANY_ADDRESS || "5100 Lake Worth Rd, Greenacres, FL 33463", x: 50, y: 690, size: 10 },
     { text: `Invoice #: ${batch.id}`, x: 410, y: 746, size: 11, font: "bold" },
     { text: `Date: ${new Date().toLocaleDateString("en-US")}`, x: 410, y: 728, size: 10 },
     { text: `Status: ${batch.status || "Active"}`, x: 410, y: 710, size: 10 },
