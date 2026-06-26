@@ -669,24 +669,25 @@ function renderPurchaseEditor(invoice) {
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Category</th><th>Brand</th><th>Model</th><th>Qty</th><th>Exp</th><th>Condition</th><th>Paid Each</th><th>Expected</th><th></th></tr></thead>
+          <thead><tr><th>Mercury Product</th><th>Category</th><th>Brand</th><th>Model</th><th>Qty</th><th>Exp</th><th>Condition</th><th>Paid Each</th><th>Expected</th><th></th></tr></thead>
           <tbody>
             ${editableItems.map((item, index) => `
               <tr data-edit-item="${index}">
+                <td><select data-field="price_product" onchange="applyEditMercuryProduct(${id}, ${index})">${renderMercuryProductOptions(findMercuryProductForItem(item)?.id || "")}</select></td>
                 <td><input data-field="category" value="${escapeAttr(item.category || "")}"></td>
                 <td><input data-field="brand" value="${escapeAttr(item.brand || "")}"></td>
                 <td><input data-field="model" value="${escapeAttr(item.model || "")}"></td>
                 <td><input data-field="quantity" type="number" min="1" step="1" value="${Number(item.quantity || 1)}"></td>
-                <td><input data-field="expiration" value="${escapeAttr(item.expiration || "")}"></td>
-                <td><input data-field="condition" value="${escapeAttr(item.condition || "Sealed")}"></td>
+                <td><input data-field="expiration" value="${escapeAttr(item.expiration || "")}" onchange="updateEditMercuryPrice(${id}, ${index})"></td>
+                <td><input data-field="condition" value="${escapeAttr(item.condition || "Sealed")}" onchange="updateEditMercuryPrice(${id}, ${index})"></td>
                 <td><input data-field="unit_cost" type="number" min="0" step="0.01" value="${Number(item.unit_cost || 0)}"></td>
                 <td><input data-field="expected_sell_each" type="number" min="0" step="0.01" value="${Number(item.expected_sell_each || 0)}"></td>
                 <td><button class="mini-btn" onclick="removeEditPurchaseItem(${id}, ${index})">Remove</button></td>
               </tr>
               <tr data-edit-item-notes="${index}">
-                <td colspan="9"><input data-field="notes" value="${escapeAttr(item.notes || "")}" placeholder="Item notes"></td>
+                <td colspan="10"><input data-field="notes" value="${escapeAttr(item.notes || "")}" placeholder="Item notes"></td>
               </tr>
-            `).join("") || `<tr><td colspan="9">No items yet.</td></tr>`}
+            `).join("") || `<tr><td colspan="10">No items yet.</td></tr>`}
           </tbody>
         </table>
       </div>
@@ -699,6 +700,38 @@ function renderPurchaseEditor(invoice) {
     </div>
   `;
 }
+
+function renderMercuryProductOptions(selectedId = "") {
+  return `<option value="">Choose Mercury match</option>` + mercuryPrices.map((product) => (
+    `<option value="${escapeAttr(product.id)}"${product.id === selectedId ? " selected" : ""}>${escapeHtml(product.product)}</option>`
+  )).join("");
+}
+
+window.applyEditMercuryProduct = (id, index) => {
+  const row = document.querySelector(`#purchaseEditor-${id} [data-edit-item="${index}"]`);
+  if (!row) return;
+  const productId = row.querySelector('[data-field="price_product"]')?.value || "";
+  const product = mercuryPrices.find((entry) => entry.id === productId);
+  if (!product) return;
+  row.querySelector('[data-field="category"]').value = product.category || "Other";
+  row.querySelector('[data-field="brand"]').value = product.product;
+  row.querySelector('[data-field="model"]').value = "";
+  updateEditMercuryPrice(id, index);
+};
+
+window.updateEditMercuryPrice = (id, index) => {
+  const row = document.querySelector(`#purchaseEditor-${id} [data-edit-item="${index}"]`);
+  if (!row) return;
+  const productId = row.querySelector('[data-field="price_product"]')?.value || "";
+  const product = mercuryPrices.find((entry) => entry.id === productId);
+  if (!product) return;
+  const expiration = row.querySelector('[data-field="expiration"]')?.value || "";
+  const condition = row.querySelector('[data-field="condition"]')?.value || "";
+  const quote = getMercuryPriceForItem(product, expiration, condition);
+  if (quote?.price !== null && quote?.price !== undefined) {
+    row.querySelector('[data-field="expected_sell_each"]').value = quote.price;
+  }
+};
 
 function readEditPurchaseItems(id) {
   return Array.from(document.querySelectorAll(`#purchaseEditor-${id} [data-edit-item]`)).map((row) => {
