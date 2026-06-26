@@ -790,47 +790,85 @@ function addDays(dateValue, days) {
 }
 
 function createBuyerInvoicePdf(batch) {
-  const lines = [
-    "Diabetic Supply Buyers",
-    `Buyer Invoice #${batch.id}`,
-    `Date: ${new Date().toLocaleDateString("en-US")}`,
-    batch.sold_to ? `Buyer: ${batch.sold_to}` : "",
-    "",
-    "Items",
-  ].filter(Boolean);
-
+  const itemRows = [];
   for (const purchase of batch.purchases || []) {
     for (const item of purchase.items || []) {
-      const description = [item.brand, item.model, item.condition, item.expiration ? `Exp ${item.expiration}` : ""]
-        .filter(Boolean)
-        .join(" - ");
-      lines.push(`${item.quantity}x ${description}`);
+      itemRows.push({
+        quantity: item.quantity || 0,
+        description: [item.brand, item.model].filter(Boolean).join(" ") || item.category || "Diabetic supply",
+        condition: item.condition || "Sealed",
+        expiration: formatExpiration(item.expiration),
+      });
     }
   }
 
-  lines.push("");
-  if (batch.sale_notes) lines.push(`Notes: ${batch.sale_notes}`);
-  if (batch.sale_price) lines.push(`Invoice Total: ${formatCurrency(batch.sale_price)}`);
+  const lines = [
+    { text: "SELL DIABETICS LLC", x: 50, y: 746, size: 20, font: "bold" },
+    { text: "Buyer Invoice", x: 50, y: 724, size: 12, font: "bold" },
+    { text: "Phone: 561-510-1236", x: 50, y: 706, size: 10 },
+    { text: process.env.COMPANY_ADDRESS || "Address available upon request", x: 50, y: 690, size: 10 },
+    { text: `Invoice #: ${batch.id}`, x: 410, y: 746, size: 11, font: "bold" },
+    { text: `Date: ${new Date().toLocaleDateString("en-US")}`, x: 410, y: 728, size: 10 },
+    { text: `Status: ${batch.status || "Active"}`, x: 410, y: 710, size: 10 },
+    { text: batch.sold_to ? `Buyer: ${batch.sold_to}` : "Buyer: ", x: 410, y: 692, size: 10 },
+    { text: "Itemized Supplies", x: 50, y: 640, size: 14, font: "bold" },
+    { text: "Qty", x: 54, y: 612, size: 9, font: "bold" },
+    { text: "Description", x: 94, y: 612, size: 9, font: "bold" },
+    { text: "Condition", x: 360, y: 612, size: 9, font: "bold" },
+    { text: "Expiration", x: 456, y: 612, size: 9, font: "bold" },
+  ];
 
-  return buildSimplePdf(lines);
+  let y = 590;
+  for (const row of itemRows) {
+    const descriptionLines = wrapPdfLine(row.description, 42).slice(0, 2);
+    lines.push({ text: String(row.quantity), x: 54, y, size: 9 });
+    lines.push({ text: descriptionLines[0] || "", x: 94, y, size: 9 });
+    lines.push({ text: row.condition, x: 360, y, size: 9 });
+    lines.push({ text: row.expiration, x: 456, y, size: 9 });
+    if (descriptionLines[1]) {
+      y -= 13;
+      lines.push({ text: descriptionLines[1], x: 94, y, size: 9 });
+    }
+    y -= 24;
+    if (y < 142) break;
+  }
+
+  const total = Number(batch.sale_price || 0);
+  lines.push({ text: `Invoice Total: ${formatCurrency(total)}`, x: 360, y: 108, size: 14, font: "bold" });
+  if (batch.sale_notes) {
+    lines.push({ text: `Notes: ${batch.sale_notes}`, x: 50, y: 86, size: 9 });
+  }
+  lines.push({ text: "Thank you for your business.", x: 50, y: 58, size: 10, font: "bold" });
+
+  return buildProfessionalPdf(lines);
 }
 
-function buildSimplePdf(lines) {
+function buildProfessionalPdf(lines) {
   const objects = [];
-  const escapedLines = lines.flatMap((line) => wrapPdfLine(line, 84));
   const content = [
+    "0.95 0.98 0.95 rg",
+    "40 660 532 104 re f",
+    "0.05 0.44 0.18 rg",
+    "40 660 532 5 re f",
+    "0.93 0.96 0.93 rg",
+    "50 598 512 26 re f",
+    "0.82 0.90 0.84 RG",
+    "50 598 512 1 re S",
+    "50 124 512 1 re S",
+    "0 0 0 rg",
     "BT",
-    "/F1 12 Tf",
-    "50 750 Td",
-    "16 TL",
-    ...escapedLines.map((line) => `(${escapePdfText(line)}) Tj T*`),
+    ...lines.map((line) => {
+      const font = line.font === "bold" ? "F2" : "F1";
+      return `/${font} ${line.size || 10} Tf ${line.x} ${line.y} Td (${escapePdfText(line.text)}) Tj ${-line.x} ${-line.y} Td`;
+    }),
     "ET",
   ].join("\n");
 
   objects.push("<< /Type /Catalog /Pages 2 0 R >>");
   objects.push("<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
-  objects.push("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>");
+  objects.push("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R /F2 5 0 R >> >> /Contents 6 0 R >>");
   objects.push("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
+  objects.push("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>");
   objects.push(`<< /Length ${Buffer.byteLength(content)} >>\nstream\n${content}\nendstream`);
 
   let pdf = "%PDF-1.4\n";
@@ -868,6 +906,16 @@ function wrapPdfLine(value, maxLength) {
 
 function escapePdfText(value) {
   return String(value).replace(/[\\()]/g, "\\$&");
+}
+
+function formatExpiration(value) {
+  if (!value) return "N/A";
+  const text = String(value);
+  if (/^\d{4}-\d{2}$/.test(text)) {
+    const [year, month] = text.split("-");
+    return `${month}/${year}`;
+  }
+  return text;
 }
 
 function formatCurrency(value) {
