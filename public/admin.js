@@ -16,6 +16,7 @@ let followupsCache = [];
 let managerPhone = "";
 let managerInvoicesCache = [];
 let editItemsByPurchase = {};
+let mercuryPrices = [];
 
 init();
 
@@ -53,6 +54,9 @@ function bindEvents() {
   $("clearPhotosBtn").onclick = clearPhotos;
   $("invoiceFilter").onchange = loadBatches;
   $("customerSearch").addEventListener("input", debounce(loadCustomers, 250));
+  $("priceProductSelect").onchange = applySelectedPriceProduct;
+  $("expiration").onchange = updateBuyerPricePreview;
+  $("condition").onchange = updateBuyerPricePreview;
 
   document.querySelectorAll(".tab").forEach((button) => {
     button.onclick = () => openTab(button.dataset.tab);
@@ -87,6 +91,7 @@ async function showApp() {
 }
 
 async function refreshAll() {
+  await loadBuyerPrices();
   await Promise.all([loadBatches(), loadCustomers(), loadFollowups()]);
   renderDashboard();
 }
@@ -137,9 +142,10 @@ async function lookupCustomer() {
 }
 
 function addItem() {
+  const selectedProduct = getSelectedPriceProduct();
   const item = {
     category: $("category").value,
-    brand: $("brand").value.trim(),
+    brand: $("brand").value.trim() || selectedProduct?.product || "",
     model: $("model").value.trim(),
     quantity: Number($("quantity").value || 0),
     expiration: $("expiration").value,
@@ -157,6 +163,8 @@ function addItem() {
 
 function clearItem() {
   $("category").value = "Diabetic Pods";
+  $("priceProductSelect").value = "";
+  $("buyerPricePreview").value = "";
   $("brand").value = "";
   $("model").value = "";
   $("quantity").value = 1;
@@ -203,6 +211,52 @@ function renderItems() {
     </tr>
   `).join("") || `<tr><td colspan="9">No items added yet.</td></tr>`;
   $("invoiceTotal").textContent = money(items.reduce((sum, item) => sum + item.quantity * item.unit_cost, 0));
+}
+
+async function loadBuyerPrices() {
+  const result = await api("/api/buyer-prices/mercury", { silent: true });
+  mercuryPrices = result.rows || [];
+  renderPriceProductOptions();
+}
+
+function renderPriceProductOptions() {
+  const select = $("priceProductSelect");
+  if (!select) return;
+  select.innerHTML = `<option value="">Manual item / choose Mercury product</option>` + mercuryPrices.map((item) => (
+    `<option value="${escapeAttr(item.id)}">${escapeHtml(item.product)}</option>`
+  )).join("");
+}
+
+function getSelectedPriceProduct() {
+  const id = $("priceProductSelect")?.value || "";
+  return mercuryPrices.find((item) => item.id === id) || null;
+}
+
+function applySelectedPriceProduct() {
+  const product = getSelectedPriceProduct();
+  if (!product) {
+    updateBuyerPricePreview();
+    return;
+  }
+  $("category").value = product.category || "Other";
+  $("brand").value = product.product || "";
+  $("model").value = "";
+  updateBuyerPricePreview();
+}
+
+function updateBuyerPricePreview() {
+  const product = getSelectedPriceProduct();
+  const quote = product ? getMercuryPriceForItem(product, $("expiration").value, $("condition").value) : null;
+  if (!product) {
+    $("buyerPricePreview").value = "";
+    return;
+  }
+  if (quote?.price !== null && quote?.price !== undefined) {
+    $("expectedSell").value = quote.price;
+    $("buyerPricePreview").value = `${money(quote.price)} - ${quote.label}`;
+  } else {
+    $("buyerPricePreview").value = quote?.raw ? `${quote.raw} - ${quote.label}` : "No matching Mercury price";
+  }
 }
 
 window.removeItem = (index) => {
@@ -307,6 +361,7 @@ function renderDashboard() {
 
 function renderBatchCard(batch) {
   const profit = Number(batch.sale_price || 0) - Number(batch.total_paid || 0);
+  const mercuryTotal = calculateMercuryInvoiceTotal(batch);
   const purchasesHtml = (batch.purchases || []).map((purchase) => {
     const itemsHtml = (purchase.items || []).map((item) => (
       `<li>${item.quantity}x ${escapeHtml(item.brand)} ${escapeHtml(item.model)} - ${escapeHtml(item.condition)} - ${money(item.unit_cost)} each</li>`
@@ -330,14 +385,15 @@ function renderBatchCard(batch) {
       <div class="purchase-list">${purchasesHtml || `<div class="empty">No purchases added yet.</div>`}</div>
       <div class="sale-box">
         <div class="form-grid three">
-          <label>Sold to<input id="soldTo-${batch.id}" value="${escapeAttr(batch.sold_to || "")}" placeholder="Buyer name / company"></label>
+          <label>Sold to<input id="soldTo-${batch.id}" value="${escapeAttr(batch.sold_to || "")}" placeholder="Buyer name / company" onchange="applyBuyerPricing(${batch.id}, 'input')"></label>
           <label>Sold for<input id="salePrice-${batch.id}" type="number" min="0" step="0.01" value="${batch.sale_price || ""}" placeholder="0.00"></label>
           <label>Tracking number<input id="trackingNumber-${batch.id}" value="${escapeAttr(batch.tracking_number || "")}" placeholder="UPS / FedEx / USPS tracking"></label>
         </div>
         <div class="form-grid">
           <label>Sale notes<input id="saleNotes-${batch.id}" value="${escapeAttr(batch.sale_notes || "")}" placeholder="Marketplace, payment notes, buyer notes"></label>
         </div>
-        <div class="sale-summary"><span>Paid: ${money(batch.total_paid)}</span><span>Sold: ${money(batch.sale_price)}</span><strong>Profit: ${money(profit)}</strong></div>
+        <div class="sale-summary"><span>Paid: ${money(batch.total_paid)}</span><span>Sold: ${money(batch.sale_price)}</span><strong>Profit: ${money(profit)}</strong>${mercuryTotal ? `<span>Mercury sheet: ${money(mercuryTotal)}</span>` : ""}</div>
+        ${mercuryTotal ? `<button class="mini-btn" onclick="applyBuyerPricing(${batch.id}, 'Mercury')">Use Mercury Prices</button>` : ""}
         ${batch.tracking_number ? `<p class="mini"><b>Tracking:</b> ${escapeHtml(batch.tracking_number)}</p>` : ""}
       </div>
       <div class="invoice-actions">
@@ -366,6 +422,18 @@ window.setBatchStatus = async (id, nextStatus) => {
   });
   if (result?.ok) await loadBatches();
   else alert(result?.error || "Could not update invoice.");
+};
+
+window.applyBuyerPricing = (id, buyerName) => {
+  const soldTo = $(`soldTo-${id}`);
+  const salePrice = $(`salePrice-${id}`);
+  const batch = [...batchesCache, ...allBatchesCache].find((entry) => Number(entry.id) === Number(id));
+  const buyer = buyerName === "input" ? soldTo.value : buyerName;
+  if (!batch || !/mercury/i.test(buyer || "")) return;
+  const total = calculateMercuryInvoiceTotal(batch);
+  if (!total) return;
+  soldTo.value = "Mercury";
+  salePrice.value = total.toFixed(2);
 };
 
 async function loadCustomers() {
@@ -842,6 +910,51 @@ function compressImage(file) {
     };
     reader.readAsDataURL(file);
   });
+}
+
+function calculateMercuryInvoiceTotal(batch) {
+  if (!mercuryPrices.length) return 0;
+  return (batch.purchases || []).reduce((sum, purchase) => (
+    sum + (purchase.items || []).reduce((itemSum, item) => {
+      const product = findMercuryProductForItem(item);
+      if (!product) return itemSum;
+      const quote = getMercuryPriceForItem(product, item.expiration, item.condition);
+      return itemSum + Number(item.quantity || 0) * Number(quote?.price || 0);
+    }, 0)
+  ), 0);
+}
+
+function findMercuryProductForItem(item) {
+  const itemText = normalizeMatchText(`${item.brand || ""} ${item.model || ""}`);
+  if (!itemText) return null;
+  return mercuryPrices.find((product) => normalizeMatchText(product.product) === itemText)
+    || mercuryPrices.find((product) => itemText.includes(normalizeMatchText(product.product)))
+    || mercuryPrices.find((product) => normalizeMatchText(product.product).includes(itemText));
+}
+
+function getMercuryPriceForItem(product, expiration, condition) {
+  const damaged = /damaged/i.test(condition || "");
+  const prices = (product.prices || []).filter((entry) => entry.damaged === damaged && entry.price !== null);
+  const fallback = prices[0] || (product.prices || []).find((entry) => entry.price !== null) || null;
+  const months = monthsUntilExpiration(expiration);
+  if (months === null) return fallback;
+  return prices.find((entry) => months >= monthsFromTier(entry.label)) || fallback;
+}
+
+function monthsUntilExpiration(expiration) {
+  if (!/^\d{4}-\d{2}$/.test(String(expiration || ""))) return null;
+  const [year, month] = expiration.split("-").map(Number);
+  const now = new Date();
+  return (year - now.getFullYear()) * 12 + (month - (now.getMonth() + 1));
+}
+
+function monthsFromTier(label) {
+  const match = String(label || "").match(/(\d+)\+?\s*MO/i);
+  return match ? Number(match[1]) : 0;
+}
+
+function normalizeMatchText(value) {
+  return String(value || "").toLowerCase().replace(/\[[^\]]*]/g, "").replace(/\([^)]*\)/g, "").replace(/[^a-z0-9]+/g, " ").trim();
 }
 
 async function api(url, options = {}) {

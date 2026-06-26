@@ -6,6 +6,10 @@ const { Pool } = pg;
 const app = express();
 const port = process.env.PORT || 3000;
 const isProduction = process.env.NODE_ENV === "production";
+const mercuryPriceSheetCsvUrl =
+  process.env.MERCURY_PRICE_SHEET_CSV_URL ||
+  "https://docs.google.com/spreadsheets/d/1mZAIHlWJcicbfResT2X9kyf7iUcXo_1q35jwjSyMk2o/export?format=csv&gid=2027163115";
+let mercuryPriceCache = { fetchedAt: 0, rows: [] };
 
 const requiredEnv = ["DATABASE_URL", "SESSION_SECRET", "ADMIN_USERNAME"];
 for (const key of requiredEnv) {
@@ -168,6 +172,16 @@ app.get("/api/batches", requireAuth, async (req, res) => {
   );
   const batches = await attachPurchases(result.rows);
   res.json({ batches });
+});
+
+app.get("/api/buyer-prices/mercury", requireAuth, async (req, res) => {
+  try {
+    const rows = await getMercuryPrices();
+    res.json({ buyer: "Mercury", updated_at: mercuryPriceCache.fetchedAt, rows });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Could not load Mercury price sheet." });
+  }
 });
 
 app.patch("/api/batches/:id/status", requireAuth, async (req, res) => {
@@ -714,6 +728,121 @@ async function attachItems(invoices) {
     items: items.rows.filter((item) => item.invoice_id === invoice.id),
     photos: photos.rows.filter((photo) => photo.invoice_id === invoice.id),
   }));
+}
+
+async function getMercuryPrices() {
+  const cacheMs = 1000 * 60 * 10;
+  if (mercuryPriceCache.rows.length && Date.now() - mercuryPriceCache.fetchedAt < cacheMs) {
+    return mercuryPriceCache.rows;
+  }
+  const response = await fetch(mercuryPriceSheetCsvUrl);
+  if (!response.ok) throw new Error(`Mercury price sheet returned ${response.status}`);
+  const csv = await response.text();
+  const rows = parseMercuryPriceCsv(csv);
+  mercuryPriceCache = { fetchedAt: Date.now(), rows };
+  return rows;
+}
+
+function parseMercuryPriceCsv(csv) {
+  const table = parseCsv(csv);
+  let currentTiers = [];
+  const products = [];
+  for (const row of table) {
+    const productName = String(row[1] || "").trim();
+    const priceCells = row.slice(2, 10);
+    const hasPrices = priceCells.some((cell) => parseMoney(cell) !== null || /^(ASK|STOP|N\/A|No EXP)$/i.test(String(cell || "").trim()));
+    const headerCells = priceCells.map((cell) => String(cell || "").trim()).filter(Boolean);
+
+    if (!hasPrices && headerCells.some((cell) => /MON|DAMAGED/i.test(cell))) {
+      currentTiers = priceCells.map((cell, index) => ({
+        column: index + 2,
+        label: String(cell || "").trim() || `Tier ${index + 1}`,
+        damaged: /DAMAGED/i.test(String(cell || "")),
+      }));
+      continue;
+    }
+
+    if (!productName || !hasPrices || isMercuryInfoRow(productName)) continue;
+    const prices = priceCells.map((cell, index) => {
+      const tier = currentTiers[index] || { column: index + 2, label: `Tier ${index + 1}`, damaged: false };
+      const raw = String(cell || "").trim();
+      return {
+        label: tier.label,
+        damaged: tier.damaged,
+        raw,
+        price: parseMoney(raw),
+      };
+    }).filter((entry) => entry.raw);
+
+    if (!prices.length) continue;
+    products.push({
+      id: makePriceKey(productName),
+      buyer: "Mercury",
+      product: productName,
+      category: inferCategory(productName),
+      prices,
+    });
+  }
+  return products;
+}
+
+function parseCsv(csv) {
+  const rows = [];
+  let row = [];
+  let value = "";
+  let quoted = false;
+  for (let index = 0; index < csv.length; index += 1) {
+    const char = csv[index];
+    const next = csv[index + 1];
+    if (quoted) {
+      if (char === '"' && next === '"') {
+        value += '"';
+        index += 1;
+      } else if (char === '"') {
+        quoted = false;
+      } else {
+        value += char;
+      }
+    } else if (char === '"') {
+      quoted = true;
+    } else if (char === ",") {
+      row.push(value);
+      value = "";
+    } else if (char === "\n") {
+      row.push(value);
+      rows.push(row);
+      row = [];
+      value = "";
+    } else if (char !== "\r") {
+      value += char;
+    }
+  }
+  row.push(value);
+  rows.push(row);
+  return rows;
+}
+
+function parseMoney(value) {
+  const text = String(value || "").replace(/[$,\s]/g, "");
+  if (!/^\d+(\.\d+)?$/.test(text)) return null;
+  return Number(text);
+}
+
+function isMercuryInfoRow(value) {
+  return /^(UPDATED|ARE YOU|Please|CLICK|CONTACT|Sales@|PAYMENT|Wire|ACH|Zelle|Join|ORDERS|EXPIRATIONS|THINGS|BOXES|IF YOUR|PLEASE|RED|GREEN|ORANGE|NOTICE|CHECK IF)/i.test(value);
+}
+
+function inferCategory(productName) {
+  const text = productName.toLowerCase();
+  if (text.includes("omnipod")) return "Diabetic Pods";
+  if (text.includes("dexcom") || text.includes("libre") || text.includes("sensor") || text.includes("transmitter")) return "CGM Supplies";
+  if (text.includes("strip")) return "Test Strips";
+  if (text.includes("reader") || text.includes("receiver") || text.includes("meter")) return "Glucose Meter";
+  return "Other";
+}
+
+function makePriceKey(value) {
+  return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 120);
 }
 
 function requireAuth(req, res, next) {
