@@ -749,7 +749,7 @@ function parseMercuryPriceCsv(csv) {
   let currentTiers = [];
   const products = [];
   for (const row of table) {
-    const productName = String(row[1] || "").trim();
+    const productName = cleanMercuryProductName(row[1]);
     const priceCells = row.slice(2, 10);
     const hasPrices = priceCells.some((cell) => parseMoney(cell) !== null || /^(ASK|STOP|N\/A|No EXP)$/i.test(String(cell || "").trim()));
     const headerCells = priceCells.map((cell) => String(cell || "").trim()).filter(Boolean);
@@ -844,6 +844,10 @@ function inferCategory(productName) {
 
 function makePriceKey(value) {
   return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 120);
+}
+
+function cleanMercuryProductName(value) {
+  return String(value || "").replace(/\s*\[\s*ding\s*-\s*\$?\d+(?:\.\d+)?\s*]/gi, "").trim();
 }
 
 function requireAuth(req, res, next) {
@@ -976,7 +980,7 @@ function createBuyerInvoicePdf(batch, mercuryPrices = []) {
       if (lineTotal !== null) mercuryTotal += lineTotal;
       itemRows.push({
         quantity: item.quantity || 0,
-        description: [item.brand, item.model].filter(Boolean).join(" ") || item.category || "Diabetic supply",
+        description: cleanMercuryProductName([item.brand, item.model].filter(Boolean).join(" ")) || item.category || "Diabetic supply",
         condition: item.condition || "Sealed",
         expiration: formatExpiration(item.expiration),
         unitPrice,
@@ -1025,7 +1029,7 @@ function createBuyerInvoicePdf(batch, mercuryPrices = []) {
     if (y < 142) break;
   }
 
-  const total = Number(batch.sale_price || 0) || mercuryTotal;
+  const total = mercuryPrices.length && mercuryTotal > 0 ? mercuryTotal : Number(batch.sale_price || 0);
   lines.push({ text: `Invoice Total: ${formatCurrency(total)}`, x: 360, y: 108, size: 14, font: "bold" });
   if (batch.sale_notes) {
     lines.push({ text: `Notes: ${batch.sale_notes}`, x: 50, y: 86, size: 9 });
