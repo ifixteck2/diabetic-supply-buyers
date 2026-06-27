@@ -736,7 +736,7 @@ function renderCustomerRow(customer) {
         ${customer.address ? `<p class="mini"><b>Address:</b> ${escapeHtml(customer.address)}</p>` : ""}
         ${customer.location ? `<p class="mini"><b>Location:</b> ${escapeHtml(customer.location)}</p>` : ""}
         ${customer.source ? `<p class="mini"><b>Found:</b> ${escapeHtml(customer.source)}</p>` : ""}
-        ${customer.next_follow_up_at ? `<p class="mini"><b>Follow up:</b> ${new Date(`${customer.next_follow_up_at}T00:00:00`).toLocaleDateString()}</p>` : ""}
+        ${customer.next_follow_up_at ? `<p class="mini"><b>Follow up:</b> ${formatDateOnly(customer.next_follow_up_at)}</p>` : ""}
         ${customer.notes ? `<p class="mini">${escapeHtml(customer.notes)}</p>` : ""}
       </div>
       <div class="customer-meta">
@@ -805,7 +805,7 @@ function renderCustomerManager(customer, invoices) {
       <article class="stat"><span>Total paid</span><strong>${money(totalPaid)}</strong></article>
       <article class="stat"><span>Purchases</span><strong>${invoices.length}</strong></article>
       <article class="stat"><span>Items bought</span><strong>${itemCount}</strong></article>
-      <article class="stat"><span>Follow up</span><strong>${customer.next_follow_up_at ? new Date(`${customer.next_follow_up_at}T00:00:00`).toLocaleDateString() : "None"}</strong></article>
+      <article class="stat"><span>Follow up</span><strong>${customer.next_follow_up_at ? formatDateOnly(customer.next_follow_up_at) : "None"}</strong></article>
       <article class="stat"><span>Source</span><strong>${escapeHtml(customer.source || "Unknown")}</strong></article>
     </div>
     <article class="history-card">
@@ -1051,7 +1051,7 @@ function fillEditCustomerProfile(customer) {
       <div>
         <h3>${escapeHtml(customer.name || "No name yet")}</h3>
         <p>${formatPhone(customer.phone)} ${customer.email ? "- " + escapeHtml(customer.email) : ""}</p>
-        ${customer.next_follow_up_at ? `<p class="mini"><b>Follow up:</b> ${new Date(`${customer.next_follow_up_at}T00:00:00`).toLocaleDateString()}</p>` : ""}
+        ${customer.next_follow_up_at ? `<p class="mini"><b>Follow up:</b> ${formatDateOnly(customer.next_follow_up_at)}</p>` : ""}
       </div>
     </article>
   `;
