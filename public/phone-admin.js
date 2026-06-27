@@ -251,7 +251,6 @@ function renderPhoneInvoiceCard(invoice) {
   const canRemove = invoice.status === "Pending";
   const rows = purchases.map((row) => `
     <tr class="phone-purchase-row">
-      <td class="phone-remove-cell">${canRemove ? `<input type="checkbox" aria-label="Remove ${escapeHtml(row.model)} from invoice" onchange="removePhonePurchaseFromInvoice(${row.id}, this)">` : ""}</td>
       <td class="phone-device-cell">
         <strong>${escapeHtml(row.model)}</strong>
         <span>${escapeHtml(phoneInvoiceItemCondition(row))}</span>
@@ -276,8 +275,8 @@ function renderPhoneInvoiceCard(invoice) {
       </div>
       <div class="table-wrap">
         <table class="phone-profit-table">
-          <thead><tr><th></th><th>Device</th><th>Carrier</th><th>Qty</th><th>Cost Each</th><th>Sell Each</th><th>Profit Each</th><th>Total Profit</th><th></th></tr></thead>
-          <tbody>${rows || `<tr><td colspan="9">No purchases added.</td></tr>`}</tbody>
+          <thead><tr><th>Device</th><th>Carrier</th><th>Qty</th><th>Cost Each</th><th>Sell Each</th><th>Profit Each</th><th>Total Profit</th><th></th></tr></thead>
+          <tbody>${rows || `<tr><td colspan="8">No purchases added.</td></tr>`}</tbody>
         </table>
       </div>
       <div class="sale-summary">
@@ -322,9 +321,8 @@ window.setPhoneInvoiceStatus = async (id, nextStatus) => {
   await loadPhoneInvoices();
 };
 
-window.removePhonePurchaseFromInvoice = async (id, checkbox) => {
+window.removePhonePurchaseFromInvoice = async (id) => {
   if (!confirm("Remove this item from the pending invoice? It will stay saved as sold locally.")) {
-    if (checkbox) checkbox.checked = false;
     return false;
   }
   const result = await api(`/api/phone-purchases/${id}/invoice-removal`, {
@@ -332,7 +330,6 @@ window.removePhonePurchaseFromInvoice = async (id, checkbox) => {
     body: { remove: true, reason: "Sold locally" },
   });
   if (!result?.ok) {
-    if (checkbox) checkbox.checked = false;
     return alert(result?.error || "Could not remove this item from the invoice.");
   }
   await loadPhoneInvoices();
