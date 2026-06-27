@@ -585,8 +585,8 @@ function renderBatchCard(batch) {
       <p><b>${escapeHtml(purchase.customer_name || "Customer")}</b> - ${formatPhone(purchase.customer_phone)} - ${new Date(purchase.purchase_date).toLocaleDateString()} - ${money(purchase.total_paid)}</p>
       <div class="table-wrap pending-item-table">
         <table>
-          <thead><tr><th></th><th>Qty</th><th>Item</th><th>Exp</th><th>Paid Each</th><th>Buyer Each</th><th>Profit Each</th><th>Total Profit</th><th></th></tr></thead>
-          <tbody>${itemsHtml || `<tr><td colspan="9">No active items in this purchase.</td></tr>`}</tbody>
+          <thead><tr><th>Qty</th><th>Item</th><th>Exp</th><th>Paid Each</th><th>Buyer Each</th><th>Profit Each</th><th>Total Profit</th><th></th></tr></thead>
+          <tbody>${itemsHtml || `<tr><td colspan="8">No active items in this purchase.</td></tr>`}</tbody>
         </table>
       </div>
       ${removedHtml ? `<div class="removed-list">${removedHtml}</div>` : ""}
@@ -639,7 +639,6 @@ function renderPendingInvoiceItemRow(batch, item) {
   const itemName = [item.brand, item.model].filter(Boolean).join(" ") || item.category || "Item";
   return `
     <tr class="pending-item-row">
-      <td><input type="checkbox" aria-label="Select item" onchange="togglePendingItemRemove(${item.id}, this)"></td>
       <td>${quantity}</td>
       <td>
         <strong>${escapeHtml(itemName)}</strong>
@@ -667,12 +666,6 @@ function getExpectedBuyerPrice(item) {
   const savedPrice = Number(item.expected_sell_each || 0);
   return savedPrice > 0 ? savedPrice : null;
 }
-
-window.togglePendingItemRemove = async (id, checkbox) => {
-  if (!checkbox.checked) return;
-  const removed = await removePendingInvoiceItem(id);
-  if (!removed) checkbox.checked = false;
-};
 
 window.removePendingInvoiceItem = async (id) => {
   if (!confirm("Remove this item from the pending invoice? It will stay in the customer's purchase history.")) return false;
