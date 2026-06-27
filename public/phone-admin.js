@@ -152,10 +152,18 @@ function selectedCondition() {
   return $("packaging").value === "Sealed" ? "NEW" : $("packaging").value;
 }
 
+function pricingCondition() {
+  const condition = selectedCondition();
+  if ($("phoneBuyer").value === "Atlas" && $("conditionType").value === "Used" && condition !== "Parts") {
+    return "Grade A";
+  }
+  return condition;
+}
+
 function updateProjectedPrice() {
   const selectedModel = $("phoneModel").value;
   const carrier = $("phoneCarrier").value;
-  const condition = selectedCondition();
+  const condition = pricingCondition();
   const exact = matchingRows().find((row) => modelKey(row) === selectedModel && row.carrier === carrier && row.condition === condition);
   const fallback = matchingRows().find((row) => modelKey(row) === selectedModel && row.condition === condition);
   const row = exact || fallback;

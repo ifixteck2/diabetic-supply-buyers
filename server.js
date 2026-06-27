@@ -1141,7 +1141,7 @@ async function seedGoogleDrivePhoneInvoices() {
       );
       const invoice = invoiceResult.rows[0];
       for (const row of seed.rows) {
-        const normalized = normalizeSeedPhonePurchase(row);
+        const normalized = normalizeSeedPhonePurchase(row, seed.buyer);
         const projected = findPhonePrice(normalized, seed.buyer === "KT" ? ktRows : atlasRows, seed.buyer);
         await client.query(
           `insert into phone_purchases
@@ -1174,12 +1174,12 @@ async function seedGoogleDrivePhoneInvoices() {
   }
 }
 
-function normalizeSeedPhonePurchase(row) {
+function normalizeSeedPhonePurchase(row, buyer = "") {
   const rawModel = String(row.model || "").trim();
   const model = normalizeSeedModel(rawModel, row.storage);
   const conditionText = String(row.condition || row.notes || "").trim();
   const isNew = /new/i.test(conditionText);
-  const grade = isNew ? "" : extractSeedGrade(row.notes, conditionText);
+  const grade = isNew ? "" : extractSeedGrade(row.notes, conditionText, buyer, row.item);
   return {
     purchase_date: row.date || new Date().toISOString().slice(0, 10),
     device_type: /ipad/i.test(model) ? "Tablet" : "Phone",
@@ -1208,8 +1208,9 @@ function normalizeSeedCarrier(carrier) {
   return text;
 }
 
-function extractSeedGrade(notes, condition) {
+function extractSeedGrade(notes, condition, buyer = "", item = "") {
   const text = `${notes || ""} ${condition || ""}`;
+  if (buyer === "Atlas") return isAtlasPartsSeedItem(item, notes) ? "Parts" : "Grade A";
   const grade = text.match(/Grade\s*([ABCD])/i);
   if (grade) return `Grade ${grade[1].toUpperCase()}`;
   if (/parts/i.test(text)) return "Parts";
@@ -1223,7 +1224,7 @@ function parseSeedMoney(value) {
 function findPhonePrice(purchase, priceRows, buyer) {
   const parsed = parseDeviceModel(purchase.model);
   const wantedCondition = normalizeAtlasLookupCondition(
-    purchase.condition_type === "New" ? purchase.packaging : purchase.grade,
+    purchase.condition_type === "New" ? purchase.packaging : phoneLookupGrade(purchase, buyer),
     purchase.condition_type
   );
   const modelText = normalizePhonePriceMatchText(parsed.baseModel || purchase.model);
@@ -1271,13 +1272,38 @@ async function backfillPhoneProjectedPrices() {
      limit 500`
   );
   for (const purchase of result.rows) {
-    const projected = findPhonePrice(purchase, purchase.buyer === "KT" ? ktRows : atlasRows, purchase.buyer);
+    const correctedPurchase = correctAtlasImportedPurchase(purchase);
+    const projected = findPhonePrice(correctedPurchase, correctedPurchase.buyer === "KT" ? ktRows : atlasRows, correctedPurchase.buyer);
     if (!projected) continue;
     await pool.query(
-      "update phone_purchases set projected_sell_each = $1 where id = $2",
-      [projected, purchase.id]
+      "update phone_purchases set projected_sell_each = $1, grade = $2 where id = $3",
+      [projected, correctedPurchase.grade, purchase.id]
     );
   }
+}
+
+function phoneLookupGrade(purchase, buyer) {
+  if (buyer === "Atlas" && purchase.condition_type === "Used") {
+    return /parts/i.test(purchase.grade || "") ? "Parts" : "Grade A";
+  }
+  return purchase.grade;
+}
+
+function correctAtlasImportedPurchase(purchase) {
+  if (purchase.buyer !== "Atlas" || purchase.condition_type !== "Used" || !/Item #/i.test(purchase.notes || "")) {
+    return purchase;
+  }
+  return {
+    ...purchase,
+    grade: isAtlasPartsSeedItem("", purchase.notes) ? "Parts" : "Grade A",
+  };
+}
+
+function isAtlasPartsSeedItem(item, notes = "") {
+  const partsItems = new Set(["68", "69", "70", "72"]);
+  const itemNumber = String(item || "").trim() || String(notes || "").match(/Item\s*#\s*(\d+)/i)?.[1] || "";
+  if (itemNumber) return partsItems.has(itemNumber);
+  return /\bParts\b/i.test(String(notes || ""));
 }
 
 function getPhoneInvoiceSeeds() {
