@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import fs from "node:fs";
 import express from "express";
 import pg from "pg";
 
@@ -14,6 +15,7 @@ const atlasNewSheetId = process.env.ATLAS_NEW_SHEET_ID || "1f3b0rW1d5xTonDtkoPmL
 const followupDaysAfterFirstPurchase = 28;
 let mercuryPriceCache = { fetchedAt: 0, rows: [] };
 let atlasPriceCache = { fetchedAt: 0, rows: [] };
+let ktPriceCache = { rows: [] };
 
 const requiredEnv = ["DATABASE_URL", "SESSION_SECRET", "ADMIN_USERNAME"];
 for (const key of requiredEnv) {
@@ -87,11 +89,11 @@ app.get("/api/phone-me", requirePhoneAuth, (req, res) => {
 
 app.get("/api/phone-price-sheet", requirePhoneAuth, async (req, res) => {
   try {
-    const rows = await getAtlasPrices();
-    res.json({ buyer: "Atlas", updated_at: atlasPriceCache.fetchedAt, rows });
+    const [atlasRows, ktRows] = await Promise.all([getAtlasPrices(), getKtPrices()]);
+    res.json({ updated_at: Math.max(atlasPriceCache.fetchedAt, 0), rows: [...atlasRows, ...ktRows] });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: "Could not load Atlas price sheet." });
+    res.status(500).json({ error: "Could not load phone price sheets." });
   }
 });
 
@@ -162,7 +164,7 @@ app.post("/api/phone-purchases", requirePhoneAuth, async (req, res) => {
   const invoiceId = Number(input.invoice_id || 0) || null;
   const quantity = Number(input.quantity || 0);
   const costEach = Number(input.cost_each || 0);
-  const projectedSellEach = Number(input.projected_sell_each || 0);
+  let projectedSellEach = Number(input.projected_sell_each || 0);
   if (!buyer) return res.status(400).json({ error: "Choose KT or Atlas." });
   if (!quantity || quantity < 1) return res.status(400).json({ error: "Quantity must be at least 1." });
   if (!String(input.model || "").trim()) return res.status(400).json({ error: "Choose a model." });
@@ -177,6 +179,20 @@ app.post("/api/phone-purchases", requirePhoneAuth, async (req, res) => {
       await client.query("rollback");
       return res.status(404).json({ error: "Pending invoice not found for that buyer." });
     }
+    const priceRows = buyer === "KT" ? await getKtPrices() : await getAtlasPrices();
+    const matchedProjected = findPhonePrice(
+      {
+        device_type: normalizeDeviceType(input.device_type || ""),
+        condition_type: normalizeConditionType(input.condition_type || ""),
+        packaging: String(input.packaging || "").trim(),
+        grade: String(input.grade || "").trim(),
+        model: String(input.model || "").trim(),
+        carrier: String(input.carrier || "").trim(),
+      },
+      priceRows,
+      buyer
+    );
+    if (matchedProjected) projectedSellEach = matchedProjected;
     const purchase = await client.query(
       `insert into phone_purchases
        (invoice_id, buyer, purchase_date, device_type, condition_type, packaging, grade, model, carrier, quantity, cost_each, projected_sell_each, notes)
@@ -987,10 +1003,12 @@ async function seedGoogleDrivePhoneInvoices() {
   const seeds = getPhoneInvoiceSeeds();
   if (!seeds.length) return;
   let atlasRows = [];
+  let ktRows = [];
   try {
     atlasRows = await getAtlasPrices();
+    ktRows = await getKtPrices();
   } catch (error) {
-    console.warn("Could not load Atlas prices for seeded phone invoices.", error.message);
+    console.warn("Could not load phone prices for seeded phone invoices.", error.message);
   }
   const client = await pool.connect();
   try {
@@ -1010,7 +1028,7 @@ async function seedGoogleDrivePhoneInvoices() {
       const invoice = invoiceResult.rows[0];
       for (const row of seed.rows) {
         const normalized = normalizeSeedPhonePurchase(row);
-        const projected = findAtlasSeedPrice(normalized, atlasRows);
+        const projected = findPhonePrice(normalized, seed.buyer === "KT" ? ktRows : atlasRows, seed.buyer);
         await client.query(
           `insert into phone_purchases
            (invoice_id, buyer, purchase_date, device_type, condition_type, packaging, grade, model, carrier, quantity, cost_each, projected_sell_each, notes)
@@ -1088,45 +1106,55 @@ function parseSeedMoney(value) {
   return Number(String(value || "").replace(/[$,\s]/g, "")) || 0;
 }
 
-function findAtlasSeedPrice(purchase, atlasRows) {
+function findPhonePrice(purchase, priceRows, buyer) {
   const parsed = parseDeviceModel(purchase.model);
   const wantedCondition = normalizeAtlasLookupCondition(
     purchase.condition_type === "New" ? purchase.packaging : purchase.grade,
     purchase.condition_type
   );
-  const modelText = normalizeMatchText(parsed.baseModel || purchase.model);
+  const modelText = normalizePhonePriceMatchText(parsed.baseModel || purchase.model);
   const storage = String(parsed.storage || "").toLowerCase();
   const carrier = normalizeSeedCarrier(purchase.carrier);
-  const candidates = atlasRows.filter((row) => {
+  const candidates = priceRows.filter((row) => {
+    if (buyer && row.buyer && row.buyer !== buyer) return false;
     if (row.device_type !== purchase.device_type) return false;
     if (row.condition_type !== purchase.condition_type) return false;
     if (wantedCondition && row.condition !== wantedCondition) return false;
     if (storage && String(row.storage || "").toLowerCase() !== storage) return false;
-    const rowModel = normalizeMatchText(row.base_model || row.model);
+    const rowModel = normalizePhonePriceMatchText(row.base_model || row.model);
     if (modelText && rowModel !== modelText) return false;
     if (carrier === "Unlocked") return row.carrier === "Unlocked";
     if (carrier === "Carrier Locked") return row.carrier === "Carrier Locked";
     return true;
   });
-  return Number(candidates[0]?.price || 0);
+  const looserCandidates = candidates.length ? candidates : priceRows.filter((row) => {
+    if (buyer && row.buyer && row.buyer !== buyer) return false;
+    if (row.condition_type !== purchase.condition_type) return false;
+    if (wantedCondition && row.condition !== wantedCondition) return false;
+    if (storage && String(row.storage || "").toLowerCase() !== storage) return false;
+    return normalizePhonePriceMatchText(row.base_model || row.model) === modelText;
+  });
+  return Number(looserCandidates[0]?.price || 0);
 }
 
 async function backfillPhoneProjectedPrices() {
   let atlasRows = [];
+  let ktRows = [];
   try {
     atlasRows = await getAtlasPrices();
+    ktRows = await getKtPrices();
   } catch (error) {
-    console.warn("Could not load Atlas prices for phone projected price backfill.", error.message);
+    console.warn("Could not load phone prices for projected price backfill.", error.message);
     return;
   }
   const result = await pool.query(
     `select * from phone_purchases
-     where projected_sell_each = 0 or notes like '%Item #%'
+     where projected_sell_each = 0 or notes like '%Item #%' or buyer = 'KT'
      order by id asc
      limit 500`
   );
   for (const purchase of result.rows) {
-    const projected = findAtlasSeedPrice(purchase, atlasRows);
+    const projected = findPhonePrice(purchase, purchase.buyer === "KT" ? ktRows : atlasRows, purchase.buyer);
     if (!projected) continue;
     await pool.query(
       "update phone_purchases set projected_sell_each = $1 where id = $2",
@@ -1305,6 +1333,14 @@ async function getAtlasPrices() {
   return atlasPriceCache.rows;
 }
 
+async function getKtPrices() {
+  if (ktPriceCache.rows.length) return ktPriceCache.rows;
+  const path = new URL("./public/kt-prices.json", import.meta.url);
+  const data = JSON.parse(fs.readFileSync(path, "utf8"));
+  ktPriceCache = { rows: Array.isArray(data.rows) ? data.rows : [] };
+  return ktPriceCache.rows;
+}
+
 function parseAtlasPriceCsv(csv, source) {
   const table = parseCsv(csv);
   const rows = [];
@@ -1414,6 +1450,17 @@ function normalizeAtlasLookupCondition(condition, conditionType) {
   const text = String(condition || "").trim();
   if (conditionType === "New" && /sealed|new|nib/i.test(text)) return "NEW";
   return text;
+}
+
+function normalizePhonePriceMatchText(value) {
+  return normalizeMatchText(value)
+    .replace(/^galaxy\s+/, "")
+    .replace(/^samsung\s+/, "")
+    .replace(/^apple\s+/, "")
+    .replace(/\binch\b/g, "")
+    .replace(/\bwifi\b/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function isAtlasModelRow(model) {

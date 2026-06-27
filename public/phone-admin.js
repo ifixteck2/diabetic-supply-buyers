@@ -114,7 +114,8 @@ function toggleConditionFields() {
 function matchingRows() {
   const deviceType = $("deviceType").value;
   const conditionType = $("conditionType").value;
-  return atlasPrices.filter((row) => row.device_type === deviceType && row.condition_type === conditionType);
+  const buyer = $("phoneBuyer").value;
+  return atlasPrices.filter((row) => row.buyer === buyer && row.device_type === deviceType && row.condition_type === conditionType);
 }
 
 function modelKey(row) {
@@ -159,7 +160,7 @@ function updateProjectedPrice() {
   if (row?.price) {
     $("phoneProjected").value = row.price;
     $("phonePricePreview").classList.remove("hidden");
-    $("phonePricePreview").innerHTML = `<span>Atlas projected sell price</span><strong>${money(row.price)}</strong><em>${escapeHtml(row.source_sheet)} - ${escapeHtml(row.condition)} - ${escapeHtml(row.carrier || "Unlocked")}</em>`;
+    $("phonePricePreview").innerHTML = `<span>${escapeHtml($("phoneBuyer").value)} projected sell price</span><strong>${money(row.price)}</strong><em>${escapeHtml(row.source_sheet || row.source || "Price sheet")} - ${escapeHtml(row.condition)} - ${escapeHtml(row.carrier || "Unlocked")}</em>`;
   } else {
     $("phonePricePreview").classList.add("hidden");
   }
