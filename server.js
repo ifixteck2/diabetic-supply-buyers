@@ -1660,29 +1660,32 @@ function defaultPhoneInvoiceLabel(buyer) {
 
 function createPhoneInvoiceHtml(invoice) {
   const purchases = invoice.purchases || [];
-  const totalCost = purchases.reduce((sum, row) => sum + Number(row.quantity || 0) * Number(row.cost_each || 0), 0);
-  const totalProjected = purchases.reduce((sum, row) => sum + Number(row.quantity || 0) * Number(row.projected_sell_each || 0), 0);
+  const totalSale = purchases.reduce((sum, row) => sum + Number(row.quantity || 0) * Number(row.projected_sell_each || 0), 0);
+  const buyerName = invoice.buyer === "KT" ? "KT CORP" : invoice.buyer === "Atlas" ? "Atlas" : invoice.buyer || "Buyer";
+  const invoiceDate = invoice.created_at ? new Date(invoice.created_at).toLocaleDateString("en-US") : new Date().toLocaleDateString("en-US");
   const rows = purchases.map((row) => `
     <tr>
-      <td>${escapeHtml(row.model)}</td>
+      <td class="item">${escapeHtml(row.model)}</td>
       <td>${escapeHtml(row.carrier || "")}</td>
-      <td>${escapeHtml(row.condition_type === "New" ? row.packaging : row.grade)}</td>
+      <td>${row.condition_type === "New" ? "NEW" : "USED"}</td>
       <td>${Number(row.quantity || 0)}</td>
-      <td>${moneyText(row.cost_each)}</td>
-      <td>${moneyText(Number(row.cost_each || 0) * Number(row.quantity || 0))}</td>
-      <td>${moneyText(row.projected_sell_each)}</td>
-      <td>${moneyText(Number(row.projected_sell_each || 0) * Number(row.quantity || 0))}</td>
+      <td class="num">${moneyText(row.projected_sell_each)}</td>
+      <td class="num">${moneyText(Number(row.projected_sell_each || 0) * Number(row.quantity || 0))}</td>
     </tr>
   `).join("");
   return `<!doctype html>
-<html><head><meta charset="utf-8"><title>${escapeHtml(invoice.label)}</title>
+<html><head><meta charset="utf-8"><title>Buyer Invoice - ${escapeHtml(invoice.label)}</title>
 <style>
-body{font-family:Arial,Helvetica,sans-serif;color:#111;margin:36px}header{display:flex;justify-content:space-between;gap:20px;border-bottom:2px solid #111;padding-bottom:18px;margin-bottom:24px}h1{font-size:28px;margin:0;text-transform:uppercase}.meta{text-align:right;color:#444}table{border-collapse:collapse;width:100%}th,td{border-bottom:1px solid #ddd;padding:10px;text-align:left}th{background:#f3f3f3;text-transform:uppercase;font-size:12px}.totals{display:grid;gap:10px;grid-template-columns:repeat(3,1fr);margin-top:22px}.box{border:1px solid #ddd;padding:14px}.box span{color:#555;display:block;font-size:12px;text-transform:uppercase}.box strong{font-size:22px}@media print{button{display:none}body{margin:18px}}
+body{font-family:Arial,Helvetica,sans-serif;background:#f5f7f8;color:#132126;margin:0}.page{max-width:980px;margin:28px auto;background:#fff;padding:42px;box-shadow:0 18px 50px rgba(19,33,38,.12)}.printbar{max-width:980px;margin:24px auto 0;text-align:right}.printbar button{background:#0f5e69;color:white;border:0;border-radius:6px;padding:11px 16px;font-weight:700;cursor:pointer}header{display:flex;justify-content:space-between;gap:24px;border-bottom:3px solid #0f5e69;padding-bottom:22px}.brand h1{font-size:36px;line-height:1;margin:0;color:#0f5e69;letter-spacing:0}.brand p,.meta p,.block p{margin:4px 0;color:#465a61}.meta{text-align:right}.meta strong{display:block;font-size:15px;color:#132126;margin-bottom:6px}.blocks{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:28px 0}.block{border:1px solid #d9e4e7;border-radius:8px;padding:16px}.block h2{font-size:12px;text-transform:uppercase;letter-spacing:0;margin:0 0 10px;color:#0f5e69}.block strong{font-size:16px}table{border-collapse:collapse;width:100%;margin-top:8px}th,td{border-bottom:1px solid #e0e7e9;padding:12px 10px;text-align:left;vertical-align:top}th{background:#eef4f5;color:#28464f;text-transform:uppercase;font-size:12px;letter-spacing:0}.item{font-weight:700;color:#132126}.num{text-align:right}.total{margin-top:24px;display:flex;justify-content:flex-end}.total-box{min-width:280px;background:#0f5e69;color:white;border-radius:8px;padding:18px}.total-box span{display:block;text-transform:uppercase;font-size:12px;letter-spacing:0;opacity:.86}.total-box strong{font-size:30px}.note{margin-top:28px;color:#5a6c72;font-size:13px}@media(max-width:720px){.page{margin:0;padding:22px}.printbar{margin:12px}.blocks,header{display:block}.meta{text-align:left;margin-top:18px}table{font-size:13px}th,td{padding:9px 6px}}@media print{body{background:white}.printbar{display:none}.page{box-shadow:none;margin:0;max-width:none;padding:22px}.block,.total-box{break-inside:avoid}}
 </style></head><body>
-<button onclick="window.print()">Print / Save PDF</button>
-<header><div><h1>${escapeHtml(invoice.label || "Phone Invoice")}</h1><p>${escapeHtml(invoice.buyer)} invoice</p></div><div class="meta">Invoice #${invoice.id}<br>${new Date(invoice.created_at).toLocaleDateString("en-US")}<br>${escapeHtml(invoice.status)}</div></header>
-<table><thead><tr><th>Model</th><th>Carrier</th><th>Condition</th><th>Qty</th><th>Cost Each</th><th>Cost Total</th><th>Projected Each</th><th>Projected Total</th></tr></thead><tbody>${rows || `<tr><td colspan="8">No purchases added.</td></tr>`}</tbody></table>
-<section class="totals"><div class="box"><span>Total Cost</span><strong>${moneyText(totalCost)}</strong></div><div class="box"><span>Projected Sale</span><strong>${moneyText(totalProjected)}</strong></div><div class="box"><span>Projected Profit</span><strong>${moneyText(totalProjected - totalCost)}</strong></div></section>
+<div class="printbar"><button onclick="window.print()">Print / Save PDF</button></div>
+<main class="page">
+<header><div class="brand"><h1>Invoice</h1><p>${escapeHtml(invoice.label || "Phone Invoice")}</p></div><div class="meta"><strong>Invoice #${invoice.id}</strong><p>Date: ${invoiceDate}</p><p>Status: ${escapeHtml(invoice.status)}</p></div></header>
+<section class="blocks"><div class="block"><h2>From</h2><strong>iFixTeck LLC</strong><p>1612 Lucerne Ave</p><p>Lake Worth, FL 33460</p></div><div class="block"><h2>Bill To</h2><strong>${escapeHtml(buyerName)}</strong><p>${escapeHtml(invoice.buyer)} buyer invoice</p></div></section>
+<table><thead><tr><th>Model</th><th>Carrier</th><th>Condition</th><th>Qty</th><th class="num">Unit Price</th><th class="num">Line Total</th></tr></thead><tbody>${rows || `<tr><td colspan="6">No purchases added.</td></tr>`}</tbody></table>
+<section class="total"><div class="total-box"><span>Total Due</span><strong>${moneyText(totalSale)}</strong></div></section>
+<p class="note">Thank you for your business. Pricing is listed as the buyer sell price for this invoice.</p>
+</main>
 </body></html>`;
 }
 

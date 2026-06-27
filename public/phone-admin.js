@@ -282,7 +282,7 @@ function renderPhoneInvoiceCard(invoice) {
       <div class="invoice-actions">
         <strong>${money(projected || totalCost)}</strong>
         <div>
-          <a class="mini-btn" href="/api/phone-invoices/${invoice.id}/html" target="_blank">Invoice</a>
+          <a class="mini-btn" href="/api/phone-invoices/${invoice.id}/html" target="_blank">Buyer Invoice PDF</a>
           ${invoice.status === "Pending" ? `<button class="mini-btn" onclick="setPhoneInvoiceStatus(${invoice.id}, 'Sold')">Mark Sold</button><button class="mini-btn" onclick="setPhoneInvoiceStatus(${invoice.id}, 'Closed')">Close</button>` : `<button class="mini-btn" onclick="setPhoneInvoiceStatus(${invoice.id}, 'Pending')">Reopen</button>`}
         </div>
       </div>
