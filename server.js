@@ -9,6 +9,7 @@ const isProduction = process.env.NODE_ENV === "production";
 const mercuryPriceSheetCsvUrl =
   process.env.MERCURY_PRICE_SHEET_CSV_URL ||
   "https://docs.google.com/spreadsheets/d/1mZAIHlWJcicbfResT2X9kyf7iUcXo_1q35jwjSyMk2o/export?format=csv&gid=2027163115";
+const followupDaysAfterFirstPurchase = 28;
 let mercuryPriceCache = { fetchedAt: 0, rows: [] };
 
 const requiredEnv = ["DATABASE_URL", "SESSION_SECRET", "ADMIN_USERNAME"];
@@ -128,11 +129,11 @@ app.patch("/api/customers/:id/followup", requireAuth, async (req, res) => {
   const result = await pool.query(
     `update customers
      set last_follow_up_at = current_date,
-       next_follow_up_at = coalesce(nullif($2,'')::date, current_date + interval '30 days'),
+       next_follow_up_at = coalesce(nullif($2,'')::date, current_date + $3::int),
        updated_at = now()
      where id = $1
      returning *`,
-    [id, next]
+    [id, next, followupDaysAfterFirstPurchase]
   );
   if (!result.rows[0]) return res.status(404).json({ error: "Customer not found." });
   res.json({ ok: true, customer: result.rows[0] });
@@ -260,6 +261,11 @@ app.post("/api/purchases", requireAuth, async (req, res) => {
       crm_status: customerInput.crm_status || "Customer",
       next_follow_up_at: customerInput.next_follow_up_at || null,
     });
+    const existingPurchaseResult = await client.query(
+      "select exists (select 1 from invoices where customer_id = $1) as has_purchases",
+      [customer.id]
+    );
+    const isFirstPurchase = !existingPurchaseResult.rows[0]?.has_purchases;
 
     const totalPaid = items.reduce(
       (sum, item) => sum + Number(item.quantity || 0) * Number(item.unit_cost || 0),
@@ -326,10 +332,14 @@ app.post("/api/purchases", requireAuth, async (req, res) => {
     await client.query(
       `update customers
        set crm_status = 'Customer',
-         next_follow_up_at = coalesce(greatest(next_follow_up_at, $2::date), $2::date),
+         next_follow_up_at = case when $3 then $2::date else next_follow_up_at end,
          updated_at = now()
        where id = $1`,
-      [customer.id, addDays(invoiceInput.purchase_date || new Date().toISOString().slice(0, 10), 30)]
+      [
+        customer.id,
+        addDays(invoiceInput.purchase_date || new Date().toISOString().slice(0, 10), followupDaysAfterFirstPurchase),
+        isFirstPurchase,
+      ]
     );
 
     await client.query("commit");
