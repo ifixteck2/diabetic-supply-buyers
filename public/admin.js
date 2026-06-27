@@ -18,6 +18,7 @@ let managerInvoicesCache = [];
 let editingCustomerPhone = "";
 let editItemsByPurchase = {};
 let mercuryPrices = [];
+let loginFollowupNoticeShown = false;
 
 init();
 
@@ -96,6 +97,7 @@ async function showApp() {
   $("login").classList.add("hidden");
   $("app").classList.remove("hidden");
   await refreshAll();
+  showLoginFollowupNotice();
 }
 
 async function refreshAll() {
@@ -686,6 +688,37 @@ function renderFollowups() {
   if (!container) return;
   container.innerHTML = followupsCache.map(renderCustomerRow).join("") || `<div class="empty">No follow ups due right now.</div>`;
 }
+
+function showLoginFollowupNotice() {
+  const container = $("followupNotice");
+  if (!container || loginFollowupNoticeShown || !followupsCache.length) return;
+  loginFollowupNoticeShown = true;
+  const leadCount = followupsCache.filter((customer) => (customer.crm_status || "").toLowerCase() === "lead").length;
+  const customerCount = followupsCache.length - leadCount;
+  const names = followupsCache
+    .slice(0, 4)
+    .map((customer) => customer.name || formatPhone(customer.phone))
+    .join(", ");
+  const summary = [
+    leadCount ? `${leadCount} lead${leadCount === 1 ? "" : "s"}` : "",
+    customerCount ? `${customerCount} customer${customerCount === 1 ? "" : "s"}` : "",
+  ].filter(Boolean).join(" and ");
+  container.innerHTML = `
+    <div>
+      <h2>${followupsCache.length} follow up${followupsCache.length === 1 ? "" : "s"} due now</h2>
+      <p>${escapeHtml(summary || "Contacts")} need attention today${names ? `: ${escapeHtml(names)}` : ""}.</p>
+    </div>
+    <div class="notice-actions">
+      <button class="btn" onclick="openTab('followups')">Review Follow Ups</button>
+      <button class="mini-btn" onclick="dismissFollowupNotice()">Dismiss</button>
+    </div>
+  `;
+  container.classList.remove("hidden");
+}
+
+window.dismissFollowupNotice = () => {
+  $("followupNotice")?.classList.add("hidden");
+};
 
 function renderLeads() {
   const container = $("leadList");
