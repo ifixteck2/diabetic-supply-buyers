@@ -594,6 +594,7 @@ async function migrate() {
     alter table invoice_batches add column if not exists sale_notes text not null default '';
     alter table invoice_batches add column if not exists tracking_number text not null default '';
     alter table invoice_batches add column if not exists sold_at timestamptz;
+    alter table invoice_batches add column if not exists shipped_at timestamptz;
     alter table invoices add column if not exists batch_id integer references invoice_batches(id) on delete set null;
     alter table invoices add column if not exists status text not null default 'Active';
     alter table invoices add column if not exists status_updated_at timestamptz not null default now();

@@ -27,6 +27,7 @@
             <button class="tab" data-tab="followups">Follow Ups</button>
             <button class="tab" data-tab="purchase">New Purchase</button>
             <button class="tab" data-tab="invoices">Active Invoices</button>
+            <button class="tab" data-tab="history">Invoice History</button>
             <button class="tab" data-tab="customers">Customers</button>
           </nav>
           <button class="btn danger logout" id="logoutBtn">Log Out</button>
@@ -92,7 +93,7 @@
           <section id="followupsTab" class="tab-panel hidden">
             <section class="panel">
               <div class="panel-head">
-                <div><h2>Follow Ups</h2><p>People due for a message. Purchases create a 30-day reminder automatically.</p></div>
+                <div><h2>Follow Ups</h2><p>People due for a message. First purchases create a 28-day reminder automatically.</p></div>
                 <button class="btn secondary" id="refreshFollowupsBtn">Refresh</button>
               </div>
               <div id="followupList" class="customer-list"></div>
@@ -194,6 +195,16 @@
                 <select id="invoiceFilter" class="compact-select"><option>Active</option><option>Sold</option><option>Shipped</option><option>All</option></select>
               </div>
               <div id="invoiceList" class="invoice-list"></div>
+            </section>
+          </section>
+
+          <section id="historyTab" class="tab-panel hidden">
+            <section class="panel">
+              <div class="panel-head">
+                <div><h2>Invoice History</h2><p>Past sold and shipped invoices with full customer, purchase, item, and shipment details.</p></div>
+                <select id="historyFilter" class="compact-select"><option>Past</option><option>Sold</option><option>Shipped</option><option>All</option></select>
+              </div>
+              <div id="invoiceHistoryList" class="invoice-list"></div>
             </section>
           </section>
 

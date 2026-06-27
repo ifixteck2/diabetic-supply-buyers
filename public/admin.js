@@ -59,6 +59,7 @@ function bindEvents() {
   $("photoInput").onchange = handlePhotoInput;
   $("clearPhotosBtn").onclick = clearPhotos;
   $("invoiceFilter").onchange = loadBatches;
+  $("historyFilter").onchange = renderInvoiceHistory;
   $("customerSearch").addEventListener("input", debounce(loadCustomers, 250));
   $("priceProductSelect").onchange = applySelectedPriceProduct;
   $("expiration").onchange = updateBuyerPricePreview;
@@ -103,12 +104,15 @@ async function refreshAll() {
 }
 
 function openTab(name) {
-  const titles = { dashboard: "Dashboard", leads: "Leads", followups: "Follow Ups", purchase: "New Purchase", invoices: "Active Invoices", customers: "Customers" };
+  const titles = { dashboard: "Dashboard", leads: "Leads", followups: "Follow Ups", purchase: "New Purchase", invoices: "Active Invoices", history: "Invoice History", customers: "Customers" };
   document.querySelectorAll(".tab").forEach((button) => button.classList.toggle("active", button.dataset.tab === name));
   document.querySelectorAll(".tab-panel").forEach((panel) => panel.classList.add("hidden"));
   $(`${name}Tab`).classList.remove("hidden");
   $("pageTitle").textContent = titles[name] || "Admin";
   if (name === "invoices") loadBatches();
+  if (name === "history") {
+    loadBatches().then(renderInvoiceHistory);
+  }
   if (name === "customers") {
     showCustomerList();
     loadCustomers();
@@ -322,6 +326,7 @@ async function loadBatches() {
   allBatchesCache = all.batches || [];
   renderBatchOptions();
   renderBatches();
+  renderInvoiceHistory();
   renderDashboard();
 }
 
@@ -352,6 +357,97 @@ function renderBatches() {
     return;
   }
   container.innerHTML = batchesCache.map(renderBatchCard).join("");
+}
+
+function renderInvoiceHistory() {
+  const container = $("invoiceHistoryList");
+  if (!container) return;
+  const filter = $("historyFilter")?.value || "Past";
+  const historyBatches = allBatchesCache.filter((batch) => {
+    if (filter === "Past") return batch.status === "Sold" || batch.status === "Shipped";
+    if (filter === "All") return true;
+    return batch.status === filter;
+  });
+  if (!historyBatches.length) {
+    container.innerHTML = `<div class="empty">No invoice history found for this view.</div>`;
+    return;
+  }
+  container.innerHTML = historyBatches.map(renderInvoiceHistoryCard).join("");
+}
+
+function renderInvoiceHistoryCard(batch) {
+  const paid = Number(batch.total_paid || 0);
+  const sold = Number(batch.sale_price || 0);
+  const profit = sold - paid;
+  const mercuryTotal = calculateMercuryInvoiceTotal(batch);
+  const purchaseDetails = (batch.purchases || []).map((purchase) => {
+    const items = (purchase.items || []).map((item) => {
+      const itemPaid = Number(item.quantity || 0) * Number(item.unit_cost || 0);
+      const expected = Number(item.quantity || 0) * Number(item.expected_sell_each || 0);
+      return `
+        <tr>
+          <td>${Number(item.quantity || 0)}</td>
+          <td>${escapeHtml([item.brand, item.model].filter(Boolean).join(" ") || item.category || "Item")}</td>
+          <td>${escapeHtml(item.expiration || "N/A")}</td>
+          <td>${escapeHtml(item.condition || "")}</td>
+          <td>${money(item.unit_cost)}</td>
+          <td>${money(itemPaid)}</td>
+          <td>${money(expected)}</td>
+        </tr>
+      `;
+    }).join("");
+    return `
+      <article class="history-card invoice-history-purchase">
+        <div class="invoice-top">
+          <div>
+            <h3>${escapeHtml(purchase.customer_name || "Customer")} - ${formatPhone(purchase.customer_phone)}</h3>
+            <p>${new Date(purchase.purchase_date).toLocaleDateString()} - Paid ${money(purchase.total_paid)} - ${escapeHtml(purchase.payout_method || "")}</p>
+          </div>
+          <button class="mini-btn" onclick="openCustomerManager('${purchase.customer_phone}')">Customer</button>
+        </div>
+        ${purchase.notes ? `<p class="mini"><b>Purchase notes:</b> ${escapeHtml(purchase.notes)}</p>` : ""}
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Qty</th><th>Item</th><th>Exp</th><th>Condition</th><th>Paid Each</th><th>Paid Total</th><th>Expected</th></tr></thead>
+            <tbody>${items || `<tr><td colspan="7">No items saved.</td></tr>`}</tbody>
+          </table>
+        </div>
+        ${renderPhotoStrip(purchase.photos || [])}
+      </article>
+    `;
+  }).join("");
+  return `
+    <article class="invoice-card invoice-history-card">
+      <div class="invoice-top">
+        <div>
+          <h3>Invoice #${batch.id} - ${escapeHtml(batch.label || "Invoice")}</h3>
+          <p>${batch.purchase_count} purchase${batch.purchase_count === 1 ? "" : "s"} - Created ${formatDateTime(batch.created_at)} - Updated ${formatDateTime(batch.status_updated_at)}</p>
+        </div>
+        <span class="pill ${batch.status?.toLowerCase()}">${escapeHtml(batch.status || "Active")}</span>
+      </div>
+      <div class="history-detail-grid">
+        <article class="stat"><span>Paid Out</span><strong>${money(paid)}</strong></article>
+        <article class="stat"><span>Sold For</span><strong>${money(sold)}</strong></article>
+        <article class="stat"><span>Profit</span><strong>${money(profit)}</strong></article>
+        <article class="stat"><span>Buyer</span><strong>${escapeHtml(batch.sold_to || "Not set")}</strong></article>
+      </div>
+      <p class="mini">
+        ${batch.sold_at ? `<b>Sold:</b> ${formatDateTime(batch.sold_at)} ` : ""}
+        ${batch.shipped_at ? `<b>Shipped:</b> ${formatDateTime(batch.shipped_at)} ` : ""}
+        ${batch.tracking_number ? `<b>Tracking:</b> ${escapeHtml(batch.tracking_number)} ` : ""}
+      </p>
+      ${batch.sale_notes ? `<p class="mini"><b>Sale notes:</b> ${escapeHtml(batch.sale_notes)}</p>` : ""}
+      ${mercuryTotal ? `<p class="mini"><b>Mercury sheet estimate:</b> ${money(mercuryTotal)}</p>` : ""}
+      <div class="invoice-actions">
+        <strong>${money(sold || paid)}</strong>
+        <div>
+          <a class="mini-btn" href="/api/batches/${batch.id}/buyer-pdf" target="_blank">Buyer PDF</a>
+          <button class="mini-btn" onclick="reopenInvoice(${batch.id})">Reopen</button>
+        </div>
+      </div>
+      <section class="history">${purchaseDetails || `<div class="empty">No purchases inside this invoice.</div>`}</section>
+    </article>
+  `;
 }
 
 function renderDashboard() {
@@ -428,6 +524,16 @@ window.setBatchStatus = async (id, nextStatus) => {
   });
   if (result?.ok) await loadBatches();
   else alert(result?.error || "Could not update invoice.");
+};
+
+window.reopenInvoice = async (id) => {
+  if (!confirm("Move this invoice back to Active?")) return;
+  const result = await api(`/api/batches/${id}/status`, {
+    method: "PATCH",
+    body: { status: "Active" },
+  });
+  if (result?.ok) await loadBatches();
+  else alert(result?.error || "Could not reopen invoice.");
 };
 
 window.applyBuyerPricing = (id, buyerName) => {
@@ -1095,4 +1201,11 @@ function escapeHtml(value) {
 
 function escapeAttr(value) {
   return escapeHtml(value).replace(/`/g, "&#096;");
+}
+
+function formatDateTime(value) {
+  if (!value) return "N/A";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "N/A";
+  return date.toLocaleDateString();
 }
