@@ -22,6 +22,7 @@
         <aside class="admin-side">
           <div class="brand admin-brand"><span class="mark phone-mark">PF</span><span>Phone Portal<small>Private records</small></span></div>
           <nav class="tabs" aria-label="Phone sections">
+            <button class="tab phone-tab" data-phone-tab="dashboard">Dashboard</button>
             <button class="tab active phone-tab" data-phone-tab="purchase">Add Purchase</button>
             <button class="tab phone-tab" data-phone-tab="atlasPending">Atlas Pending</button>
             <button class="tab phone-tab" data-phone-tab="atlasPast">Atlas Past</button>
@@ -76,6 +77,17 @@
               <div id="phonePricePreview" class="price-box quote-only hidden"></div>
               <div class="actions"><button class="btn phone-btn" id="savePhonePurchaseBtn">Add Purchase To Invoice</button></div>
               <div id="phonePurchaseStatus"></div>
+            </section>
+          </section>
+
+          <section id="dashboardPhoneTab" class="tab-panel hidden">
+            <section class="panel">
+              <div class="panel-head"><div><h2>Profit Dashboard</h2><p>Live totals from phone invoices.</p></div></div>
+              <div id="phoneDashboardStats" class="stats phone-dashboard-stats"></div>
+            </section>
+            <section class="panel">
+              <div class="panel-head"><div><h2>Buyer Breakdown</h2><p>Costs, sales, and profits by buyer.</p></div></div>
+              <div id="phoneBuyerBreakdown" class="table-wrap"></div>
             </section>
           </section>
 

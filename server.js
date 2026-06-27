@@ -149,10 +149,34 @@ app.patch("/api/phone-invoices/:id/status", requirePhoneAuth, async (req, res) =
     `update phone_invoices
      set status = $1,
        status_updated_at = now(),
-       closed_at = case when $1 <> 'Pending' and closed_at is null then now() else closed_at end
+       shipped_at = case when $1 = 'Shipped' and shipped_at is null then now() else shipped_at end,
+       sold_at = case when $1 = 'Sold' and sold_at is null then now() else sold_at end,
+       closed_at = case when $1 = 'Closed' and closed_at is null then now() else closed_at end
      where id = $2
      returning *`,
     [status, id]
+  );
+  if (!result.rows[0]) return res.status(404).json({ error: "Invoice not found." });
+  res.json({ ok: true, invoice: result.rows[0] });
+});
+
+app.patch("/api/phone-invoices/:id/sale", requirePhoneAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  const salePrice = req.body?.sale_price === undefined || req.body?.sale_price === "" ? null : Number(req.body.sale_price);
+  const saleNotes = String(req.body?.sale_notes || "").trim();
+  if (!id) return res.status(400).json({ error: "Invoice ID is required." });
+  if (salePrice !== null && (Number.isNaN(salePrice) || salePrice < 0)) {
+    return res.status(400).json({ error: "Sale amount must be a valid number." });
+  }
+  const result = await pool.query(
+    `update phone_invoices
+     set sale_price = $1,
+       sale_notes = $2,
+       sold_at = case when $1 is not null and sold_at is null then now() else sold_at end,
+       status_updated_at = now()
+     where id = $3
+     returning *`,
+    [salePrice, saleNotes, id]
   );
   if (!result.rows[0]) return res.status(404).json({ error: "Invoice not found." });
   res.json({ ok: true, invoice: result.rows[0] });
@@ -492,12 +516,6 @@ app.post("/api/purchases", requireAuth, async (req, res) => {
       crm_status: customerInput.crm_status || "Customer",
       next_follow_up_at: customerInput.next_follow_up_at || null,
     });
-    const existingPurchaseResult = await client.query(
-      "select exists (select 1 from invoices where customer_id = $1) as has_purchases",
-      [customer.id]
-    );
-    const isFirstPurchase = !existingPurchaseResult.rows[0]?.has_purchases;
-
     const totalPaid = items.reduce(
       (sum, item) => sum + Number(item.quantity || 0) * Number(item.unit_cost || 0),
       0
@@ -563,13 +581,12 @@ app.post("/api/purchases", requireAuth, async (req, res) => {
     await client.query(
       `update customers
        set crm_status = 'Customer',
-         next_follow_up_at = case when $3 then $2::date else next_follow_up_at end,
+         next_follow_up_at = $2::date,
          updated_at = now()
        where id = $1`,
       [
         customer.id,
         addDays(invoiceInput.purchase_date || new Date().toISOString().slice(0, 10), followupDaysAfterFirstPurchase),
-        isFirstPurchase,
       ]
     );
 
@@ -820,7 +837,11 @@ async function migrate() {
       label text not null default '',
       notes text not null default '',
       status text not null default 'Pending',
+      sale_price numeric(12,2),
+      sale_notes text not null default '',
       status_updated_at timestamptz not null default now(),
+      shipped_at timestamptz,
+      sold_at timestamptz,
       closed_at timestamptz,
       created_at timestamptz not null default now()
     );
@@ -866,6 +887,10 @@ async function migrate() {
     alter table purchase_items add column if not exists invoice_removed_reason text not null default '';
     alter table phone_purchases add column if not exists invoice_removed_at timestamptz;
     alter table phone_purchases add column if not exists invoice_removed_reason text not null default '';
+    alter table phone_invoices add column if not exists sale_price numeric(12,2);
+    alter table phone_invoices add column if not exists sale_notes text not null default '';
+    alter table phone_invoices add column if not exists shipped_at timestamptz;
+    alter table phone_invoices add column if not exists sold_at timestamptz;
     update invoices set status = 'Active' where status is null or status = '';
   `);
 
@@ -877,6 +902,17 @@ async function migrate() {
     update invoices
     set batch_id = (select id from invoice_batches order by id asc limit 1)
     where batch_id is null;
+
+    update customers c
+    set next_follow_up_at = latest.last_purchase_date + ${followupDaysAfterFirstPurchase},
+      updated_at = now()
+    from (
+      select customer_id, max(purchase_date)::date as last_purchase_date
+      from invoices
+      group by customer_id
+    ) latest
+    where c.id = latest.customer_id
+      and c.next_follow_up_at is null;
   `);
 }
 

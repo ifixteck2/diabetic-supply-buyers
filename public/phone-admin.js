@@ -76,10 +76,12 @@ async function loadPhoneInvoices() {
   phoneInvoices = result.invoices || [];
   renderInvoiceSelect();
   renderInvoiceLists();
+  renderPhoneDashboard();
 }
 
 function openPhoneTab(name) {
   const titles = {
+    dashboard: "Dashboard",
     purchase: "Add Purchase",
     atlasPending: "Atlas Pending",
     atlasPast: "Atlas Past",
@@ -248,6 +250,8 @@ function renderPhoneInvoiceCard(invoice) {
   const purchases = invoice.purchases || [];
   const totalCost = purchases.reduce((sum, row) => sum + Number(row.quantity || 0) * Number(row.cost_each || 0), 0);
   const projected = purchases.reduce((sum, row) => sum + Number(row.quantity || 0) * Number(row.projected_sell_each || 0), 0);
+  const salePrice = invoice.sale_price === null || invoice.sale_price === undefined || invoice.sale_price === "" ? null : Number(invoice.sale_price);
+  const actualProfit = salePrice === null ? null : salePrice - totalCost;
   const canRemove = invoice.status === "Pending";
   const rows = purchases.map((row) => `
     <tr class="phone-purchase-row">
@@ -282,13 +286,29 @@ function renderPhoneInvoiceCard(invoice) {
       <div class="sale-summary">
         <span>Cost ${money(totalCost)}</span>
         <span>Projected ${money(projected)}</span>
+        ${salePrice === null ? `<span>Actual Sale Not Set</span>` : `<span>Actual Sale ${money(salePrice)}</span>`}
         <strong>Profit ${money(projected - totalCost)}</strong>
+        ${actualProfit === null ? "" : `<strong class="${actualProfit >= 0 ? "profit-good" : "profit-bad"}">Actual Profit ${money(actualProfit)}</strong>`}
+      </div>
+      <div class="sale-box phone-sale-box">
+        <div class="form-grid three">
+          <label>Actual Sale Amount<input id="phoneSalePrice${invoice.id}" type="number" min="0" step="0.01" value="${salePrice === null ? "" : salePrice}"></label>
+          <label>Sale Notes<input id="phoneSaleNotes${invoice.id}" value="${escapeHtml(invoice.sale_notes || "")}" placeholder="Payment, tracking, buyer notes"></label>
+          <label>Status<select id="phoneInvoiceStatus${invoice.id}"><option ${invoice.status === "Pending" ? "selected" : ""}>Pending</option><option ${invoice.status === "Shipped" ? "selected" : ""}>Shipped</option><option ${invoice.status === "Sold" ? "selected" : ""}>Sold</option><option ${invoice.status === "Closed" ? "selected" : ""}>Closed</option></select></label>
+        </div>
+        <div class="actions">
+          <button class="mini-btn" onclick="savePhoneInvoiceSale(${invoice.id})">Save Sale Amount</button>
+          <button class="mini-btn" onclick="setPhoneInvoiceStatusFromSelect(${invoice.id})">Save Status</button>
+        </div>
       </div>
       <div class="invoice-actions">
         <strong>${money(projected || totalCost)}</strong>
         <div>
           <a class="mini-btn" href="/api/phone-invoices/${invoice.id}/html" target="_blank">Buyer Invoice PDF</a>
-          ${invoice.status === "Pending" ? `<button class="mini-btn" onclick="setPhoneInvoiceStatus(${invoice.id}, 'Sold')">Mark Sold</button><button class="mini-btn" onclick="setPhoneInvoiceStatus(${invoice.id}, 'Closed')">Close</button>` : `<button class="mini-btn" onclick="setPhoneInvoiceStatus(${invoice.id}, 'Pending')">Reopen</button>`}
+          ${invoice.status !== "Shipped" ? `<button class="mini-btn" onclick="setPhoneInvoiceStatus(${invoice.id}, 'Shipped')">Mark Shipped</button>` : ""}
+          ${invoice.status !== "Sold" ? `<button class="mini-btn" onclick="setPhoneInvoiceStatus(${invoice.id}, 'Sold')">Mark Sold</button>` : ""}
+          ${invoice.status !== "Pending" ? `<button class="mini-btn" onclick="setPhoneInvoiceStatus(${invoice.id}, 'Pending')">Reopen</button>` : ""}
+          ${invoice.status !== "Closed" ? `<button class="mini-btn" onclick="setPhoneInvoiceStatus(${invoice.id}, 'Closed')">Close</button>` : ""}
         </div>
       </div>
     </article>
@@ -312,12 +332,91 @@ function profitClass(row) {
   return profitEach(row) >= 0 ? "profit-good" : "profit-bad";
 }
 
+function renderPhoneDashboard() {
+  if (!$("phoneDashboardStats") || !$("phoneBuyerBreakdown")) return;
+  const totals = phoneInvoices.reduce((acc, invoice) => addInvoiceStats(acc, invoice), emptyPhoneStats());
+  const buyerStats = ["Atlas", "KT"].map((buyer) => phoneInvoices
+    .filter((invoice) => invoice.buyer === buyer)
+    .reduce((acc, invoice) => addInvoiceStats(acc, invoice), emptyPhoneStats(buyer)));
+  $("phoneDashboardStats").innerHTML = `
+    <div class="stat"><span>Total Cost</span><strong>${money(totals.cost)}</strong></div>
+    <div class="stat"><span>Projected Sale</span><strong>${money(totals.projected)}</strong></div>
+    <div class="stat"><span>Projected Profit</span><strong>${money(totals.projectedProfit)}</strong></div>
+    <div class="stat"><span>Actual Sales</span><strong>${money(totals.actualSale)}</strong></div>
+    <div class="stat"><span>Actual Profit</span><strong class="${totals.actualProfit >= 0 ? "profit-good" : "profit-bad"}">${money(totals.actualProfit)}</strong></div>
+    <div class="stat"><span>Units</span><strong>${totals.units}</strong></div>
+    <div class="stat"><span>Pending Cost</span><strong>${money(totals.pendingCost)}</strong></div>
+    <div class="stat"><span>Shipped Cost</span><strong>${money(totals.shippedCost)}</strong></div>
+    <div class="stat"><span>Needs Sale Amount</span><strong>${totals.needsSaleAmount}</strong></div>
+    <div class="stat"><span>Avg Profit / Unit</span><strong>${money(totals.units ? totals.projectedProfit / totals.units : 0)}</strong></div>
+  `;
+  $("phoneBuyerBreakdown").innerHTML = `
+    <table class="phone-breakdown-table">
+      <thead><tr><th>Buyer</th><th>Invoices</th><th>Units</th><th>Cost</th><th>Projected Sale</th><th>Projected Profit</th><th>Actual Sales</th><th>Actual Profit</th><th>Needs Sale Amount</th></tr></thead>
+      <tbody>${buyerStats.map((row) => `
+        <tr>
+          <td><strong>${row.buyer}</strong></td>
+          <td>${row.invoices}</td>
+          <td>${row.units}</td>
+          <td>${money(row.cost)}</td>
+          <td>${money(row.projected)}</td>
+          <td class="${row.projectedProfit >= 0 ? "profit-good" : "profit-bad"}">${money(row.projectedProfit)}</td>
+          <td>${money(row.actualSale)}</td>
+          <td class="${row.actualProfit >= 0 ? "profit-good" : "profit-bad"}">${money(row.actualProfit)}</td>
+          <td>${row.needsSaleAmount}</td>
+        </tr>
+      `).join("")}</tbody>
+    </table>
+  `;
+}
+
+function emptyPhoneStats(buyer = "All") {
+  return { buyer, invoices: 0, units: 0, cost: 0, projected: 0, projectedProfit: 0, actualSale: 0, actualProfit: 0, pendingCost: 0, shippedCost: 0, needsSaleAmount: 0 };
+}
+
+function addInvoiceStats(acc, invoice) {
+  const purchases = invoice.purchases || [];
+  const cost = purchases.reduce((sum, row) => sum + Number(row.quantity || 0) * Number(row.cost_each || 0), 0);
+  const projected = purchases.reduce((sum, row) => sum + Number(row.quantity || 0) * Number(row.projected_sell_each || 0), 0);
+  const units = purchases.reduce((sum, row) => sum + Number(row.quantity || 0), 0);
+  const salePrice = invoice.sale_price === null || invoice.sale_price === undefined || invoice.sale_price === "" ? null : Number(invoice.sale_price);
+  acc.invoices += 1;
+  acc.units += units;
+  acc.cost += cost;
+  acc.projected += projected;
+  acc.projectedProfit += projected - cost;
+  if (invoice.status === "Pending") acc.pendingCost += cost;
+  if (invoice.status === "Shipped") acc.shippedCost += cost;
+  if (invoice.status !== "Pending" && salePrice === null) acc.needsSaleAmount += 1;
+  if (salePrice !== null) {
+    acc.actualSale += salePrice;
+    acc.actualProfit += salePrice - cost;
+  }
+  return acc;
+}
+
 window.setPhoneInvoiceStatus = async (id, nextStatus) => {
   const result = await api(`/api/phone-invoices/${id}/status`, {
     method: "PATCH",
     body: { status: nextStatus },
   });
   if (!result?.ok) return alert(result?.error || "Could not update invoice.");
+  await loadPhoneInvoices();
+};
+
+window.setPhoneInvoiceStatusFromSelect = async (id) => {
+  await setPhoneInvoiceStatus(id, $(`phoneInvoiceStatus${id}`).value);
+};
+
+window.savePhoneInvoiceSale = async (id) => {
+  const result = await api(`/api/phone-invoices/${id}/sale`, {
+    method: "PATCH",
+    body: {
+      sale_price: $(`phoneSalePrice${id}`).value,
+      sale_notes: $(`phoneSaleNotes${id}`).value,
+    },
+  });
+  if (!result?.ok) return alert(result?.error || "Could not save sale amount.");
   await loadPhoneInvoices();
 };
 
