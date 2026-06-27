@@ -1121,7 +1121,7 @@ async function backfillPhoneProjectedPrices() {
   }
   const result = await pool.query(
     `select * from phone_purchases
-     where projected_sell_each = 0
+     where projected_sell_each = 0 or notes like '%Item #%'
      order by id asc
      limit 500`
   );
@@ -1290,13 +1290,16 @@ async function getAtlasPrices() {
   const sources = [
     { sheetId: atlasUsedSheetId, sheet: "iPhone Used", deviceType: "Phone", conditionType: "Used" },
     { sheetId: atlasUsedSheetId, sheet: "iPad Used", deviceType: "Tablet", conditionType: "Used" },
-    { sheetId: atlasNewSheetId, sheet: "New in Box", deviceType: "Phone", conditionType: "New" },
+    { sheetId: atlasNewSheetId, gid: "1148430169", sheet: "New in Box", deviceType: "Phone", conditionType: "New", parser: "newBox" },
   ];
   const groups = await Promise.all(sources.map(async (source) => {
-    const url = `https://docs.google.com/spreadsheets/d/${source.sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(source.sheet)}`;
+    const url = source.gid
+      ? `https://docs.google.com/spreadsheets/d/${source.sheetId}/export?format=csv&gid=${source.gid}`
+      : `https://docs.google.com/spreadsheets/d/${source.sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(source.sheet)}`;
     const response = await fetch(url);
     if (!response.ok) throw new Error(`${source.sheet} returned ${response.status}`);
-    return parseAtlasPriceCsv(await response.text(), source);
+    const csv = await response.text();
+    return source.parser === "newBox" ? parseAtlasNewBoxCsv(csv, source) : parseAtlasPriceCsv(csv, source);
   }));
   atlasPriceCache = { fetchedAt: Date.now(), rows: groups.flat() };
   return atlasPriceCache.rows;
@@ -1338,6 +1341,56 @@ function parseAtlasPriceCsv(csv, source) {
     }
   }
   return rows;
+}
+
+function parseAtlasNewBoxCsv(csv, source) {
+  const table = parseCsv(csv);
+  const rows = [];
+  let currentBaseModel = "";
+  for (const row of table) {
+    const first = String(row[1] || "").trim();
+    const storage = String(row[2] || "").trim();
+    const sealedPrice = parseMoney(row[3]);
+    const openPrice = parseMoney(row[4]);
+
+    if (/^iPhone\b/i.test(first) && !storage && sealedPrice === null && openPrice === null) {
+      currentBaseModel = first.replace(/\s+/g, " ").trim();
+      continue;
+    }
+
+    if (!currentBaseModel || !/\d+\s*(GB|TB)\b/i.test(storage)) continue;
+    if (!/unlocked|carrier locked|at&t|t-mobile|verizon|cricket|metro|spectrum|xfinity|boost/i.test(first)) continue;
+
+    const carrier = normalizeAtlasCarrier(first);
+    for (const price of [
+      { condition: "NEW", value: sealedPrice },
+      { condition: "Open", value: openPrice },
+    ]) {
+      if (price.value === null) continue;
+      const model = `${currentBaseModel} ${storage} ${carrier}`.replace(/\s+/g, " ").trim();
+      rows.push({
+        id: makePriceKey(`${source.sheet}-${model}-${price.condition}`),
+        buyer: "Atlas",
+        source_sheet: source.sheet,
+        device_type: source.deviceType,
+        condition_type: source.conditionType,
+        condition: price.condition,
+        model,
+        base_model: currentBaseModel,
+        storage,
+        carrier,
+        price: price.value,
+      });
+    }
+  }
+  return rows;
+}
+
+function normalizeAtlasCarrier(value) {
+  const text = String(value || "").trim();
+  if (/unlocked/i.test(text)) return "Unlocked";
+  if (/carrier locked/i.test(text)) return "Carrier Locked";
+  return text;
 }
 
 function defaultAtlasHeader(source, index) {
