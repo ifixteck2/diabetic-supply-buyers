@@ -349,9 +349,14 @@ app.get("/api/batches", requireAuth, async (req, res) => {
   const result = await pool.query(
     `select b.*,
       count(i.id)::int as purchase_count,
-      coalesce(sum(i.total_paid),0)::numeric as total_paid
+      coalesce(sum(active_items.total_paid),0)::numeric as total_paid
      from invoice_batches b
      left join invoices i on i.batch_id = b.id
+     left join lateral (
+       select sum(pi.quantity * pi.unit_cost)::numeric as total_paid
+       from purchase_items pi
+       where pi.invoice_id = i.id and pi.invoice_removed_at is null
+     ) active_items on true
      ${where}
      group by b.id
      order by b.created_at desc
@@ -402,6 +407,24 @@ app.patch("/api/batches/:id/status", requireAuth, async (req, res) => {
   );
   if (!result.rows[0]) return res.status(404).json({ error: "Invoice not found." });
   res.json({ ok: true, batch: result.rows[0] });
+});
+
+app.patch("/api/purchase-items/:id/invoice-removal", requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  const remove = req.body?.remove !== false;
+  const reason = String(req.body?.reason || "").trim();
+  if (!id) return res.status(400).json({ error: "Item ID is required." });
+
+  const result = await pool.query(
+    `update purchase_items
+     set invoice_removed_at = case when $2 then now() else null end,
+       invoice_removed_reason = case when $2 then coalesce(nullif($3,''), 'Sold locally') else '' end
+     where id = $1
+     returning *`,
+    [id, remove, reason]
+  );
+  if (!result.rows[0]) return res.status(404).json({ error: "Item not found." });
+  res.json({ ok: true, item: result.rows[0] });
 });
 
 app.get("/api/batches/:id/buyer-pdf", requireAuth, async (req, res) => {
@@ -755,6 +778,8 @@ async function migrate() {
       unit_cost numeric(12,2) not null default 0,
       expected_sell_each numeric(12,2) not null default 0,
       notes text not null default '',
+      invoice_removed_at timestamptz,
+      invoice_removed_reason text not null default '',
       created_at timestamptz not null default now()
     );
 
@@ -815,6 +840,8 @@ async function migrate() {
     alter table invoices add column if not exists batch_id integer references invoice_batches(id) on delete set null;
     alter table invoices add column if not exists status text not null default 'Active';
     alter table invoices add column if not exists status_updated_at timestamptz not null default now();
+    alter table purchase_items add column if not exists invoice_removed_at timestamptz;
+    alter table purchase_items add column if not exists invoice_removed_reason text not null default '';
     update invoices set status = 'Active' where status is null or status = '';
   `);
 
@@ -1745,7 +1772,7 @@ function createBuyerInvoicePdf(batch, mercuryPrices = []) {
   const photos = [];
   let mercuryTotal = 0;
   for (const purchase of batch.purchases || []) {
-    for (const item of purchase.items || []) {
+    for (const item of activeInvoiceItems(purchase.items || [])) {
       const product = findMercuryProductForItem(item, mercuryPrices);
       const quote = product ? getMercuryPriceForItem(product, item.expiration, item.condition) : null;
       const savedPrice = Number(item.expected_sell_each || 0);
@@ -1834,6 +1861,10 @@ function createBuyerInvoicePdf(batch, mercuryPrices = []) {
   lines.push({ text: "Thank you for your business.", x: 50, y: 58, size: 10, font: "bold" });
 
   return buildProfessionalPdf(lines, photos);
+}
+
+function activeInvoiceItems(items) {
+  return (items || []).filter((item) => !item.invoice_removed_at);
 }
 
 function buildProfessionalPdf(lines, photos = []) {

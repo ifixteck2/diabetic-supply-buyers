@@ -575,12 +575,21 @@ function renderBatchCard(batch) {
   const profit = Number(batch.sale_price || 0) - Number(batch.total_paid || 0);
   const mercuryTotal = calculateMercuryInvoiceTotal(batch);
   const purchasesHtml = (batch.purchases || []).map((purchase) => {
-    const itemsHtml = (purchase.items || []).map((item) => (
-      `<li>${item.quantity}x ${escapeHtml(item.brand)} ${escapeHtml(item.model)} - ${escapeHtml(item.condition)} - ${money(item.unit_cost)} each</li>`
+    const activeItems = activeInvoiceItems(purchase.items || []);
+    const removedItems = (purchase.items || []).filter((item) => item.invoice_removed_at);
+    const itemsHtml = activeItems.map((item) => renderPendingInvoiceItemRow(batch, item)).join("");
+    const removedHtml = removedItems.map((item) => (
+      `<div class="removed-item">${Number(item.quantity || 0)}x ${escapeHtml([item.brand, item.model].filter(Boolean).join(" ") || item.category || "Item")} removed${item.invoice_removed_reason ? ` - ${escapeHtml(item.invoice_removed_reason)}` : ""}</div>`
     )).join("");
     return `<div class="purchase-block">
       <p><b>${escapeHtml(purchase.customer_name || "Customer")}</b> - ${formatPhone(purchase.customer_phone)} - ${new Date(purchase.purchase_date).toLocaleDateString()} - ${money(purchase.total_paid)}</p>
-      <ul>${itemsHtml}</ul>
+      <div class="table-wrap pending-item-table">
+        <table>
+          <thead><tr><th></th><th>Qty</th><th>Item</th><th>Exp</th><th>Paid Each</th><th>Buyer Each</th><th>Profit Each</th><th>Total Profit</th><th></th></tr></thead>
+          <tbody>${itemsHtml || `<tr><td colspan="9">No active items in this purchase.</td></tr>`}</tbody>
+        </table>
+      </div>
+      ${removedHtml ? `<div class="removed-list">${removedHtml}</div>` : ""}
       ${renderPhotoStrip(purchase.photos || [])}
       ${purchase.notes ? `<p class="mini">${escapeHtml(purchase.notes)}</p>` : ""}
     </div>`;
@@ -620,6 +629,64 @@ function renderBatchCard(batch) {
     </article>
   `;
 }
+
+function renderPendingInvoiceItemRow(batch, item) {
+  const quantity = Number(item.quantity || 0);
+  const paidEach = Number(item.unit_cost || 0);
+  const buyerEach = getExpectedBuyerPrice(item);
+  const profitEach = buyerEach === null ? null : buyerEach - paidEach;
+  const totalProfit = profitEach === null ? null : profitEach * quantity;
+  const itemName = [item.brand, item.model].filter(Boolean).join(" ") || item.category || "Item";
+  return `
+    <tr class="pending-item-row">
+      <td><input type="checkbox" aria-label="Select item" onchange="togglePendingItemRemove(${item.id}, this)"></td>
+      <td>${quantity}</td>
+      <td>
+        <strong>${escapeHtml(itemName)}</strong>
+        <span>${escapeHtml(item.condition || "Sealed")}</span>
+      </td>
+      <td>${escapeHtml(item.expiration || "N/A")}</td>
+      <td>${money(paidEach)}</td>
+      <td>${buyerEach === null ? "N/A" : money(buyerEach)}</td>
+      <td class="${profitEach === null ? "" : profitEach >= 0 ? "profit-good" : "profit-bad"}">${profitEach === null ? "N/A" : money(profitEach)}</td>
+      <td class="${totalProfit === null ? "" : totalProfit >= 0 ? "profit-good" : "profit-bad"}"><strong>${totalProfit === null ? "N/A" : money(totalProfit)}</strong></td>
+      <td><button class="mini-btn danger" onclick="removePendingInvoiceItem(${item.id})">Remove</button></td>
+    </tr>
+  `;
+}
+
+function activeInvoiceItems(itemsList) {
+  return (itemsList || []).filter((item) => !item.invoice_removed_at);
+}
+
+function getExpectedBuyerPrice(item) {
+  const product = findMercuryProductForItem(item);
+  const quote = product ? getMercuryPriceForItem(product, item.expiration, item.condition) : null;
+  const mercuryPrice = quote?.price === undefined || quote?.price === null ? null : Number(quote.price);
+  if (mercuryPrice !== null && !Number.isNaN(mercuryPrice)) return mercuryPrice;
+  const savedPrice = Number(item.expected_sell_each || 0);
+  return savedPrice > 0 ? savedPrice : null;
+}
+
+window.togglePendingItemRemove = async (id, checkbox) => {
+  if (!checkbox.checked) return;
+  const removed = await removePendingInvoiceItem(id);
+  if (!removed) checkbox.checked = false;
+};
+
+window.removePendingInvoiceItem = async (id) => {
+  if (!confirm("Remove this item from the pending invoice? It will stay in the customer's purchase history.")) return false;
+  const result = await api(`/api/purchase-items/${id}/invoice-removal`, {
+    method: "PATCH",
+    body: { remove: true, reason: "Sold locally" },
+  });
+  if (!result?.ok) {
+    alert(result?.error || "Could not remove item from invoice.");
+    return false;
+  }
+  await loadBatches();
+  return true;
+};
 
 window.setBatchStatus = async (id, nextStatus) => {
   const result = await api(`/api/batches/${id}/status`, {
@@ -1300,7 +1367,7 @@ function compressImage(file) {
 function calculateMercuryInvoiceTotal(batch) {
   if (!mercuryPrices.length) return 0;
   return (batch.purchases || []).reduce((sum, purchase) => (
-    sum + (purchase.items || []).reduce((itemSum, item) => {
+    sum + activeInvoiceItems(purchase.items || []).reduce((itemSum, item) => {
       const product = findMercuryProductForItem(item);
       if (!product) return itemSum;
       const quote = getMercuryPriceForItem(product, item.expiration, item.condition);
