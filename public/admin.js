@@ -47,6 +47,7 @@ function bindEvents() {
   $("createBatchBtn").onclick = createBatch;
   $("saveLeadBtn").onclick = saveLead;
   $("clearLeadBtn").onclick = clearLead;
+  $("refreshLeadsBtn").onclick = loadCustomers;
   $("refreshFollowupsBtn").onclick = loadFollowups;
   $("saveCustomerProfileBtn").onclick = saveCustomerProfile;
   $("clearCustomerProfileBtn").onclick = clearCustomerProfile;
@@ -119,6 +120,7 @@ function openTab(name) {
     loadCustomers();
   }
   if (name === "followups") loadFollowups();
+  if (name === "leads") loadCustomers();
 }
 
 async function lookupCustomer() {
@@ -672,15 +674,24 @@ function renderCustomers() {
   if (!container) return;
   if (!customersCache.length) {
     container.innerHTML = `<div class="empty">No customers found.</div>`;
+    renderLeads();
     return;
   }
   container.innerHTML = customersCache.map(renderCustomerRow).join("");
+  renderLeads();
 }
 
 function renderFollowups() {
   const container = $("followupList");
   if (!container) return;
   container.innerHTML = followupsCache.map(renderCustomerRow).join("") || `<div class="empty">No follow ups due right now.</div>`;
+}
+
+function renderLeads() {
+  const container = $("leadList");
+  if (!container) return;
+  const leads = customersCache.filter((customer) => (customer.crm_status || "").toLowerCase() === "lead");
+  container.innerHTML = leads.map(renderCustomerRow).join("") || `<div class="empty">No saved leads yet.</div>`;
 }
 
 function renderCustomerRow(customer) {
@@ -1114,6 +1125,7 @@ async function saveLead() {
   status("leadStatus", "Lead saved.");
   clearLead(false);
   await Promise.all([loadCustomers(), loadFollowups()]);
+  renderLeads();
   renderDashboard();
 }
 
