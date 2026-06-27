@@ -1293,17 +1293,40 @@ function correctAtlasImportedPurchase(purchase) {
   if (purchase.buyer !== "Atlas" || purchase.condition_type !== "Used" || !/Item #/i.test(purchase.notes || "")) {
     return purchase;
   }
+  const itemNumber = atlasSeedItemNumber("", purchase.notes);
   return {
     ...purchase,
-    grade: isAtlasPartsSeedItem("", purchase.notes) ? "Parts" : "Grade A",
+    grade: isAtlasPartsSeedItem(itemNumber, purchase.notes) ? "Parts" : "Grade A",
+    carrier: atlasSeedCarrierForItem(itemNumber) || purchase.carrier,
   };
 }
 
 function isAtlasPartsSeedItem(item, notes = "") {
   const partsItems = new Set(["68", "69", "70", "72"]);
-  const itemNumber = String(item || "").trim() || String(notes || "").match(/Item\s*#\s*(\d+)/i)?.[1] || "";
+  const itemNumber = atlasSeedItemNumber(item, notes);
   if (itemNumber) return partsItems.has(itemNumber);
   return /\bParts\b/i.test(String(notes || ""));
+}
+
+function atlasSeedItemNumber(item, notes = "") {
+  return String(item || "").trim() || String(notes || "").match(/Item\s*#\s*(\d+)/i)?.[1] || "";
+}
+
+function atlasSeedCarrierForItem(item) {
+  const carriers = new Map([
+    ["68", "Parts"],
+    ["69", "Parts"],
+    ["70", "Parts"],
+    ["71", "Carrier Locked"],
+    ["72", "Parts"],
+    ["73", "Carrier Locked"],
+    ["74", "Carrier Locked"],
+    ["75", "Unlocked"],
+    ["96", "Carrier Locked"],
+    ["97", "Carrier Locked"],
+    ["98", "Unlocked"],
+  ]);
+  return carriers.get(String(item || "").trim()) || "";
 }
 
 function getPhoneInvoiceSeeds() {
@@ -1345,17 +1368,17 @@ function getPhoneInvoiceSeeds() {
       buyer: "Atlas",
       label: "Atlas 2026-06-13",
       rows: [
-        { date: "2026-06-13", item: "68", qty: 1, model: "14 Pro Max", storage: "N/A", condition: "Parts", carrier: "", unit_cost: "$130.00", seller: "Chris", notes: "Grade AB | Parts" },
-        { date: "2026-06-13", item: "69", qty: 1, model: "16", storage: "N/A", condition: "Parts", carrier: "", unit_cost: "$100.00", seller: "Chris", notes: "Grade AB | Parts" },
-        { date: "2026-06-13", item: "70", qty: 1, model: "16 Pro", storage: "N/A", condition: "Parts", carrier: "", unit_cost: "$100.00", seller: "Facebook", notes: "Grade AB | Parts" },
-        { date: "2026-06-23", item: "71", qty: 1, model: "16 Pro Max", storage: "N/A", condition: "Parts", carrier: "", unit_cost: "$350.00", seller: "Facebook", notes: "Grade B | Parts | Parts" },
-        { date: "2026-06-23", item: "72", qty: 1, model: "16", storage: "N/A", condition: "Parts", carrier: "", unit_cost: "$110.00", seller: "Mike", notes: "Grade AB | Parts | Parts" },
-        { date: "2026-06-25", item: "73", qty: 1, model: "16 Pro", storage: "N/A", condition: "Parts", carrier: "", unit_cost: "$275.00", seller: "Facebook", notes: "Grade B | Parts | Parts" },
-        { date: "2026-06-25", item: "74", qty: 1, model: "16 Pro", storage: "N/A", condition: "Parts", carrier: "", unit_cost: "$275.00", seller: "Facebook", notes: "Grade B | Parts | Parts" },
-        { date: "2026-06-25", item: "75", qty: 1, model: "14 Pro Max", storage: "N/A", condition: "Parts", carrier: "", unit_cost: "$250.00", seller: "Facebook", notes: "Grade B | Parts | Parts" },
-        { date: "2026-06-26", item: "96", qty: 1, model: "16e", storage: "N/A", condition: "Parts", carrier: "", unit_cost: "$100.00", seller: "Instagram", notes: "Grade B | Parts | Parts" },
-        { date: "2026-06-26", item: "97", qty: 1, model: "14", storage: "N/A", condition: "Parts", carrier: "", unit_cost: "$75.00", seller: "Instagram", notes: "Grade B | Parts | Parts" },
-        { date: "2026-06-26", item: "98", qty: 1, model: "15 Pro Max", storage: "N/A", condition: "Parts", carrier: "", unit_cost: "$250.00", seller: "Facebook", notes: "Grade B | Parts | Parts" },
+        { date: "2026-06-13", item: "68", qty: 1, model: "14 Pro Max", storage: "N/A", condition: "Parts", carrier: "Parts", unit_cost: "$130.00", seller: "Chris", notes: "Grade AB | Parts" },
+        { date: "2026-06-13", item: "69", qty: 1, model: "16", storage: "N/A", condition: "Parts", carrier: "Parts", unit_cost: "$100.00", seller: "Chris", notes: "Grade AB | Parts" },
+        { date: "2026-06-13", item: "70", qty: 1, model: "16 Pro", storage: "N/A", condition: "Parts", carrier: "Parts", unit_cost: "$100.00", seller: "Facebook", notes: "Grade AB | Parts" },
+        { date: "2026-06-23", item: "71", qty: 1, model: "16 Pro Max", storage: "N/A", condition: "Parts", carrier: "Locked", unit_cost: "$350.00", seller: "Facebook", notes: "Grade A" },
+        { date: "2026-06-23", item: "72", qty: 1, model: "16", storage: "N/A", condition: "Parts", carrier: "Parts", unit_cost: "$110.00", seller: "Mike", notes: "Grade AB | Parts" },
+        { date: "2026-06-25", item: "73", qty: 1, model: "16 Pro", storage: "N/A", condition: "Parts", carrier: "Locked", unit_cost: "$275.00", seller: "Facebook", notes: "Grade A" },
+        { date: "2026-06-25", item: "74", qty: 1, model: "16 Pro", storage: "N/A", condition: "Parts", carrier: "Locked", unit_cost: "$275.00", seller: "Facebook", notes: "Grade A" },
+        { date: "2026-06-25", item: "75", qty: 1, model: "14 Pro Max", storage: "N/A", condition: "Parts", carrier: "Unlocked", unit_cost: "$250.00", seller: "Facebook", notes: "Grade A" },
+        { date: "2026-06-26", item: "96", qty: 1, model: "16e", storage: "N/A", condition: "Parts", carrier: "Locked", unit_cost: "$100.00", seller: "Instagram", notes: "Grade A" },
+        { date: "2026-06-26", item: "97", qty: 1, model: "14", storage: "N/A", condition: "Parts", carrier: "Locked", unit_cost: "$75.00", seller: "Instagram", notes: "Grade A" },
+        { date: "2026-06-26", item: "98", qty: 1, model: "15 Pro Max", storage: "N/A", condition: "Parts", carrier: "Unlocked", unit_cost: "$250.00", seller: "Facebook", notes: "Grade B Cracked Back" },
       ],
     },
   ];
@@ -1460,6 +1483,7 @@ async function getAtlasPrices() {
   }
   const sources = [
     { sheetId: atlasUsedSheetId, sheet: "iPhone Used", deviceType: "Phone", conditionType: "Used" },
+    { sheetId: atlasUsedSheetId, sheet: "Parts / iC", deviceType: "Phone", conditionType: "Used", parser: "parts" },
     { sheetId: atlasUsedSheetId, sheet: "iPad Used", deviceType: "Tablet", conditionType: "Used" },
     { sheetId: atlasNewSheetId, gid: "1148430169", sheet: "New in Box", deviceType: "Phone", conditionType: "New", parser: "newBox" },
   ];
@@ -1470,7 +1494,9 @@ async function getAtlasPrices() {
     const response = await fetch(url);
     if (!response.ok) throw new Error(`${source.sheet} returned ${response.status}`);
     const csv = await response.text();
-    return source.parser === "newBox" ? parseAtlasNewBoxCsv(csv, source) : parseAtlasPriceCsv(csv, source);
+    if (source.parser === "newBox") return parseAtlasNewBoxCsv(csv, source);
+    if (source.parser === "parts") return parseAtlasPartsCsv(csv, source);
+    return parseAtlasPriceCsv(csv, source);
   }));
   atlasPriceCache = { fetchedAt: Date.now(), rows: groups.flat() };
   return atlasPriceCache.rows;
@@ -1515,6 +1541,42 @@ function parseAtlasPriceCsv(csv, source) {
         base_model: parsed.baseModel,
         storage: parsed.storage,
         carrier: parsed.carrier,
+        price: price.price,
+      });
+    }
+  }
+  return rows;
+}
+
+function parseAtlasPartsCsv(csv, source) {
+  const table = parseCsv(csv);
+  const rows = [];
+  let headers = [];
+  for (const row of table) {
+    const model = String(row[1] || "").trim();
+    if (/^CLEAN MODE ONLY$/i.test(model)) {
+      headers = row.slice(2, 6).map((cell, index) => String(cell || "").trim() || ["Grade A/B", "Grade C", "Grade D", "DOA"][index]);
+      continue;
+    }
+    const prices = row.slice(2, 6).map((cell, index) => ({
+      label: headers[index] || ["Grade A/B", "Grade C", "Grade D", "DOA"][index],
+      price: parseMoney(cell),
+    })).filter((entry) => entry.price !== null);
+    if (!/^i(phone|\d|PADS?\b)/i.test(model) || !prices.length) continue;
+    const cleanModel = normalizeAtlasPartsModel(model);
+    const parsed = parseDeviceModel(cleanModel);
+    for (const price of prices) {
+      rows.push({
+        id: makePriceKey(`${source.sheet}-${cleanModel}-${price.label}`),
+        buyer: "Atlas",
+        source_sheet: source.sheet,
+        device_type: parsed.deviceType || source.deviceType,
+        condition_type: source.conditionType,
+        condition: normalizeAtlasPartsCondition(price.label),
+        model: cleanModel,
+        base_model: parsed.baseModel || cleanModel,
+        storage: parsed.storage,
+        carrier: "Parts",
         price: price.price,
       });
     }
@@ -1948,6 +2010,25 @@ function createBuyerInvoicePdf(batch, mercuryPrices = []) {
   lines.push({ text: "Thank you for your business.", x: 50, y: 58, size: 10, font: "bold" });
 
   return buildProfessionalPdf(lines, photos);
+}
+
+function normalizeAtlasPartsModel(value) {
+  let model = String(value || "")
+    .replace(/\s*\([^)]*\)/g, "")
+    .replace(/^i(\d{2})\b/i, "iPhone $1")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (/^(XS|XR|X)\b/i.test(model)) model = `iPhone ${model}`;
+  return model;
+}
+
+function normalizeAtlasPartsCondition(label) {
+  const text = String(label || "").trim();
+  if (/Grade\s*A\/B/i.test(text)) return "Parts";
+  if (/Grade\s*C/i.test(text)) return "Parts Grade C";
+  if (/Grade\s*D/i.test(text)) return "Parts Grade D";
+  if (/DOA/i.test(text)) return "DOA";
+  return "Parts";
 }
 
 function activeInvoiceItems(items) {
