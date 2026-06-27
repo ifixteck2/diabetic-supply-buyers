@@ -1273,7 +1273,8 @@ async function backfillPhoneProjectedPrices() {
   );
   for (const purchase of result.rows) {
     const correctedPurchase = correctAtlasImportedPurchase(purchase);
-    const projected = findPhonePrice(correctedPurchase, correctedPurchase.buyer === "KT" ? ktRows : atlasRows, correctedPurchase.buyer);
+    const overridePrice = atlasImportedProjectedOverride(correctedPurchase);
+    const projected = overridePrice || findPhonePrice(correctedPurchase, correctedPurchase.buyer === "KT" ? ktRows : atlasRows, correctedPurchase.buyer);
     if (!projected) continue;
     await pool.query(
       "update phone_purchases set projected_sell_each = $1, grade = $2, carrier = $3 where id = $4",
@@ -1296,9 +1297,28 @@ function correctAtlasImportedPurchase(purchase) {
   const itemNumber = atlasSeedItemNumber("", purchase.notes);
   return {
     ...purchase,
-    grade: isAtlasPartsSeedItem(itemNumber, purchase.notes) ? "Parts" : "Grade A",
+    grade: atlasSeedGradeForItem(itemNumber, purchase.notes),
     carrier: atlasSeedCarrierForItem(itemNumber) || purchase.carrier,
   };
+}
+
+function atlasImportedProjectedOverride(purchase) {
+  if (purchase.buyer !== "Atlas" || purchase.condition_type !== "Used") return 0;
+  const itemNumber = atlasSeedItemNumber("", purchase.notes);
+  const prices = new Map([
+    ["68", 165],
+    ["69", 150],
+    ["70", 220],
+    ["72", 150],
+    ["98", 360],
+  ]);
+  return prices.get(itemNumber) || 0;
+}
+
+function atlasSeedGradeForItem(item, notes = "") {
+  const itemNumber = atlasSeedItemNumber(item, notes);
+  if (itemNumber === "98") return "Grade B - Cracked Back";
+  return isAtlasPartsSeedItem(itemNumber, notes) ? "Parts" : "Grade A";
 }
 
 function isAtlasPartsSeedItem(item, notes = "") {
@@ -1378,7 +1398,7 @@ function getPhoneInvoiceSeeds() {
         { date: "2026-06-25", item: "75", qty: 1, model: "14 Pro Max", storage: "N/A", condition: "Parts", carrier: "Unlocked", unit_cost: "$250.00", seller: "Facebook", notes: "Grade A" },
         { date: "2026-06-26", item: "96", qty: 1, model: "16e", storage: "N/A", condition: "Parts", carrier: "Locked", unit_cost: "$100.00", seller: "Instagram", notes: "Grade A" },
         { date: "2026-06-26", item: "97", qty: 1, model: "14", storage: "N/A", condition: "Parts", carrier: "Locked", unit_cost: "$75.00", seller: "Instagram", notes: "Grade A" },
-        { date: "2026-06-26", item: "98", qty: 1, model: "15 Pro Max", storage: "N/A", condition: "Parts", carrier: "Unlocked", unit_cost: "$250.00", seller: "Facebook", notes: "Grade B Cracked Back" },
+        { date: "2026-06-26", item: "98", qty: 1, model: "15 Pro Max", storage: "N/A", condition: "Parts", carrier: "Unlocked", unit_cost: "$250.00", seller: "Facebook", notes: "Grade B - Cracked Back" },
       ],
     },
   ];
