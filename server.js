@@ -38,6 +38,7 @@ app.use(express.urlencoded({ extended: false }));
 app.use(express.static("public", { extensions: ["html"] }));
 
 await migrate();
+await seedGoogleDrivePhoneInvoices();
 
 app.post("/api/login", async (req, res) => {
   const { username, password, remember } = req.body || {};
@@ -979,6 +980,186 @@ async function attachPhonePurchases(invoices) {
     ...invoice,
     purchases: purchases.rows.filter((purchase) => purchase.invoice_id === invoice.id),
   }));
+}
+
+async function seedGoogleDrivePhoneInvoices() {
+  const seeds = getPhoneInvoiceSeeds();
+  if (!seeds.length) return;
+  let atlasRows = [];
+  try {
+    atlasRows = await getAtlasPrices();
+  } catch (error) {
+    console.warn("Could not load Atlas prices for seeded phone invoices.", error.message);
+  }
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    for (const seed of seeds) {
+      const existing = await client.query(
+        "select id from phone_invoices where buyer = $1 and label = $2 limit 1",
+        [seed.buyer, seed.label]
+      );
+      if (existing.rows[0]) continue;
+      const invoiceResult = await client.query(
+        `insert into phone_invoices (buyer, label, notes, status, created_at)
+         values ($1, $2, $3, 'Pending', now())
+         returning *`,
+        [seed.buyer, seed.label, "Imported from Google Drive PhoneInvoice sheet"]
+      );
+      const invoice = invoiceResult.rows[0];
+      for (const row of seed.rows) {
+        const normalized = normalizeSeedPhonePurchase(row);
+        const projected = findAtlasSeedPrice(normalized, atlasRows);
+        await client.query(
+          `insert into phone_purchases
+           (invoice_id, buyer, purchase_date, device_type, condition_type, packaging, grade, model, carrier, quantity, cost_each, projected_sell_each, notes)
+           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+          [
+            invoice.id,
+            seed.buyer,
+            normalized.purchase_date,
+            normalized.device_type,
+            normalized.condition_type,
+            normalized.packaging,
+            normalized.grade,
+            normalized.model,
+            normalized.carrier,
+            normalized.quantity,
+            normalized.cost_each,
+            projected,
+            normalized.notes,
+          ]
+        );
+      }
+    }
+    await client.query("commit");
+  } catch (error) {
+    await client.query("rollback");
+    console.error("Could not seed Google Drive phone invoices.", error);
+  } finally {
+    client.release();
+  }
+}
+
+function normalizeSeedPhonePurchase(row) {
+  const rawModel = String(row.model || "").trim();
+  const model = normalizeSeedModel(rawModel, row.storage);
+  const conditionText = String(row.condition || row.notes || "").trim();
+  const isNew = /new/i.test(conditionText);
+  const grade = isNew ? "" : extractSeedGrade(row.notes, conditionText);
+  return {
+    purchase_date: row.date || new Date().toISOString().slice(0, 10),
+    device_type: /ipad/i.test(model) ? "Tablet" : "Phone",
+    condition_type: isNew ? "New" : "Used",
+    packaging: isNew ? "Sealed" : "",
+    grade,
+    model,
+    carrier: normalizeSeedCarrier(row.carrier),
+    quantity: Number(row.qty || 1),
+    cost_each: parseSeedMoney(row.unit_cost),
+    notes: [row.seller ? `Seller: ${row.seller}` : "", row.notes || "", row.item ? `Item #${row.item}` : ""].filter(Boolean).join(" | "),
+  };
+}
+
+function normalizeSeedModel(model, storage) {
+  const cleanModel = String(model || "").replace(/\s+\d+\s*(GB|TB)\b/i, "").trim();
+  const cleanStorage = String(storage || "").trim();
+  const appleModel = /^(iphone|ipad)/i.test(cleanModel) ? cleanModel : /^\d/.test(cleanModel) ? `iPhone ${cleanModel}` : cleanModel;
+  return [appleModel, cleanStorage && !/n\/a|unknown/i.test(cleanStorage) ? cleanStorage : ""].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
+}
+
+function normalizeSeedCarrier(carrier) {
+  const text = String(carrier || "").trim();
+  if (/unlocked/i.test(text)) return "Unlocked";
+  if (/locked/i.test(text)) return "Carrier Locked";
+  return text;
+}
+
+function extractSeedGrade(notes, condition) {
+  const text = `${notes || ""} ${condition || ""}`;
+  const grade = text.match(/Grade\s*([ABCD])/i);
+  if (grade) return `Grade ${grade[1].toUpperCase()}`;
+  if (/parts/i.test(text)) return "Parts";
+  return "Grade B";
+}
+
+function parseSeedMoney(value) {
+  return Number(String(value || "").replace(/[$,\s]/g, "")) || 0;
+}
+
+function findAtlasSeedPrice(purchase, atlasRows) {
+  const parsed = parseDeviceModel(purchase.model);
+  const wantedCondition = purchase.condition_type === "New" ? purchase.packaging : purchase.grade;
+  const modelText = normalizeMatchText(parsed.baseModel || purchase.model);
+  const storage = String(parsed.storage || "").toLowerCase();
+  const carrier = normalizeSeedCarrier(purchase.carrier);
+  const candidates = atlasRows.filter((row) => {
+    if (row.device_type !== purchase.device_type) return false;
+    if (row.condition_type !== purchase.condition_type) return false;
+    if (wantedCondition && row.condition !== wantedCondition) return false;
+    if (storage && String(row.storage || "").toLowerCase() !== storage) return false;
+    const rowModel = normalizeMatchText(row.base_model || row.model);
+    if (modelText && rowModel !== modelText) return false;
+    if (carrier === "Unlocked") return row.carrier === "Unlocked";
+    if (carrier === "Carrier Locked") return row.carrier === "Carrier Locked";
+    return true;
+  });
+  return Number(candidates[0]?.price || 0);
+}
+
+function getPhoneInvoiceSeeds() {
+  return [
+    {
+      buyer: "KT",
+      label: "KT 2026-06-18",
+      rows: [
+        { date: "2026-06-18", item: "76", qty: 1, model: "17", storage: "256GB", condition: "New", carrier: "Locked", unit_cost: "$435.00", seller: "Mike", notes: "Color Lavender" },
+        { date: "2026-06-18", item: "77", qty: 1, model: "17", storage: "256GB", condition: "New", carrier: "Locked", unit_cost: "$435.00", seller: "Mike", notes: "Color Black" },
+        { date: "2026-06-16", item: "78", qty: 1, model: "16 Pro", storage: "256GB", condition: "Used", carrier: "Locked", unit_cost: "$320.00", seller: "Unknown", notes: "Grade B" },
+        { date: "2026-06-13", item: "79", qty: 1, model: "17 Pro Max", storage: "512GB", condition: "Used", carrier: "Locked", unit_cost: "$683.00", seller: "Facebook", notes: "Grade A" },
+        { date: "2026-06-18", item: "80", qty: 1, model: "17", storage: "256GB", condition: "Used", carrier: "Locked", unit_cost: "$350.00", seller: "Unknown", notes: "Grade B" },
+        { date: "2026-06-18", item: "81", qty: 1, model: "17", storage: "256GB", condition: "Used", carrier: "Locked", unit_cost: "$350.00", seller: "Unknown", notes: "Grade B" },
+        { date: "2026-06-18", item: "82", qty: 1, model: "16", storage: "128GB", condition: "Used", carrier: "Locked", unit_cost: "$220.00", seller: "Facebook", notes: "Grade B" },
+        { date: "2026-06-18", item: "83", qty: 1, model: "14 Pro Max", storage: "256GB", condition: "Used", carrier: "Locked", unit_cost: "$200.00", seller: "Facebook", notes: "Grade B" },
+        { date: "2026-06-18", item: "84", qty: 1, model: "14 Pro", storage: "256GB", condition: "Used", carrier: "Unlocked", unit_cost: "$220.00", seller: "Unknown", notes: "Grade B" },
+        { date: "2026-06-20", item: "85", qty: 1, model: "17 Pro Max", storage: "256GB", condition: "New", carrier: "Locked", unit_cost: "$700.00", seller: "Unknown", notes: "" },
+        { date: "2026-06-20", item: "86", qty: 1, model: "17 Pro Max", storage: "256GB", condition: "Used", carrier: "Locked", unit_cost: "$670.00", seller: "Unknown", notes: "Grade B" },
+        { date: "2026-06-23", item: "87", qty: 1, model: "S26 Ultra", storage: "256GB", condition: "Used", carrier: "Locked", unit_cost: "$450.00", seller: "Unknown", notes: "Grade B" },
+        { date: "2026-06-23", item: "88", qty: 1, model: "17 Pro Max", storage: "256GB", condition: "New", carrier: "Locked", unit_cost: "$770.00", seller: "King", notes: "Color Silver" },
+        { date: "2026-06-23", item: "89", qty: 1, model: "17 Pro Max 256gb", storage: "256GB", condition: "New", carrier: "Locked", unit_cost: "$770.00", seller: "King", notes: "Color Orange" },
+        { date: "2026-06-24", item: "90", qty: 1, model: "S26 Ultra", storage: "256GB", condition: "", carrier: "Locked", unit_cost: "$500.00", seller: "Mike", notes: "Grade A" },
+        { date: "2026-06-24", item: "91", qty: 1, model: "15", storage: "128GB", condition: "", carrier: "Unlocked", unit_cost: "$220.00", seller: "Chris", notes: "Grade B" },
+        { date: "2026-06-24", item: "92", qty: 1, model: "17 Air", storage: "256GB", condition: "", carrier: "Unlocked", unit_cost: "$425.00", seller: "Unknown", notes: "Grade B" },
+        { date: "2026-06-25", item: "93", qty: 1, model: "iPad Pro 13 Inch Wifi", storage: "256GB", condition: "New", carrier: "Facebook", unit_cost: "$800.00", seller: "Unknown", notes: "" },
+        { date: "2026-06-25", item: "94", qty: 1, model: "S25 Ultra", storage: "256GB", condition: "Used", carrier: "Facebook", unit_cost: "$275.00", seller: "Unknown", notes: "Grade B" },
+        { date: "2026-06-26", item: "95", qty: 1, model: "17 Pro Max", storage: "256GB", condition: "", carrier: "Locked", unit_cost: "$680.00", seller: "Chris", notes: "Grade A" },
+        { date: "2026-06-26", item: "99", qty: 1, model: "Google Pixel 10 Pro", storage: "Unknown", condition: "New", carrier: "Locked", unit_cost: "$180.00", seller: "Mike", notes: "" },
+        { date: "2026-06-26", item: "100", qty: 1, model: "17 Pro Max", storage: "256GB", condition: "New", carrier: "Locked", unit_cost: "$730.00", seller: "Unknown", notes: "Color Orange" },
+        { date: "2026-06-27", item: "101", qty: 1, model: "17 256gb", storage: "256GB", condition: "New", carrier: "Unlocked", unit_cost: "$610.00", seller: "Mike", notes: "" },
+        { date: "2026-06-27", item: "102", qty: 1, model: "17 256gb", storage: "256GB", condition: "New", carrier: "Unlocked", unit_cost: "$610.00", seller: "Mike", notes: "" },
+        { date: "2026-06-27", item: "103", qty: 1, model: "S26", storage: "256GB", condition: "New", carrier: "Locked", unit_cost: "$250.00", seller: "Mike", notes: "" },
+        { date: "2026-06-27", item: "104", qty: 1, model: "17 Pro Max", storage: "256GB", condition: "", carrier: "Unlocked", unit_cost: "$780.00", seller: "Unknown", notes: "Grade B" },
+        { date: "2026-06-27", item: "105", qty: 1, model: "16 Pro Max", storage: "256GB", condition: "", carrier: "Unlocked", unit_cost: "$560.00", seller: "Unknown", notes: "Grade B" },
+      ],
+    },
+    {
+      buyer: "Atlas",
+      label: "Atlas 2026-06-13",
+      rows: [
+        { date: "2026-06-13", item: "68", qty: 1, model: "14 Pro Max", storage: "N/A", condition: "Parts", carrier: "", unit_cost: "$130.00", seller: "Chris", notes: "Grade AB | Parts" },
+        { date: "2026-06-13", item: "69", qty: 1, model: "16", storage: "N/A", condition: "Parts", carrier: "", unit_cost: "$100.00", seller: "Chris", notes: "Grade AB | Parts" },
+        { date: "2026-06-13", item: "70", qty: 1, model: "16 Pro", storage: "N/A", condition: "Parts", carrier: "", unit_cost: "$100.00", seller: "Facebook", notes: "Grade AB | Parts" },
+        { date: "2026-06-23", item: "71", qty: 1, model: "16 Pro Max", storage: "N/A", condition: "Parts", carrier: "", unit_cost: "$350.00", seller: "Facebook", notes: "Grade B | Parts | Parts" },
+        { date: "2026-06-23", item: "72", qty: 1, model: "16", storage: "N/A", condition: "Parts", carrier: "", unit_cost: "$110.00", seller: "Mike", notes: "Grade AB | Parts | Parts" },
+        { date: "2026-06-25", item: "73", qty: 1, model: "16 Pro", storage: "N/A", condition: "Parts", carrier: "", unit_cost: "$275.00", seller: "Facebook", notes: "Grade B | Parts | Parts" },
+        { date: "2026-06-25", item: "74", qty: 1, model: "16 Pro", storage: "N/A", condition: "Parts", carrier: "", unit_cost: "$275.00", seller: "Facebook", notes: "Grade B | Parts | Parts" },
+        { date: "2026-06-25", item: "75", qty: 1, model: "14 Pro Max", storage: "N/A", condition: "Parts", carrier: "", unit_cost: "$250.00", seller: "Facebook", notes: "Grade B | Parts | Parts" },
+        { date: "2026-06-26", item: "96", qty: 1, model: "16e", storage: "N/A", condition: "Parts", carrier: "", unit_cost: "$100.00", seller: "Instagram", notes: "Grade B | Parts | Parts" },
+        { date: "2026-06-26", item: "97", qty: 1, model: "14", storage: "N/A", condition: "Parts", carrier: "", unit_cost: "$75.00", seller: "Instagram", notes: "Grade B | Parts | Parts" },
+        { date: "2026-06-26", item: "98", qty: 1, model: "15 Pro Max", storage: "N/A", condition: "Parts", carrier: "", unit_cost: "$250.00", seller: "Facebook", notes: "Grade B | Parts | Parts" },
+      ],
+    },
+  ];
 }
 
 async function getMercuryPrices() {
