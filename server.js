@@ -1149,7 +1149,7 @@ function normalizeAtlasCondition(conditionType, label) {
 }
 
 function isAtlasModelRow(model) {
-  return /^(iPhone|iPad)\b/i.test(String(model || "")) && /\b(GB|TB)\b/i.test(model);
+  return /^(iPhone|iPad)\b/i.test(String(model || "")) && /\d+\s*(GB|TB)\b/i.test(model);
 }
 
 function parseDeviceModel(model) {
