@@ -1454,6 +1454,7 @@ function normalizeAtlasLookupCondition(condition, conditionType) {
 
 function normalizePhonePriceMatchText(value) {
   return normalizeMatchText(value)
+    .replace(/^google\s+/, "")
     .replace(/^galaxy\s+/, "")
     .replace(/^samsung\s+/, "")
     .replace(/^apple\s+/, "")
