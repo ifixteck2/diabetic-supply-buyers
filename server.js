@@ -1276,8 +1276,8 @@ async function backfillPhoneProjectedPrices() {
     const projected = findPhonePrice(correctedPurchase, correctedPurchase.buyer === "KT" ? ktRows : atlasRows, correctedPurchase.buyer);
     if (!projected) continue;
     await pool.query(
-      "update phone_purchases set projected_sell_each = $1, grade = $2 where id = $3",
-      [projected, correctedPurchase.grade, purchase.id]
+      "update phone_purchases set projected_sell_each = $1, grade = $2, carrier = $3 where id = $4",
+      [projected, correctedPurchase.grade, correctedPurchase.carrier, purchase.id]
     );
   }
 }
