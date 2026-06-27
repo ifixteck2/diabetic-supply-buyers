@@ -225,6 +225,26 @@ app.post("/api/phone-purchases", requirePhoneAuth, async (req, res) => {
   }
 });
 
+app.patch("/api/phone-purchases/:id/invoice-removal", requirePhoneAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  const remove = req.body?.remove !== false;
+  const reason = String(req.body?.reason || "Sold locally").trim();
+  if (!id) return res.status(400).json({ error: "Purchase ID is required." });
+  const result = await pool.query(
+    `update phone_purchases pp
+     set invoice_removed_at = case when $2 then now() else null end,
+       invoice_removed_reason = case when $2 then coalesce(nullif($3,''), 'Sold locally') else '' end
+     from phone_invoices pi
+     where pp.invoice_id = pi.id
+       and pp.id = $1
+       and pi.status = 'Pending'
+     returning pp.*`,
+    [id, remove, reason]
+  );
+  if (!result.rows[0]) return res.status(404).json({ error: "Pending invoice item not found." });
+  res.json({ ok: true, purchase: result.rows[0] });
+});
+
 app.get("/api/phone-invoices/:id/html", requirePhoneAuth, async (req, res) => {
   const id = Number(req.params.id);
   if (!id) return res.status(400).send("Invoice ID is required.");
@@ -820,6 +840,8 @@ async function migrate() {
       cost_each numeric(12,2) not null default 0,
       projected_sell_each numeric(12,2) not null default 0,
       notes text not null default '',
+      invoice_removed_at timestamptz,
+      invoice_removed_reason text not null default '',
       created_at timestamptz not null default now()
     );
   `);
@@ -842,6 +864,8 @@ async function migrate() {
     alter table invoices add column if not exists status_updated_at timestamptz not null default now();
     alter table purchase_items add column if not exists invoice_removed_at timestamptz;
     alter table purchase_items add column if not exists invoice_removed_reason text not null default '';
+    alter table phone_purchases add column if not exists invoice_removed_at timestamptz;
+    alter table phone_purchases add column if not exists invoice_removed_reason text not null default '';
     update invoices set status = 'Active' where status is null or status = '';
   `);
 
@@ -1017,6 +1041,7 @@ async function attachPhonePurchases(invoices) {
   const purchases = await pool.query(
     `select * from phone_purchases
      where invoice_id = any($1::int[])
+       and invoice_removed_at is null
      order by purchase_date desc, created_at desc`,
     [invoiceIds]
   );

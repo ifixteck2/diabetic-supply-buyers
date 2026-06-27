@@ -248,15 +248,21 @@ function renderPhoneInvoiceCard(invoice) {
   const purchases = invoice.purchases || [];
   const totalCost = purchases.reduce((sum, row) => sum + Number(row.quantity || 0) * Number(row.cost_each || 0), 0);
   const projected = purchases.reduce((sum, row) => sum + Number(row.quantity || 0) * Number(row.projected_sell_each || 0), 0);
+  const canRemove = invoice.status === "Pending";
   const rows = purchases.map((row) => `
-    <tr>
-      <td>${escapeHtml(row.model)}</td>
+    <tr class="phone-purchase-row">
+      <td class="phone-remove-cell">${canRemove ? `<input type="checkbox" aria-label="Remove ${escapeHtml(row.model)} from invoice" onchange="removePhonePurchaseFromInvoice(${row.id}, this)">` : ""}</td>
+      <td class="phone-device-cell">
+        <strong>${escapeHtml(row.model)}</strong>
+        <span>${escapeHtml(phoneInvoiceItemCondition(row))}</span>
+      </td>
       <td>${escapeHtml(row.carrier || "")}</td>
-      <td>${escapeHtml(row.condition_type === "New" ? row.packaging : row.grade)}</td>
       <td>${row.quantity}</td>
       <td>${money(row.cost_each)}</td>
-      <td>${money(Number(row.quantity || 0) * Number(row.cost_each || 0))}</td>
       <td>${money(row.projected_sell_each)}</td>
+      <td class="${profitClass(row)}">${money(profitEach(row))}</td>
+      <td class="${profitClass(row)}"><strong>${money(profitTotal(row))}</strong></td>
+      <td>${canRemove ? `<button class="mini-btn danger" onclick="removePhonePurchaseFromInvoice(${row.id})">Remove</button>` : ""}</td>
     </tr>
   `).join("");
   return `
@@ -269,9 +275,9 @@ function renderPhoneInvoiceCard(invoice) {
         <span class="pill ${invoice.status?.toLowerCase()}">${escapeHtml(invoice.status)}</span>
       </div>
       <div class="table-wrap">
-        <table>
-          <thead><tr><th>Model</th><th>Carrier</th><th>Condition</th><th>Qty</th><th>Cost Each</th><th>Total Cost</th><th>Projected Each</th></tr></thead>
-          <tbody>${rows || `<tr><td colspan="7">No purchases added.</td></tr>`}</tbody>
+        <table class="phone-profit-table">
+          <thead><tr><th></th><th>Device</th><th>Carrier</th><th>Qty</th><th>Cost Each</th><th>Sell Each</th><th>Profit Each</th><th>Total Profit</th><th></th></tr></thead>
+          <tbody>${rows || `<tr><td colspan="9">No purchases added.</td></tr>`}</tbody>
         </table>
       </div>
       <div class="sale-summary">
@@ -290,6 +296,23 @@ function renderPhoneInvoiceCard(invoice) {
   `;
 }
 
+function phoneInvoiceItemCondition(row) {
+  if (row.condition_type === "New") return row.packaging ? `NEW - ${row.packaging}` : "NEW";
+  return row.grade || "USED";
+}
+
+function profitEach(row) {
+  return Number(row.projected_sell_each || 0) - Number(row.cost_each || 0);
+}
+
+function profitTotal(row) {
+  return profitEach(row) * Number(row.quantity || 0);
+}
+
+function profitClass(row) {
+  return profitEach(row) >= 0 ? "profit-good" : "profit-bad";
+}
+
 window.setPhoneInvoiceStatus = async (id, nextStatus) => {
   const result = await api(`/api/phone-invoices/${id}/status`, {
     method: "PATCH",
@@ -297,6 +320,23 @@ window.setPhoneInvoiceStatus = async (id, nextStatus) => {
   });
   if (!result?.ok) return alert(result?.error || "Could not update invoice.");
   await loadPhoneInvoices();
+};
+
+window.removePhonePurchaseFromInvoice = async (id, checkbox) => {
+  if (!confirm("Remove this item from the pending invoice? It will stay saved as sold locally.")) {
+    if (checkbox) checkbox.checked = false;
+    return false;
+  }
+  const result = await api(`/api/phone-purchases/${id}/invoice-removal`, {
+    method: "PATCH",
+    body: { remove: true, reason: "Sold locally" },
+  });
+  if (!result?.ok) {
+    if (checkbox) checkbox.checked = false;
+    return alert(result?.error || "Could not remove this item from the invoice.");
+  }
+  await loadPhoneInvoices();
+  return true;
 };
 
 async function api(url, options = {}) {
