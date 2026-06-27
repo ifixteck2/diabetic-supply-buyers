@@ -117,6 +117,7 @@ app.post("/api/customers", requireAuth, async (req, res) => {
       location: input.location || "",
       source: input.source || "",
       notes: input.notes || "",
+      replace_notes: input.replace_notes !== false,
       crm_status: input.crm_status || "Customer",
       next_follow_up_at: input.next_follow_up_at || null,
     });
@@ -262,6 +263,7 @@ app.post("/api/purchases", requireAuth, async (req, res) => {
       location: customerInput.location || "",
       source: customerInput.source || "",
       notes: customerInput.notes || "",
+      replace_notes: false,
       crm_status: customerInput.crm_status || "Customer",
       next_follow_up_at: customerInput.next_follow_up_at || null,
     });
@@ -629,6 +631,7 @@ async function upsertCustomer(client, customer) {
        crm_status = coalesce(nullif(excluded.crm_status,''), customers.crm_status),
        next_follow_up_at = coalesce(excluded.next_follow_up_at, customers.next_follow_up_at),
        notes = case
+         when $10 then excluded.notes
          when excluded.notes = '' then customers.notes
          when customers.notes = '' then excluded.notes
          else customers.notes || E'\\n' || excluded.notes
@@ -645,6 +648,7 @@ async function upsertCustomer(client, customer) {
       customer.notes,
       customer.crm_status,
       customer.next_follow_up_at,
+      customer.replace_notes === true,
     ]
   );
   return result.rows[0];
