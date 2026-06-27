@@ -995,8 +995,34 @@ async function attachPhonePurchases(invoices) {
   );
   return invoices.map((invoice) => ({
     ...invoice,
-    purchases: purchases.rows.filter((purchase) => purchase.invoice_id === invoice.id),
+    purchases: sortPhonePurchases(purchases.rows.filter((purchase) => purchase.invoice_id === invoice.id)),
   }));
+}
+
+function sortPhonePurchases(purchases) {
+  return [...purchases].sort((a, b) => {
+    const aTablet = a.device_type === "Tablet" ? 1 : 0;
+    const bTablet = b.device_type === "Tablet" ? 1 : 0;
+    if (aTablet !== bTablet) return aTablet - bTablet;
+
+    const aCondition = phoneConditionRank(a);
+    const bCondition = phoneConditionRank(b);
+    if (aCondition !== bCondition) return aCondition - bCondition;
+
+    const modelCompare = String(a.model || "").localeCompare(String(b.model || ""), undefined, {
+      numeric: true,
+      sensitivity: "base",
+    });
+    if (modelCompare !== 0) return modelCompare;
+
+    return Number(a.id || 0) - Number(b.id || 0);
+  });
+}
+
+function phoneConditionRank(purchase) {
+  if (purchase.condition_type === "New") return 0;
+  if (purchase.condition_type === "Used") return 1;
+  return 2;
 }
 
 async function seedGoogleDrivePhoneInvoices() {
@@ -1114,7 +1140,9 @@ function findPhonePrice(purchase, priceRows, buyer) {
   );
   const modelText = normalizePhonePriceMatchText(parsed.baseModel || purchase.model);
   const storage = String(parsed.storage || "").toLowerCase();
-  const carrier = normalizeSeedCarrier(purchase.carrier);
+  const carrier = /ipad/i.test(purchase.model || "") && /wifi/i.test(purchase.model || "")
+    ? "WiFi"
+    : normalizeSeedCarrier(purchase.carrier);
   const candidates = priceRows.filter((row) => {
     if (buyer && row.buyer && row.buyer !== buyer) return false;
     if (row.device_type !== purchase.device_type) return false;
@@ -1123,6 +1151,7 @@ function findPhonePrice(purchase, priceRows, buyer) {
     if (storage && String(row.storage || "").toLowerCase() !== storage) return false;
     const rowModel = normalizePhonePriceMatchText(row.base_model || row.model);
     if (modelText && rowModel !== modelText) return false;
+    if (carrier === "WiFi") return row.carrier === "WiFi" || row.carrier === "Any";
     if (carrier === "Unlocked") return row.carrier === "Unlocked";
     if (carrier === "Carrier Locked") return row.carrier === "Carrier Locked";
     return true;
