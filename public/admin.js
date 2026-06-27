@@ -104,12 +104,13 @@ async function refreshAll() {
 }
 
 function openTab(name) {
-  const titles = { dashboard: "Dashboard", leads: "Leads", followups: "Follow Ups", purchase: "New Purchase", invoices: "Active Invoices", history: "Invoice History", customers: "Customers" };
+  const titles = { dashboard: "Dashboard", growth: "Growth CRM", leads: "Leads", followups: "Follow Ups", purchase: "New Purchase", invoices: "Active Invoices", history: "Invoice History", customers: "Customers" };
   document.querySelectorAll(".tab").forEach((button) => button.classList.toggle("active", button.dataset.tab === name));
   document.querySelectorAll(".tab-panel").forEach((panel) => panel.classList.add("hidden"));
   $(`${name}Tab`).classList.remove("hidden");
   $("pageTitle").textContent = titles[name] || "Admin";
   if (name === "invoices") loadBatches();
+  if (name === "growth") renderGrowthCrm();
   if (name === "history") {
     loadBatches().then(renderInvoiceHistory);
   }
@@ -459,6 +460,111 @@ function renderDashboard() {
   $("activeValue").textContent = money(allActive.reduce((sum, batch) => sum + Number(batch.total_paid || 0), 0));
   $("dashboardFollowups").innerHTML = followupsCache.slice(0, 4).map(renderCustomerRow).join("") || `<div class="empty">No follow ups due right now.</div>`;
   $("dashboardInvoices").innerHTML = allActive.slice(0, 5).map(renderBatchCard).join("") || `<div class="empty">No active invoices right now.</div>`;
+  renderGrowthCrm();
+}
+
+function renderGrowthCrm() {
+  if (!$("growthDueCount")) return;
+  const repeatCustomers = customersCache
+    .filter((customer) => Number(customer.invoice_count || 0) > 0)
+    .sort((a, b) => Number(b.total_paid || 0) - Number(a.total_paid || 0));
+  const sourceStats = buildSourceStats();
+  const bestSource = sourceStats[0]?.source || "N/A";
+  $("growthDueCount").textContent = followupsCache.length;
+  $("growthRepeatCount").textContent = repeatCustomers.length;
+  $("growthFacebookValue").textContent = money(sourceStats.filter((row) => /facebook|fb/i.test(row.source)).reduce((sum, row) => sum + row.totalPaid, 0));
+  $("growthInstagramValue").textContent = money(sourceStats.filter((row) => /instagram|ig/i.test(row.source)).reduce((sum, row) => sum + row.totalPaid, 0));
+  $("growthBestSource").textContent = bestSource;
+  $("growthFollowups").innerHTML = followupsCache.slice(0, 8).map(renderGrowthFollowupRow).join("") || `<div class="empty">No follow-ups due right now.</div>`;
+  renderGrowthSources(sourceStats);
+  $("growthRepeatTargets").innerHTML = repeatCustomers.slice(0, 8).map(renderRepeatTargetRow).join("") || `<div class="empty">No repeat sellers yet.</div>`;
+  renderGrowthTemplates();
+}
+
+function buildSourceStats() {
+  const groups = new Map();
+  for (const customer of customersCache) {
+    const source = normalizeSource(customer.source);
+    const current = groups.get(source) || { source, contacts: 0, customers: 0, totalPaid: 0, due: 0 };
+    current.contacts += 1;
+    current.customers += Number(customer.invoice_count || 0) > 0 ? 1 : 0;
+    current.totalPaid += Number(customer.total_paid || 0);
+    current.due += isDue(customer.next_follow_up_at) ? 1 : 0;
+    groups.set(source, current);
+  }
+  return Array.from(groups.values()).sort((a, b) => b.totalPaid - a.totalPaid || b.contacts - a.contacts);
+}
+
+function renderGrowthSources(rows) {
+  $("growthSources").innerHTML = `
+    <div class="table-wrap">
+      <table class="source-table">
+        <thead><tr><th>Source</th><th>Contacts</th><th>Customers</th><th>Due</th><th>Total Paid</th><th>Avg Customer</th></tr></thead>
+        <tbody>
+          ${rows.map((row) => `
+            <tr>
+              <td>${escapeHtml(row.source)}</td>
+              <td>${row.contacts}</td>
+              <td>${row.customers}</td>
+              <td>${row.due}</td>
+              <td>${money(row.totalPaid)}</td>
+              <td>${money(row.customers ? row.totalPaid / row.customers : 0)}</td>
+            </tr>
+          `).join("") || `<tr><td colspan="6">No source data yet. Add Facebook, Instagram, referral, or group names to customers.</td></tr>`}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderGrowthFollowupRow(customer) {
+  return `
+    <article class="customer-row">
+      <div>
+        <h3>${escapeHtml(customer.name || "No name yet")}</h3>
+        <p>${formatPhone(customer.phone)} - ${escapeHtml(normalizeSource(customer.source))}</p>
+        <p class="mini"><b>Last purchase:</b> ${formatDateOnly(customer.last_purchase_date)} <b>Total paid:</b> ${money(customer.total_paid)}</p>
+        ${customer.notes ? `<p class="mini">${escapeHtml(customer.notes)}</p>` : ""}
+      </div>
+      <div class="customer-meta">
+        <button class="mini-btn" onclick="copyCustomerMessage('${customer.phone}', 'followup')">Copy Message</button>
+        <button class="mini-btn" onclick="openCustomerManager('${customer.phone}')">History</button>
+        <button class="mini-btn" onclick="markFollowedUp(${customer.id})">Done</button>
+      </div>
+    </article>
+  `;
+}
+
+function renderRepeatTargetRow(customer) {
+  return `
+    <article class="customer-row">
+      <div>
+        <h3>${escapeHtml(customer.name || "No name yet")}</h3>
+        <p>${formatPhone(customer.phone)} - ${escapeHtml(normalizeSource(customer.source))}</p>
+        <p class="mini"><b>Purchases:</b> ${customer.invoice_count} <b>Total paid:</b> ${money(customer.total_paid)} <b>Last:</b> ${formatDateOnly(customer.last_purchase_date)}</p>
+      </div>
+      <div class="customer-meta">
+        <button class="mini-btn" onclick="copyCustomerMessage('${customer.phone}', 'repeat')">Copy Message</button>
+        <button class="mini-btn" onclick="openCustomerManager('${customer.phone}')">History</button>
+        <button class="mini-btn" onclick="editCustomerProfile('${customer.phone}')">Edit</button>
+      </div>
+    </article>
+  `;
+}
+
+function renderGrowthTemplates() {
+  const templates = [
+    { id: "followup", title: "28-Day Follow Up", text: "Hi {name}, this is Sell Diabetics. Just checking in to see if you have any diabetic supplies available this month. I’m buying Omnipods, Dexcom, Libre, and test strips. You can text me pictures and expiration dates anytime." },
+    { id: "lead", title: "New Ad Reply", text: "Hi {name}, thanks for reaching out. I buy sealed diabetic supplies like Omnipods, Dexcom G7, Libre sensors, and test strips. Send me a picture of what you have, the expiration date, and your city, and I’ll give you a fast quote." },
+    { id: "repeat", title: "Repeat Seller", text: "Hi {name}, hope you’re doing well. I’m still buying diabetic supplies and wanted to check if you have anything new available. I can usually give you a quote quickly if you send pictures and expiration dates." },
+  ];
+  $("growthTemplates").innerHTML = templates.map((template) => `
+    <article class="template-card">
+      <h3>${escapeHtml(template.title)}</h3>
+      <p>${escapeHtml(template.text.replace("{name}", "there"))}</p>
+      <button class="mini-btn" onclick="copyTextTemplate('${template.id}')">Copy</button>
+    </article>
+  `).join("");
 }
 
 function renderBatchCard(batch) {
@@ -1023,6 +1129,38 @@ window.markFollowedUp = async (id) => {
   renderDashboard();
 };
 
+window.copyCustomerMessage = async (phone, type = "followup") => {
+  const customer = customersCache.find((entry) => cleanPhone(entry.phone) === cleanPhone(phone))
+    || followupsCache.find((entry) => cleanPhone(entry.phone) === cleanPhone(phone));
+  const name = firstName(customer?.name);
+  const text = makeCustomerMessage(type, name);
+  await copyText(text);
+};
+
+window.copyTextTemplate = async (type) => {
+  await copyText(makeCustomerMessage(type, "there"));
+};
+
+function makeCustomerMessage(type, name) {
+  const who = name || "there";
+  if (type === "lead") {
+    return `Hi ${who}, thanks for reaching out. I buy sealed diabetic supplies like Omnipods, Dexcom G7, Libre sensors, and test strips. Send me a picture of what you have, the expiration date, and your city, and I’ll give you a fast quote.`;
+  }
+  if (type === "repeat") {
+    return `Hi ${who}, hope you’re doing well. I’m still buying diabetic supplies and wanted to check if you have anything new available. I can usually give you a quote quickly if you send pictures and expiration dates.`;
+  }
+  return `Hi ${who}, this is Sell Diabetics. Just checking in to see if you have any diabetic supplies available this month. I’m buying Omnipods, Dexcom, Libre, and test strips. You can text me pictures and expiration dates anytime.`;
+}
+
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    alert("Message copied.");
+  } catch {
+    prompt("Copy this message:", text);
+  }
+}
+
 async function handlePhotoInput(event) {
   const files = Array.from(event.target.files || []);
   for (const file of files) {
@@ -1201,6 +1339,34 @@ function escapeHtml(value) {
 
 function escapeAttr(value) {
   return escapeHtml(value).replace(/`/g, "&#096;");
+}
+
+function normalizeSource(value) {
+  const text = String(value || "").trim();
+  if (!text) return "Unknown";
+  if (/facebook|fb|marketplace/i.test(text)) return "Facebook";
+  if (/instagram|insta|ig/i.test(text)) return "Instagram";
+  if (/referral|referred|friend|family/i.test(text)) return "Referral";
+  return text;
+}
+
+function isDue(value) {
+  if (!value) return false;
+  const due = new Date(`${String(value).slice(0, 10)}T00:00:00`);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return due <= today;
+}
+
+function firstName(value) {
+  return String(value || "").trim().split(/\s+/)[0] || "there";
+}
+
+function formatDateOnly(value) {
+  if (!value) return "N/A";
+  const date = new Date(`${String(value).slice(0, 10)}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return "N/A";
+  return date.toLocaleDateString();
 }
 
 function formatDateTime(value) {

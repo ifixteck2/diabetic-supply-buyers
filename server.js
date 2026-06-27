@@ -67,7 +67,9 @@ app.get("/api/customers/lookup", requireAuth, async (req, res) => {
 
 app.get("/api/followups", requireAuth, async (req, res) => {
   const result = await pool.query(
-    `select c.*, count(i.id)::int as invoice_count, coalesce(sum(i.total_paid),0)::numeric as total_paid
+    `select c.*, count(i.id)::int as invoice_count, coalesce(sum(i.total_paid),0)::numeric as total_paid,
+      min(i.purchase_date) as first_purchase_date,
+      max(i.purchase_date) as last_purchase_date
      from customers c
      left join invoices i on i.customer_id = c.id
      where c.next_follow_up_at is not null and c.next_follow_up_at <= current_date
@@ -87,7 +89,9 @@ app.get("/api/customers", requireAuth, async (req, res) => {
     where = `where lower(c.name) like $1 or c.phone like $1 or lower(c.email) like $1 or lower(c.address) like $1 or lower(c.location) like $1 or lower(c.source) like $1 or lower(c.notes) like $1`;
   }
   const result = await pool.query(
-    `select c.*, count(i.id)::int as invoice_count, coalesce(sum(i.total_paid),0)::numeric as total_paid
+    `select c.*, count(i.id)::int as invoice_count, coalesce(sum(i.total_paid),0)::numeric as total_paid,
+      min(i.purchase_date) as first_purchase_date,
+      max(i.purchase_date) as last_purchase_date
      from customers c
      left join invoices i on i.customer_id = c.id
      ${where}

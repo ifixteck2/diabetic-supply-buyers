@@ -23,6 +23,7 @@
           <div class="brand admin-brand"><span class="mark">DSB</span><span>Admin Portal<small>Private records</small></span></div>
           <nav class="tabs" aria-label="Admin sections">
             <button class="tab active" data-tab="dashboard">Dashboard</button>
+            <button class="tab" data-tab="growth">Growth CRM</button>
             <button class="tab" data-tab="leads">Leads</button>
             <button class="tab" data-tab="followups">Follow Ups</button>
             <button class="tab" data-tab="purchase">New Purchase</button>
@@ -63,6 +64,41 @@
                 <button class="btn secondary" data-open-tab="invoices">View All</button>
               </div>
               <div id="dashboardInvoices" class="invoice-list"></div>
+            </section>
+          </section>
+
+          <section id="growthTab" class="tab-panel hidden">
+            <div class="stats">
+              <article class="stat"><span>Due today</span><strong id="growthDueCount">0</strong></article>
+              <article class="stat"><span>Repeat sellers</span><strong id="growthRepeatCount">0</strong></article>
+              <article class="stat"><span>Facebook value</span><strong id="growthFacebookValue">$0.00</strong></article>
+              <article class="stat"><span>Instagram value</span><strong id="growthInstagramValue">$0.00</strong></article>
+              <article class="stat"><span>Best source</span><strong id="growthBestSource">N/A</strong></article>
+            </div>
+            <section class="panel">
+              <div class="panel-head">
+                <div><h2>Today’s Outreach</h2><p>Customers who are due for a 28-day follow-up.</p></div>
+                <button class="btn secondary" data-open-tab="followups">Open Follow Ups</button>
+              </div>
+              <div id="growthFollowups" class="customer-list"></div>
+            </section>
+            <section class="panel">
+              <div class="panel-head">
+                <div><h2>Ad Source Performance</h2><p>Track where sellers are coming from and which ads produce paying customers.</p></div>
+              </div>
+              <div id="growthSources"></div>
+            </section>
+            <section class="panel">
+              <div class="panel-head">
+                <div><h2>Repeat Seller Targets</h2><p>High-value customers to keep warm between purchase cycles.</p></div>
+              </div>
+              <div id="growthRepeatTargets" class="customer-list"></div>
+            </section>
+            <section class="panel">
+              <div class="panel-head">
+                <div><h2>Message Templates</h2><p>Copy a quick message for Facebook, Instagram, or text follow-ups.</p></div>
+              </div>
+              <div id="growthTemplates" class="template-grid"></div>
             </section>
           </section>
 
