@@ -198,6 +198,33 @@
           </section>
 
           <section id="customersTab" class="tab-panel hidden">
+            <section id="customerEditPanel" class="panel hidden">
+              <div class="panel-head">
+                <div><h2>Edit Customer</h2><p>Customer details only.</p></div>
+                <button class="btn secondary" id="backFromEditCustomerBtn">Back To Customers</button>
+              </div>
+              <div id="customerEditSummary" class="customer-edit-summary"></div>
+              <div class="form-grid three">
+                <label>Phone<input id="editProfilePhone" placeholder="561-510-1236"></label>
+                <label>Name<input id="editProfileName" placeholder="Customer name"></label>
+                <label>Email<input id="editProfileEmail" placeholder="Optional"></label>
+              </div>
+              <div class="form-grid two">
+                <label>Home address<input id="editProfileAddress" placeholder="Street, city, state, ZIP"></label>
+                <label>Area / location notes<input id="editProfileLocation" placeholder="Where they live / pickup area"></label>
+              </div>
+              <div class="form-grid two">
+                <label>How you found them<input id="editProfileSource" placeholder="Facebook, referral, ad, repeat seller"></label>
+                <label>Next follow up<input id="editProfileFollowup" type="date"></label>
+              </div>
+              <label>Notes<input id="editProfileNotes" placeholder="Follow-up notes, preferences, reminders"></label>
+              <div class="actions">
+                <button class="btn" id="saveEditCustomerBtn">Save Customer</button>
+                <button class="btn secondary" id="viewEditCustomerHistoryBtn">View History</button>
+              </div>
+              <div id="editProfileStatus"></div>
+            </section>
+
             <section id="customerManagerPanel" class="panel hidden">
               <div class="panel-head">
                 <div><h2>Customer Manager</h2><p>Customer details, purchase history, prices, and product photos.</p></div>

@@ -15,6 +15,7 @@ let customersCache = [];
 let followupsCache = [];
 let managerPhone = "";
 let managerInvoicesCache = [];
+let editingCustomerPhone = "";
 let editItemsByPurchase = {};
 let mercuryPrices = [];
 
@@ -50,6 +51,11 @@ function bindEvents() {
   $("saveCustomerProfileBtn").onclick = saveCustomerProfile;
   $("clearCustomerProfileBtn").onclick = clearCustomerProfile;
   $("backToCustomersBtn").onclick = showCustomerList;
+  $("backFromEditCustomerBtn").onclick = showCustomerList;
+  $("saveEditCustomerBtn").onclick = saveEditCustomerProfile;
+  $("viewEditCustomerHistoryBtn").onclick = () => {
+    if (editingCustomerPhone) openCustomerManager(editingCustomerPhone);
+  };
   $("photoInput").onchange = handlePhotoInput;
   $("clearPhotosBtn").onclick = clearPhotos;
   $("invoiceFilter").onchange = loadBatches;
@@ -505,11 +511,12 @@ window.editCustomerProfile = async (phone) => {
   const result = await api(`/api/customers/lookup?phone=${cleanPhone(phone)}`);
   if (!result.customer) return;
   openTab("customers");
-  showCustomerList();
-  fillCustomerProfile(result.customer);
+  showCustomerEdit(result.customer);
 };
 
 function showCustomerList() {
+  editingCustomerPhone = "";
+  $("customerEditPanel").classList.add("hidden");
   $("customerManagerPanel").classList.add("hidden");
   $("customerProfilePanel").classList.remove("hidden");
   $("customerListPanel").classList.remove("hidden");
@@ -518,10 +525,20 @@ function showCustomerList() {
 function showCustomerManager(customer, invoices) {
   managerPhone = cleanPhone(customer.phone);
   managerInvoicesCache = invoices || [];
+  $("customerEditPanel").classList.add("hidden");
   $("customerProfilePanel").classList.add("hidden");
   $("customerListPanel").classList.add("hidden");
   $("customerManagerPanel").classList.remove("hidden");
   $("customerManager").innerHTML = renderCustomerManager(customer, invoices);
+}
+
+function showCustomerEdit(customer) {
+  editingCustomerPhone = cleanPhone(customer.phone);
+  $("customerManagerPanel").classList.add("hidden");
+  $("customerProfilePanel").classList.add("hidden");
+  $("customerListPanel").classList.add("hidden");
+  $("customerEditPanel").classList.remove("hidden");
+  fillEditCustomerProfile(customer);
 }
 
 function renderCustomerManager(customer, invoices) {
@@ -772,6 +789,27 @@ function fillCustomerProfile(customer) {
   $("profileNotes").value = customer.notes || "";
 }
 
+function fillEditCustomerProfile(customer) {
+  $("customerEditSummary").innerHTML = `
+    <article class="customer-row compact">
+      <div>
+        <h3>${escapeHtml(customer.name || "No name yet")}</h3>
+        <p>${formatPhone(customer.phone)} ${customer.email ? "- " + escapeHtml(customer.email) : ""}</p>
+        ${customer.next_follow_up_at ? `<p class="mini"><b>Follow up:</b> ${new Date(`${customer.next_follow_up_at}T00:00:00`).toLocaleDateString()}</p>` : ""}
+      </div>
+    </article>
+  `;
+  $("editProfilePhone").value = formatPhone(customer.phone);
+  $("editProfileName").value = customer.name || "";
+  $("editProfileEmail").value = customer.email || "";
+  $("editProfileAddress").value = customer.address || "";
+  $("editProfileLocation").value = customer.location || "";
+  $("editProfileSource").value = customer.source || "";
+  $("editProfileFollowup").value = customer.next_follow_up_at ? customer.next_follow_up_at.slice(0, 10) : "";
+  $("editProfileNotes").value = customer.notes || "";
+  status("editProfileStatus", "");
+}
+
 function clearCustomerProfile() {
   ["profilePhone", "profileName", "profileEmail", "profileAddress", "profileLocation", "profileSource", "profileFollowup", "profileNotes"].forEach((id) => ($(id).value = ""));
   status("profileStatus", "");
@@ -797,6 +835,31 @@ async function saveCustomerProfile() {
   if (!result?.ok) return status("profileStatus", result?.error || "Could not save customer.", "bad");
   fillCustomerProfile(result.customer);
   status("profileStatus", "Customer saved.");
+  await Promise.all([loadCustomers(), loadFollowups()]);
+  renderDashboard();
+}
+
+async function saveEditCustomerProfile() {
+  const phone = cleanPhone($("editProfilePhone").value);
+  if (phone.length !== 10) return status("editProfileStatus", "Customer phone is required.", "bad");
+  const result = await api("/api/customers", {
+    method: "POST",
+    body: {
+      phone,
+      name: $("editProfileName").value.trim(),
+      email: $("editProfileEmail").value.trim(),
+      address: $("editProfileAddress").value.trim(),
+      location: $("editProfileLocation").value.trim(),
+      source: $("editProfileSource").value.trim(),
+      notes: $("editProfileNotes").value.trim(),
+      crm_status: "Customer",
+      next_follow_up_at: $("editProfileFollowup").value || null,
+    },
+  });
+  if (!result?.ok) return status("editProfileStatus", result?.error || "Could not save customer.", "bad");
+  editingCustomerPhone = cleanPhone(result.customer.phone);
+  fillEditCustomerProfile(result.customer);
+  status("editProfileStatus", "Customer saved.");
   await Promise.all([loadCustomers(), loadFollowups()]);
   renderDashboard();
 }
