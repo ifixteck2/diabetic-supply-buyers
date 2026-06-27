@@ -24,3 +24,4 @@
 @media(max-width:900px){.proof-grid,.area-grid,.faq-grid{grid-template-columns:1fr}}
 @media(max-width:980px){.links{display:none!important}.buy-grid,.three-buy{grid-template-columns:minmax(0,1fr)}.buy-card{grid-template-columns:minmax(0,1fr)}.buy-card img{height:auto;max-height:340px}.collection-head{align-items:flex-start;flex-direction:column}}
 @media(max-width:760px){.quote-assistant{bottom:84px;left:14px;right:14px}.quote-fab{width:100%}.quote-chat{bottom:58px;max-width:none;right:0;width:100%}.qa-grid{grid-template-columns:1fr}}
+.nav-actions{align-items:center;display:flex;gap:10px}.lang-link{border:1px solid var(--l);border-radius:999px;color:var(--d);font-size:12px;font-weight:950;padding:10px 12px;text-transform:uppercase;white-space:nowrap}@media(max-width:760px){.nav-actions{margin-left:auto}.lang-link{padding:9px 10px}}
