@@ -988,24 +988,29 @@ function createBuyerInvoicePdf(batch, mercuryPrices = []) {
       const quantity = Number(item.quantity || 0);
       const lineTotal = unitPrice === null ? null : quantity * unitPrice;
       if (lineTotal !== null) mercuryTotal += lineTotal;
+      const description =
+        cleanMercuryProductName(product?.product) ||
+        cleanMercuryProductName([item.brand, item.model].filter(Boolean).join(" ")) ||
+        item.category ||
+        "Diabetic supply";
       const row = {
         quantity,
-        description: cleanMercuryProductName([item.brand, item.model].filter(Boolean).join(" ")) || item.category || "Diabetic supply",
+        description,
         condition: item.condition || "Sealed",
         expiration: formatExpiration(item.expiration),
         unitPrice,
         lineTotal,
       };
       const rowKey = [
-        normalizeMatchText(row.description),
+        product?.id || normalizeMatchText(row.description),
         row.condition.toLowerCase(),
-        row.expiration,
         unitPrice === null ? "" : unitPrice.toFixed(2),
       ].join("|");
       const existing = groupedRows.get(rowKey);
       if (existing) {
         existing.quantity += row.quantity;
         existing.lineTotal = existing.lineTotal === null || row.lineTotal === null ? null : existing.lineTotal + row.lineTotal;
+        if (existing.expiration !== row.expiration) existing.expiration = "Mixed";
       } else {
         groupedRows.set(rowKey, row);
       }
