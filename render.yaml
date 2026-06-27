@@ -16,3 +16,7 @@ services:
         sync: false
       - key: ADMIN_PASSWORD_HASH
         sync: false
+      - key: PHONE_ADMIN_USERNAME
+        sync: false
+      - key: PHONE_ADMIN_PASSWORD_HASH
+        sync: false

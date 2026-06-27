@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Phone Flipping Portal</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="admin-body phone-admin-body">
+  <main class="wrap admin-wrap">
+    <section id="phoneLogin" class="panel login-panel">
+      <div class="brand"><span class="mark phone-mark">PF</span><span>Phone Portal<small>KT and Atlas invoices</small></span></div>
+      <label>Username<input id="phoneUsername" autocomplete="username"></label>
+      <label>Password<input id="phonePassword" type="password" autocomplete="current-password"></label>
+      <label class="remember"><input id="phoneRemember" type="checkbox"> Remember this device</label>
+      <div class="actions"><button class="btn phone-btn" id="phoneLoginBtn">Log In</button></div>
+      <div id="phoneLoginMsg"></div>
+    </section>
+
+    <section id="phoneApp" class="hidden">
+      <div class="admin-shell">
+        <aside class="admin-side">
+          <div class="brand admin-brand"><span class="mark phone-mark">PF</span><span>Phone Portal<small>Private records</small></span></div>
+          <nav class="tabs" aria-label="Phone sections">
+            <button class="tab active phone-tab" data-phone-tab="purchase">Add Purchase</button>
+            <button class="tab phone-tab" data-phone-tab="atlasPending">Atlas Pending</button>
+            <button class="tab phone-tab" data-phone-tab="atlasPast">Atlas Past</button>
+            <button class="tab phone-tab" data-phone-tab="ktPending">KT Pending</button>
+            <button class="tab phone-tab" data-phone-tab="ktPast">KT Past</button>
+          </nav>
+          <button class="btn danger logout" id="phoneLogoutBtn">Log Out</button>
+        </aside>
+
+        <section class="admin-main">
+          <header class="admin-header">
+            <div>
+              <p class="eyebrow phone-eyebrow">Phone Flipping</p>
+              <h1 id="phonePageTitle">Add Purchase</h1>
+            </div>
+            <button class="btn secondary" id="phoneRefreshBtn">Refresh</button>
+          </header>
+
+          <section id="purchasePhoneTab" class="tab-panel">
+            <section class="panel">
+              <div class="panel-head">
+                <div><h2>Add Purchase</h2><p>Choose the buyer first, then follow the device flow.</p></div>
+                <button class="btn secondary" id="clearPhonePurchaseBtn">Clear</button>
+              </div>
+              <div class="form-grid three">
+                <label>Buyer<select id="phoneBuyer"><option>Atlas</option><option>KT</option></select></label>
+                <label>Add to invoice<select id="phoneInvoiceSelect"></select></label>
+                <label>New invoice name<input id="newPhoneInvoiceLabel" placeholder="Example: Atlas 06-27 phones"></label>
+              </div>
+              <div class="actions"><button class="btn secondary" id="createPhoneInvoiceBtn">Create Invoice</button></div>
+            </section>
+
+            <section class="panel">
+              <h2>Device Flow</h2>
+              <div class="form-grid three">
+                <label>Phone or Tablet<select id="deviceType"><option>Phone</option><option>Tablet</option></select></label>
+                <label>New or Used<select id="conditionType"><option>Used</option><option>New</option></select></label>
+                <label id="packagingWrap" class="hidden">Open or Sealed<select id="packaging"><option>Sealed</option><option>Open</option></select></label>
+                <label id="gradeWrap">Grade<select id="grade"><option>Grade A</option><option>Grade B</option><option>Grade C</option><option>Grade D</option></select></label>
+              </div>
+              <div class="form-grid three">
+                <label>Model<select id="phoneModel"></select></label>
+                <label>Carrier<select id="phoneCarrier"></select></label>
+                <label>Quantity<input id="phoneQuantity" type="number" min="1" value="1"></label>
+              </div>
+              <div class="form-grid three">
+                <label>Cost Each<input id="phoneCost" type="number" min="0" step="0.01"></label>
+                <label>Projected Sell Each<input id="phoneProjected" type="number" min="0" step="0.01"></label>
+                <label>Purchase Date<input id="phonePurchaseDate" type="date"></label>
+              </div>
+              <label>Notes<input id="phoneNotes" placeholder="IMEI notes, damage notes, payment details"></label>
+              <div id="phonePricePreview" class="price-box quote-only hidden"></div>
+              <div class="actions"><button class="btn phone-btn" id="savePhonePurchaseBtn">Add Purchase To Invoice</button></div>
+              <div id="phonePurchaseStatus"></div>
+            </section>
+          </section>
+
+          <section id="atlasPendingPhoneTab" class="tab-panel hidden">
+            <section class="panel"><div class="panel-head"><div><h2>Atlas Pending</h2><p>Open Atlas invoices.</p></div></div><div id="atlasPendingList" class="invoice-list"></div></section>
+          </section>
+          <section id="atlasPastPhoneTab" class="tab-panel hidden">
+            <section class="panel"><div class="panel-head"><div><h2>Atlas Past</h2><p>Sold, shipped, and closed Atlas invoices.</p></div></div><div id="atlasPastList" class="invoice-list"></div></section>
+          </section>
+          <section id="ktPendingPhoneTab" class="tab-panel hidden">
+            <section class="panel"><div class="panel-head"><div><h2>KT Pending</h2><p>Open KT invoices.</p></div></div><div id="ktPendingList" class="invoice-list"></div></section>
+          </section>
+          <section id="ktPastPhoneTab" class="tab-panel hidden">
+            <section class="panel"><div class="panel-head"><div><h2>KT Past</h2><p>Sold, shipped, and closed KT invoices.</p></div></div><div id="ktPastList" class="invoice-list"></div></section>
+          </section>
+        </section>
+      </div>
+    </section>
+  </main>
+  <script src="/phone-admin.js"></script>
+</body>
+</html>

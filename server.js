@@ -9,8 +9,11 @@ const isProduction = process.env.NODE_ENV === "production";
 const mercuryPriceSheetCsvUrl =
   process.env.MERCURY_PRICE_SHEET_CSV_URL ||
   "https://docs.google.com/spreadsheets/d/1mZAIHlWJcicbfResT2X9kyf7iUcXo_1q35jwjSyMk2o/export?format=csv&gid=2027163115";
+const atlasUsedSheetId = process.env.ATLAS_USED_SHEET_ID || "1pu4Adxq4MGB6Qour0k__4gBdgnggWRoSVYnJUKgxzEw";
+const atlasNewSheetId = process.env.ATLAS_NEW_SHEET_ID || "1f3b0rW1d5xTonDtkoPmLIAOjKc-CUF6clMBalPWyS80";
 const followupDaysAfterFirstPurchase = 28;
 let mercuryPriceCache = { fetchedAt: 0, rows: [] };
+let atlasPriceCache = { fetchedAt: 0, rows: [] };
 
 const requiredEnv = ["DATABASE_URL", "SESSION_SECRET", "ADMIN_USERNAME"];
 for (const key of requiredEnv) {
@@ -19,6 +22,10 @@ for (const key of requiredEnv) {
 
 if (!process.env.ADMIN_PASSWORD_HASH && !process.env.ADMIN_PASSWORD) {
   console.warn("Missing ADMIN_PASSWORD_HASH. ADMIN_PASSWORD fallback is also not set.");
+}
+
+if (!process.env.PHONE_ADMIN_USERNAME) {
+  console.warn("Missing PHONE_ADMIN_USERNAME. Phone portal login is disabled until this is set.");
 }
 
 const pool = new Pool({
@@ -52,6 +59,163 @@ app.post("/api/logout", (req, res) => {
 
 app.get("/api/me", requireAuth, (req, res) => {
   res.json({ ok: true, username: req.user.username });
+});
+
+app.post("/api/phone-login", async (req, res) => {
+  const { username, password, remember } = req.body || {};
+  const ok =
+    username === process.env.PHONE_ADMIN_USERNAME &&
+    (await verifyNamedPassword(String(password || ""), "PHONE_ADMIN"));
+
+  if (!ok) return res.status(401).json({ error: "Invalid phone portal login." });
+
+  const maxAgeSeconds = remember ? 60 * 60 * 24 * 30 : 60 * 60 * 8;
+  setNamedSessionCookie(res, "phone_session", username, maxAgeSeconds);
+  res.json({ ok: true, username, portal: "phone" });
+});
+
+app.post("/api/phone-logout", (req, res) => {
+  res.setHeader("Set-Cookie", makeCookie("phone_session", "", 0));
+  res.json({ ok: true });
+});
+
+app.get("/api/phone-me", requirePhoneAuth, (req, res) => {
+  res.json({ ok: true, username: req.user.username, portal: "phone" });
+});
+
+app.get("/api/phone-price-sheet", requirePhoneAuth, async (req, res) => {
+  try {
+    const rows = await getAtlasPrices();
+    res.json({ buyer: "Atlas", updated_at: atlasPriceCache.fetchedAt, rows });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Could not load Atlas price sheet." });
+  }
+});
+
+app.get("/api/phone-invoices", requirePhoneAuth, async (req, res) => {
+  const buyer = normalizeBuyer(req.query.buyer || "");
+  const status = String(req.query.status || "Pending").trim();
+  const params = [];
+  const where = [];
+  if (buyer) {
+    params.push(buyer);
+    where.push(`buyer = $${params.length}`);
+  }
+  if (status && status !== "All") {
+    if (status === "Past") {
+      where.push("status <> 'Pending'");
+    } else {
+      params.push(status);
+      where.push(`status = $${params.length}`);
+    }
+  }
+  const result = await pool.query(
+    `select * from phone_invoices
+     ${where.length ? `where ${where.join(" and ")}` : ""}
+     order by created_at desc
+     limit 200`,
+    params
+  );
+  const invoices = await attachPhonePurchases(result.rows);
+  res.json({ invoices });
+});
+
+app.post("/api/phone-invoices", requirePhoneAuth, async (req, res) => {
+  const buyer = normalizeBuyer(req.body?.buyer || "");
+  const label = String(req.body?.label || "").trim();
+  const notes = String(req.body?.notes || "").trim();
+  if (!buyer) return res.status(400).json({ error: "Choose KT or Atlas." });
+  const result = await pool.query(
+    `insert into phone_invoices (buyer, label, notes, status)
+     values ($1, $2, $3, 'Pending')
+     returning *`,
+    [buyer, label || defaultPhoneInvoiceLabel(buyer), notes]
+  );
+  res.json({ ok: true, invoice: result.rows[0] });
+});
+
+app.patch("/api/phone-invoices/:id/status", requirePhoneAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  const status = String(req.body?.status || "").trim();
+  const allowed = new Set(["Pending", "Sold", "Shipped", "Closed"]);
+  if (!id) return res.status(400).json({ error: "Invoice ID is required." });
+  if (!allowed.has(status)) return res.status(400).json({ error: "Choose Pending, Sold, Shipped, or Closed." });
+  const result = await pool.query(
+    `update phone_invoices
+     set status = $1,
+       status_updated_at = now(),
+       closed_at = case when $1 <> 'Pending' and closed_at is null then now() else closed_at end
+     where id = $2
+     returning *`,
+    [status, id]
+  );
+  if (!result.rows[0]) return res.status(404).json({ error: "Invoice not found." });
+  res.json({ ok: true, invoice: result.rows[0] });
+});
+
+app.post("/api/phone-purchases", requirePhoneAuth, async (req, res) => {
+  const input = req.body || {};
+  const buyer = normalizeBuyer(input.buyer || "");
+  const invoiceId = Number(input.invoice_id || 0) || null;
+  const quantity = Number(input.quantity || 0);
+  const costEach = Number(input.cost_each || 0);
+  const projectedSellEach = Number(input.projected_sell_each || 0);
+  if (!buyer) return res.status(400).json({ error: "Choose KT or Atlas." });
+  if (!quantity || quantity < 1) return res.status(400).json({ error: "Quantity must be at least 1." });
+  if (!String(input.model || "").trim()) return res.status(400).json({ error: "Choose a model." });
+
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    const invoice = invoiceId
+      ? await findPhoneInvoice(client, invoiceId, buyer)
+      : await getOrCreatePendingPhoneInvoice(client, buyer);
+    if (!invoice) {
+      await client.query("rollback");
+      return res.status(404).json({ error: "Pending invoice not found for that buyer." });
+    }
+    const purchase = await client.query(
+      `insert into phone_purchases
+       (invoice_id, buyer, purchase_date, device_type, condition_type, packaging, grade, model, carrier, quantity, cost_each, projected_sell_each, notes)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+       returning *`,
+      [
+        invoice.id,
+        buyer,
+        input.purchase_date || new Date().toISOString().slice(0, 10),
+        normalizeDeviceType(input.device_type || ""),
+        normalizeConditionType(input.condition_type || ""),
+        String(input.packaging || "").trim(),
+        String(input.grade || "").trim(),
+        String(input.model || "").trim(),
+        String(input.carrier || "").trim(),
+        quantity,
+        costEach,
+        projectedSellEach,
+        String(input.notes || "").trim(),
+      ]
+    );
+    await client.query("commit");
+    res.json({ ok: true, invoice, purchase: purchase.rows[0] });
+  } catch (error) {
+    await client.query("rollback");
+    console.error(error);
+    res.status(500).json({ error: "Could not save phone purchase." });
+  } finally {
+    client.release();
+  }
+});
+
+app.get("/api/phone-invoices/:id/html", requirePhoneAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!id) return res.status(400).send("Invoice ID is required.");
+  const result = await pool.query("select * from phone_invoices where id = $1", [id]);
+  const invoices = await attachPhonePurchases(result.rows);
+  const invoice = invoices[0];
+  if (!invoice) return res.status(404).send("Invoice not found.");
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.send(createPhoneInvoiceHtml(invoice));
 });
 
 app.get("/api/customers/lookup", requireAuth, async (req, res) => {
@@ -586,6 +750,35 @@ async function migrate() {
       notes text not null default '',
       created_at timestamptz not null default now()
     );
+
+    create table if not exists phone_invoices (
+      id serial primary key,
+      buyer text not null,
+      label text not null default '',
+      notes text not null default '',
+      status text not null default 'Pending',
+      status_updated_at timestamptz not null default now(),
+      closed_at timestamptz,
+      created_at timestamptz not null default now()
+    );
+
+    create table if not exists phone_purchases (
+      id serial primary key,
+      invoice_id integer not null references phone_invoices(id) on delete cascade,
+      buyer text not null,
+      purchase_date date not null default current_date,
+      device_type text not null default 'Phone',
+      condition_type text not null default 'Used',
+      packaging text not null default '',
+      grade text not null default '',
+      model text not null default '',
+      carrier text not null default '',
+      quantity integer not null default 1,
+      cost_each numeric(12,2) not null default 0,
+      projected_sell_each numeric(12,2) not null default 0,
+      notes text not null default '',
+      created_at timestamptz not null default now()
+    );
   `);
 
   await pool.query(`
@@ -662,6 +855,29 @@ async function findCustomerByPhone(phone) {
 async function findBatch(client, batchId) {
   const result = await client.query("select * from invoice_batches where id = $1", [batchId]);
   return result.rows[0] || null;
+}
+
+async function findPhoneInvoice(client, invoiceId, buyer) {
+  const result = await client.query(
+    "select * from phone_invoices where id = $1 and buyer = $2 and status = 'Pending'",
+    [invoiceId, buyer]
+  );
+  return result.rows[0] || null;
+}
+
+async function getOrCreatePendingPhoneInvoice(client, buyer) {
+  const existing = await client.query(
+    "select * from phone_invoices where buyer = $1 and status = 'Pending' order by created_at desc limit 1",
+    [buyer]
+  );
+  if (existing.rows[0]) return existing.rows[0];
+  const created = await client.query(
+    `insert into phone_invoices (buyer, label, status)
+     values ($1, $2, 'Pending')
+     returning *`,
+    [buyer, defaultPhoneInvoiceLabel(buyer)]
+  );
+  return created.rows[0];
 }
 
 async function getOrCreateActiveBatch(client) {
@@ -747,6 +963,21 @@ async function attachItems(invoices) {
     ...invoice,
     items: items.rows.filter((item) => item.invoice_id === invoice.id),
     photos: photos.rows.filter((photo) => photo.invoice_id === invoice.id),
+  }));
+}
+
+async function attachPhonePurchases(invoices) {
+  const invoiceIds = invoices.map((invoice) => invoice.id);
+  if (!invoiceIds.length) return [];
+  const purchases = await pool.query(
+    `select * from phone_purchases
+     where invoice_id = any($1::int[])
+     order by purchase_date desc, created_at desc`,
+    [invoiceIds]
+  );
+  return invoices.map((invoice) => ({
+    ...invoice,
+    purchases: purchases.rows.filter((purchase) => purchase.invoice_id === invoice.id),
   }));
 }
 
@@ -842,6 +1073,100 @@ function parseCsv(csv) {
   return rows;
 }
 
+async function getAtlasPrices() {
+  const cacheMs = 1000 * 60 * 10;
+  if (atlasPriceCache.rows.length && Date.now() - atlasPriceCache.fetchedAt < cacheMs) {
+    return atlasPriceCache.rows;
+  }
+  const sources = [
+    { sheetId: atlasUsedSheetId, sheet: "iPhone Used", deviceType: "Phone", conditionType: "Used" },
+    { sheetId: atlasUsedSheetId, sheet: "iPad Used", deviceType: "Tablet", conditionType: "Used" },
+    { sheetId: atlasNewSheetId, sheet: "New in Box", deviceType: "Phone", conditionType: "New" },
+  ];
+  const groups = await Promise.all(sources.map(async (source) => {
+    const url = `https://docs.google.com/spreadsheets/d/${source.sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(source.sheet)}`;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`${source.sheet} returned ${response.status}`);
+    return parseAtlasPriceCsv(await response.text(), source);
+  }));
+  atlasPriceCache = { fetchedAt: Date.now(), rows: groups.flat() };
+  return atlasPriceCache.rows;
+}
+
+function parseAtlasPriceCsv(csv, source) {
+  const table = parseCsv(csv);
+  const rows = [];
+  let headers = [];
+  for (const row of table) {
+    const firstModel = String(row[1] || "").trim();
+    const mirroredModel = String(row[8] || "").trim();
+    const model = firstModel || mirroredModel;
+    if (/^Model$/i.test(model)) {
+      headers = row.slice(2, 8).map((cell, index) => String(cell || "").trim() || defaultAtlasHeader(source, index));
+      continue;
+    }
+    const prices = row.slice(2, 8).map((cell, index) => ({
+      label: headers[index] || defaultAtlasHeader(source, index),
+      price: parseMoney(cell),
+      raw: String(cell || "").trim(),
+    })).filter((entry) => entry.price !== null);
+    if (!isAtlasModelRow(model) || !prices.length) continue;
+    const parsed = parseDeviceModel(model);
+    for (const price of prices) {
+      rows.push({
+        id: makePriceKey(`${source.sheet}-${model}-${price.label}`),
+        buyer: "Atlas",
+        source_sheet: source.sheet,
+        device_type: parsed.deviceType || source.deviceType,
+        condition_type: source.conditionType,
+        condition: normalizeAtlasCondition(source.conditionType, price.label),
+        model,
+        base_model: parsed.baseModel,
+        storage: parsed.storage,
+        carrier: parsed.carrier,
+        price: price.price,
+      });
+    }
+  }
+  return rows;
+}
+
+function defaultAtlasHeader(source, index) {
+  if (source.conditionType === "New") return ["Sealed", "Open", "HSO", "Grade A", "Grade B", "DOA"][index] || `Price ${index + 1}`;
+  return ["Grade A", "Grade B", "Grade C", "Grade D", "DOA", "Parts"][index] || `Price ${index + 1}`;
+}
+
+function normalizeAtlasCondition(conditionType, label) {
+  const text = String(label || "").trim();
+  if (conditionType === "New") {
+    if (/open|hso|swap/i.test(text)) return "Open";
+    if (/sealed|new|nib/i.test(text)) return "Sealed";
+    return text || "Sealed";
+  }
+  const grade = text.match(/Grade\s*([ABCD])/i);
+  if (grade) return `Grade ${grade[1].toUpperCase()}`;
+  return text || "Grade A";
+}
+
+function isAtlasModelRow(model) {
+  return /^(iPhone|iPad)\b/i.test(String(model || "")) && /\b(GB|TB)\b/i.test(model);
+}
+
+function parseDeviceModel(model) {
+  const text = String(model || "").trim();
+  const deviceType = /^iPad/i.test(text) ? "Tablet" : /^iPhone/i.test(text) ? "Phone" : "";
+  const carrierMatch = text.match(/\b(Unlocked|Carrier Locked|AT&T \(Clean\)|AT&T|T-Mobile|Verizon|Cricket|Metro|Spectrum|Xfinity|US Cellular|Boost)\b/i);
+  const carrier = carrierMatch ? carrierMatch[0] : "";
+  const storageMatch = text.match(/\b\d+\s*(?:GB|TB)\b/i);
+  const storage = storageMatch ? storageMatch[0].replace(/\s+/g, "") : "";
+  const baseModel = text
+    .replace(/\b\d+\s*(?:GB|TB)\b/i, "")
+    .replace(/\b(Unlocked|Carrier Locked|AT&T \(Clean\)|AT&T|T-Mobile|Verizon|Cricket|Metro|Spectrum|Xfinity|US Cellular|Boost)\b/ig, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return { deviceType, baseModel, storage, carrier };
+}
+
 function parseMoney(value) {
   const text = String(value || "").replace(/[$,\s]/g, "");
   if (!/^\d+(\.\d+)?$/.test(text)) return null;
@@ -876,14 +1201,25 @@ function requireAuth(req, res, next) {
   next();
 }
 
+function requirePhoneAuth(req, res, next) {
+  const session = parseNamedSession(req, "phone_session");
+  if (!session) return res.status(401).json({ error: "Phone portal login required." });
+  req.user = session;
+  next();
+}
+
 function parseSession(req) {
+  return parseNamedSession(req, "dsb_session");
+}
+
+function parseNamedSession(req, cookieName) {
   const cookies = Object.fromEntries(
     String(req.headers.cookie || "")
       .split(";")
       .map((part) => part.trim().split("="))
       .filter((pair) => pair.length === 2)
   );
-  const token = cookies.dsb_session;
+  const token = cookies[cookieName];
   if (!token) return null;
 
   const [payloadB64, sig] = token.split(".");
@@ -901,12 +1237,16 @@ function parseSession(req) {
 }
 
 function setSessionCookie(res, username, maxAgeSeconds) {
+  setNamedSessionCookie(res, "dsb_session", username, maxAgeSeconds);
+}
+
+function setNamedSessionCookie(res, cookieName, username, maxAgeSeconds) {
   const payload = Buffer.from(
     JSON.stringify({ username, exp: Date.now() + maxAgeSeconds * 1000 })
   ).toString("base64url");
   res.setHeader(
     "Set-Cookie",
-    makeCookie("dsb_session", `${payload}.${sign(payload)}`, maxAgeSeconds)
+    makeCookie(cookieName, `${payload}.${sign(payload)}`, maxAgeSeconds)
   );
 }
 
@@ -929,6 +1269,13 @@ async function verifyPassword(password) {
   return password === process.env.ADMIN_PASSWORD;
 }
 
+async function verifyNamedPassword(password, prefix) {
+  const hash = process.env[`${prefix}_PASSWORD_HASH`];
+  const plain = process.env[`${prefix}_PASSWORD`];
+  if (hash) return verifyScrypt(password, hash);
+  return Boolean(plain) && password === plain;
+}
+
 function verifyScrypt(password, stored) {
   const [scheme, salt, hash] = String(stored).split("$");
   if (scheme !== "scrypt" || !salt || !hash) return false;
@@ -944,6 +1291,67 @@ function addDays(dateValue, days) {
   const date = new Date(`${dateValue}T00:00:00`);
   date.setDate(date.getDate() + days);
   return date.toISOString().slice(0, 10);
+}
+
+function normalizeBuyer(value) {
+  const text = String(value || "").trim().toLowerCase();
+  if (text === "kt") return "KT";
+  if (text === "atlas") return "Atlas";
+  return "";
+}
+
+function normalizeDeviceType(value) {
+  return /^tablet$/i.test(String(value || "")) ? "Tablet" : "Phone";
+}
+
+function normalizeConditionType(value) {
+  return /^new$/i.test(String(value || "")) ? "New" : "Used";
+}
+
+function defaultPhoneInvoiceLabel(buyer) {
+  const stamp = new Date().toISOString().slice(0, 10);
+  return `${buyer} Phone Invoice ${stamp}`;
+}
+
+function createPhoneInvoiceHtml(invoice) {
+  const purchases = invoice.purchases || [];
+  const totalCost = purchases.reduce((sum, row) => sum + Number(row.quantity || 0) * Number(row.cost_each || 0), 0);
+  const totalProjected = purchases.reduce((sum, row) => sum + Number(row.quantity || 0) * Number(row.projected_sell_each || 0), 0);
+  const rows = purchases.map((row) => `
+    <tr>
+      <td>${escapeHtml(row.model)}</td>
+      <td>${escapeHtml(row.carrier || "")}</td>
+      <td>${escapeHtml(row.condition_type === "New" ? row.packaging : row.grade)}</td>
+      <td>${Number(row.quantity || 0)}</td>
+      <td>${moneyText(row.cost_each)}</td>
+      <td>${moneyText(Number(row.cost_each || 0) * Number(row.quantity || 0))}</td>
+      <td>${moneyText(row.projected_sell_each)}</td>
+      <td>${moneyText(Number(row.projected_sell_each || 0) * Number(row.quantity || 0))}</td>
+    </tr>
+  `).join("");
+  return `<!doctype html>
+<html><head><meta charset="utf-8"><title>${escapeHtml(invoice.label)}</title>
+<style>
+body{font-family:Arial,Helvetica,sans-serif;color:#111;margin:36px}header{display:flex;justify-content:space-between;gap:20px;border-bottom:2px solid #111;padding-bottom:18px;margin-bottom:24px}h1{font-size:28px;margin:0;text-transform:uppercase}.meta{text-align:right;color:#444}table{border-collapse:collapse;width:100%}th,td{border-bottom:1px solid #ddd;padding:10px;text-align:left}th{background:#f3f3f3;text-transform:uppercase;font-size:12px}.totals{display:grid;gap:10px;grid-template-columns:repeat(3,1fr);margin-top:22px}.box{border:1px solid #ddd;padding:14px}.box span{color:#555;display:block;font-size:12px;text-transform:uppercase}.box strong{font-size:22px}@media print{button{display:none}body{margin:18px}}
+</style></head><body>
+<button onclick="window.print()">Print / Save PDF</button>
+<header><div><h1>${escapeHtml(invoice.label || "Phone Invoice")}</h1><p>${escapeHtml(invoice.buyer)} invoice</p></div><div class="meta">Invoice #${invoice.id}<br>${new Date(invoice.created_at).toLocaleDateString("en-US")}<br>${escapeHtml(invoice.status)}</div></header>
+<table><thead><tr><th>Model</th><th>Carrier</th><th>Condition</th><th>Qty</th><th>Cost Each</th><th>Cost Total</th><th>Projected Each</th><th>Projected Total</th></tr></thead><tbody>${rows || `<tr><td colspan="8">No purchases added.</td></tr>`}</tbody></table>
+<section class="totals"><div class="box"><span>Total Cost</span><strong>${moneyText(totalCost)}</strong></div><div class="box"><span>Projected Sale</span><strong>${moneyText(totalProjected)}</strong></div><div class="box"><span>Projected Profit</span><strong>${moneyText(totalProjected - totalCost)}</strong></div></section>
+</body></html>`;
+}
+
+function moneyText(value) {
+  return Number(value || 0).toLocaleString("en-US", { style: "currency", currency: "USD" });
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }
 
 function findMercuryProductForItem(item, mercuryPrices) {
