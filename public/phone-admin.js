@@ -145,7 +145,8 @@ function renderCarrierOptions() {
 }
 
 function selectedCondition() {
-  return $("conditionType").value === "New" ? $("packaging").value : $("grade").value;
+  if ($("conditionType").value !== "New") return $("grade").value;
+  return $("packaging").value === "Sealed" ? "NEW" : $("packaging").value;
 }
 
 function updateProjectedPrice() {

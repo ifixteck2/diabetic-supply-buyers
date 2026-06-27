@@ -39,6 +39,7 @@ app.use(express.static("public", { extensions: ["html"] }));
 
 await migrate();
 await seedGoogleDrivePhoneInvoices();
+await backfillPhoneProjectedPrices();
 
 app.post("/api/login", async (req, res) => {
   const { username, password, remember } = req.body || {};
@@ -1089,7 +1090,10 @@ function parseSeedMoney(value) {
 
 function findAtlasSeedPrice(purchase, atlasRows) {
   const parsed = parseDeviceModel(purchase.model);
-  const wantedCondition = purchase.condition_type === "New" ? purchase.packaging : purchase.grade;
+  const wantedCondition = normalizeAtlasLookupCondition(
+    purchase.condition_type === "New" ? purchase.packaging : purchase.grade,
+    purchase.condition_type
+  );
   const modelText = normalizeMatchText(parsed.baseModel || purchase.model);
   const storage = String(parsed.storage || "").toLowerCase();
   const carrier = normalizeSeedCarrier(purchase.carrier);
@@ -1105,6 +1109,30 @@ function findAtlasSeedPrice(purchase, atlasRows) {
     return true;
   });
   return Number(candidates[0]?.price || 0);
+}
+
+async function backfillPhoneProjectedPrices() {
+  let atlasRows = [];
+  try {
+    atlasRows = await getAtlasPrices();
+  } catch (error) {
+    console.warn("Could not load Atlas prices for phone projected price backfill.", error.message);
+    return;
+  }
+  const result = await pool.query(
+    `select * from phone_purchases
+     where projected_sell_each = 0
+     order by id asc
+     limit 500`
+  );
+  for (const purchase of result.rows) {
+    const projected = findAtlasSeedPrice(purchase, atlasRows);
+    if (!projected) continue;
+    await pool.query(
+      "update phone_purchases set projected_sell_each = $1 where id = $2",
+      [projected, purchase.id]
+    );
+  }
 }
 
 function getPhoneInvoiceSeeds() {
@@ -1313,7 +1341,7 @@ function parseAtlasPriceCsv(csv, source) {
 }
 
 function defaultAtlasHeader(source, index) {
-  if (source.conditionType === "New") return ["Sealed", "Open", "HSO", "Grade A", "Grade B", "DOA"][index] || `Price ${index + 1}`;
+  if (source.conditionType === "New") return ["NEW", "Open", "HSO", "Grade A", "Grade B", "DOA"][index] || `Price ${index + 1}`;
   return ["Grade A", "Grade B", "Grade C", "Grade D", "DOA", "Parts"][index] || `Price ${index + 1}`;
 }
 
@@ -1321,12 +1349,18 @@ function normalizeAtlasCondition(conditionType, label) {
   const text = String(label || "").trim();
   if (conditionType === "New") {
     if (/open|hso|swap/i.test(text)) return "Open";
-    if (/sealed|new|nib/i.test(text)) return "Sealed";
-    return text || "Sealed";
+    if (/sealed|new|nib/i.test(text)) return "NEW";
+    return text || "NEW";
   }
   const grade = text.match(/Grade\s*([ABCD])/i);
   if (grade) return `Grade ${grade[1].toUpperCase()}`;
   return text || "Grade A";
+}
+
+function normalizeAtlasLookupCondition(condition, conditionType) {
+  const text = String(condition || "").trim();
+  if (conditionType === "New" && /sealed|new|nib/i.test(text)) return "NEW";
+  return text;
 }
 
 function isAtlasModelRow(model) {
