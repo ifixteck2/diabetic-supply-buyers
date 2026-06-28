@@ -24,6 +24,7 @@
           <nav class="tabs" aria-label="Phone sections">
             <button class="tab phone-tab" data-phone-tab="dashboard">Dashboard</button>
             <button class="tab active phone-tab" data-phone-tab="purchase">Add Purchase</button>
+            <button class="tab phone-tab" data-phone-tab="priceChecker">Price Checker</button>
             <button class="tab phone-tab" data-phone-tab="atlasPending">Atlas Pending</button>
             <button class="tab phone-tab" data-phone-tab="atlasPast">Atlas Past</button>
             <button class="tab phone-tab" data-phone-tab="ktPending">KT Pending</button>
@@ -77,6 +78,27 @@
               <div id="phonePricePreview" class="price-box quote-only hidden"></div>
               <div class="actions"><button class="btn phone-btn" id="savePhonePurchaseBtn">Add Purchase To Invoice</button></div>
               <div id="phonePurchaseStatus"></div>
+            </section>
+          </section>
+
+          <section id="priceCheckerPhoneTab" class="tab-panel hidden">
+            <section class="panel">
+              <div class="panel-head">
+                <div><h2>Price Checker</h2><p>Check KT and Atlas instantly from the current price sheets.</p></div>
+                <button class="btn secondary" id="refreshPriceCheckerBtn">Refresh Prices</button>
+              </div>
+              <div class="form-grid three">
+                <label>Phone or Tablet<select id="checkerDeviceType"><option>Phone</option><option>Tablet</option></select></label>
+                <label>New or Used<select id="checkerConditionType"><option>Used</option><option>New</option></select></label>
+                <label id="checkerPackagingWrap" class="hidden">Open or Sealed<select id="checkerPackaging"><option>Sealed</option><option>Open</option></select></label>
+                <label id="checkerGradeWrap">Grade<select id="checkerGrade"><option>Grade A</option><option>Grade B</option><option>Grade C</option><option>Grade D</option><option>Parts</option></select></label>
+              </div>
+              <div class="form-grid three">
+                <label>Model<select id="checkerModel"></select></label>
+                <label>Carrier<select id="checkerCarrier"></select></label>
+                <label>Quantity<input id="checkerQuantity" type="number" min="1" value="1"></label>
+              </div>
+              <div id="priceCheckerResults" class="price-check-grid"></div>
             </section>
           </section>
 

@@ -42,6 +42,7 @@ app.use(express.static("public", { extensions: ["html"] }));
 await migrate();
 await seedGoogleDrivePhoneInvoices();
 await backfillPhoneProjectedPrices();
+startAtlasDailyRefreshJob();
 
 app.post("/api/login", async (req, res) => {
   const { username, password, remember } = req.body || {};
@@ -1294,9 +1295,11 @@ async function backfillPhoneProjectedPrices() {
   }
   const result = await pool.query(
     `select * from phone_purchases
-     where projected_sell_each = 0 or notes like '%Item #%' or buyer = 'KT'
+     where projected_sell_each = 0
+       or notes like '%Item #%'
+       or buyer in ('KT', 'Atlas')
      order by id asc
-     limit 500`
+     limit 5000`
   );
   for (const purchase of result.rows) {
     const correctedPurchase = correctAtlasImportedPurchase(purchase);
@@ -1308,6 +1311,34 @@ async function backfillPhoneProjectedPrices() {
       [projected, correctedPurchase.grade, correctedPurchase.carrier, purchase.id]
     );
   }
+}
+
+function startAtlasDailyRefreshJob() {
+  let lastRunDate = "";
+  setInterval(async () => {
+    const parts = Object.fromEntries(
+      new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/New_York",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      }).formatToParts(new Date()).map((part) => [part.type, part.value])
+    );
+    const today = `${parts.year}-${parts.month}-${parts.day}`;
+    if (parts.hour !== "13" || Number(parts.minute) > 5 || lastRunDate === today) return;
+    lastRunDate = today;
+    try {
+      atlasPriceCache = { fetchedAt: 0, rows: [] };
+      await getAtlasPrices();
+      await backfillPhoneProjectedPrices();
+      console.log("Daily Atlas phone prices refreshed and invoices recalculated.");
+    } catch (error) {
+      console.error("Daily Atlas phone price refresh failed.", error);
+    }
+  }, 60 * 1000);
 }
 
 function phoneLookupGrade(purchase, buyer) {
@@ -1706,7 +1737,7 @@ function normalizeAtlasLookupCondition(condition, conditionType) {
 }
 
 function normalizePhonePriceMatchText(value) {
-  return normalizeMatchText(value)
+  return normalizeMatchText(String(value || "").replace(/\+/g, " plus "))
     .replace(/^google\s+/, "")
     .replace(/^galaxy\s+/, "")
     .replace(/^samsung\s+/, "")

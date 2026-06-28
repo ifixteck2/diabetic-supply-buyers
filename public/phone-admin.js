@@ -26,8 +26,13 @@ function bindPhoneEvents() {
   $("createPhoneInvoiceBtn").onclick = createPhoneInvoice;
   $("savePhonePurchaseBtn").onclick = savePhonePurchase;
   $("clearPhonePurchaseBtn").onclick = resetPhonePurchase;
+  $("refreshPriceCheckerBtn").onclick = refreshPhonePortal;
   ["phoneBuyer", "deviceType", "conditionType", "packaging", "grade", "phoneModel", "phoneCarrier"].forEach((id) => {
     $(id).addEventListener("change", handleFlowChange);
+  });
+  ["checkerDeviceType", "checkerConditionType", "checkerPackaging", "checkerGrade", "checkerModel", "checkerCarrier", "checkerQuantity"].forEach((id) => {
+    $(id).addEventListener("change", handlePriceCheckerChange);
+    if (id === "checkerQuantity") $(id).addEventListener("input", renderPriceCheckerResults);
   });
   document.querySelectorAll("[data-phone-tab]").forEach((button) => {
     button.onclick = () => openPhoneTab(button.dataset.phoneTab);
@@ -69,6 +74,7 @@ async function loadAtlasPrices() {
   renderModelOptions();
   renderCarrierOptions();
   updateProjectedPrice();
+  renderPriceCheckerOptions();
 }
 
 async function loadPhoneInvoices() {
@@ -83,6 +89,7 @@ function openPhoneTab(name) {
   const titles = {
     dashboard: "Dashboard",
     purchase: "Add Purchase",
+    priceChecker: "Price Checker",
     atlasPending: "Atlas Pending",
     atlasPast: "Atlas Past",
     ktPending: "KT Pending",
@@ -93,6 +100,17 @@ function openPhoneTab(name) {
   $(`${name}PhoneTab`).classList.remove("hidden");
   $("phonePageTitle").textContent = titles[name] || "Phone Portal";
   renderInvoiceLists();
+}
+
+function handlePriceCheckerChange(event) {
+  if (event.target.id === "checkerConditionType" || event.target.id === "checkerDeviceType") {
+    toggleCheckerConditionFields();
+    renderPriceCheckerModels();
+  }
+  if (event.target.id === "checkerModel" || event.target.id === "checkerConditionType" || event.target.id === "checkerDeviceType") {
+    renderPriceCheckerCarriers();
+  }
+  renderPriceCheckerResults();
 }
 
 function handleFlowChange(event) {
@@ -158,6 +176,74 @@ function pricingCondition() {
     return "Grade A";
   }
   return condition;
+}
+
+function checkerRows() {
+  return atlasPrices.filter((row) => row.device_type === $("checkerDeviceType").value && row.condition_type === $("checkerConditionType").value);
+}
+
+function checkerConditionForBuyer(buyer) {
+  if ($("checkerConditionType").value === "New") return $("checkerPackaging").value === "Sealed" ? "NEW" : $("checkerPackaging").value;
+  const grade = $("checkerGrade").value;
+  return buyer === "Atlas" && grade !== "Parts" ? "Grade A" : grade;
+}
+
+function renderPriceCheckerOptions() {
+  toggleCheckerConditionFields();
+  renderPriceCheckerModels();
+  renderPriceCheckerCarriers();
+  renderPriceCheckerResults();
+}
+
+function toggleCheckerConditionFields() {
+  const isNew = $("checkerConditionType").value === "New";
+  $("checkerPackagingWrap").classList.toggle("hidden", !isNew);
+  $("checkerGradeWrap").classList.toggle("hidden", isNew);
+}
+
+function renderPriceCheckerModels() {
+  const previous = $("checkerModel").value;
+  const models = [...new Set(checkerRows().map(modelKey).filter(Boolean))]
+    .sort((a, b) => modelSortValue(b) - modelSortValue(a) || a.localeCompare(b));
+  $("checkerModel").innerHTML = models.map((model) => `<option value="${escapeAttr(model)}">${escapeHtml(model)}</option>`).join("")
+    || `<option value="">No models loaded</option>`;
+  if (models.includes(previous)) $("checkerModel").value = previous;
+}
+
+function renderPriceCheckerCarriers() {
+  const selectedModel = $("checkerModel").value;
+  const rows = checkerRows().filter((row) => modelKey(row) === selectedModel);
+  const carriers = [...new Set(rows.map((row) => row.carrier || "Unlocked"))].sort((a, b) => {
+    if (a === "Unlocked") return -1;
+    if (b === "Unlocked") return 1;
+    return a.localeCompare(b);
+  });
+  const previous = $("checkerCarrier").value;
+  $("checkerCarrier").innerHTML = carriers.map((carrier) => `<option value="${escapeAttr(carrier)}">${escapeHtml(carrier)}</option>`).join("")
+    || `<option value="">Choose model first</option>`;
+  if (carriers.includes(previous)) $("checkerCarrier").value = previous;
+}
+
+function findCheckerPrice(buyer) {
+  const selectedModel = $("checkerModel").value;
+  const carrier = $("checkerCarrier").value;
+  const condition = checkerConditionForBuyer(buyer);
+  const rows = checkerRows().filter((row) => row.buyer === buyer);
+  const exact = rows.find((row) => modelKey(row) === selectedModel && row.carrier === carrier && row.condition === condition);
+  const fallback = rows.find((row) => modelKey(row) === selectedModel && row.condition === condition);
+  return exact || fallback || null;
+}
+
+function renderPriceCheckerResults() {
+  const quantity = Number($("checkerQuantity").value || 1);
+  const cards = ["Atlas", "KT"].map((buyer) => {
+    const row = findCheckerPrice(buyer);
+    if (!row) {
+      return `<div class="price-check-card missing"><span>${buyer}</span><strong>No price found</strong><em>${escapeHtml(checkerConditionForBuyer(buyer))}</em></div>`;
+    }
+    return `<div class="price-check-card"><span>${buyer}</span><strong>${money(row.price)}</strong><em>${escapeHtml(row.source_sheet || row.source || "Price sheet")} - ${escapeHtml(row.condition)} - ${escapeHtml(row.carrier || "Any")}</em><b>${money(Number(row.price || 0) * quantity)} total</b></div>`;
+  }).join("");
+  $("priceCheckerResults").innerHTML = cards;
 }
 
 function updateProjectedPrice() {
