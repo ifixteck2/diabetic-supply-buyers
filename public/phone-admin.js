@@ -171,9 +171,14 @@ function renderCarrierOptions() {
   const selectedModel = $("phoneModel").value;
   const selectedStorage = $("phoneStorage").value;
   const rows = matchingRows().filter((row) => checkerModelName(row) === selectedModel && (row.storage || "N/A") === selectedStorage);
-  const carriers = [...new Set(rows.map((row) => row.carrier || "Unlocked"))].sort((a, b) => {
+  const allowed = new Set(["Unlocked", "Carrier Locked", "AT&T (Clean)", "Parts"]);
+  const carriers = [...new Set(rows.map((row) => normalizeCheckerCarrier(row.carrier || "Unlocked")).filter((carrier) => allowed.has(carrier)))].sort((a, b) => {
     if (a === "Unlocked") return -1;
     if (b === "Unlocked") return 1;
+    if (a === "Carrier Locked") return -1;
+    if (b === "Carrier Locked") return 1;
+    if (a === "AT&T (Clean)") return -1;
+    if (b === "AT&T (Clean)") return 1;
     return a.localeCompare(b);
   });
   const previous = $("phoneCarrier").value;
