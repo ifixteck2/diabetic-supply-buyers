@@ -210,8 +210,7 @@ function checkerRows() {
 
 function checkerConditionForBuyer(buyer) {
   if ($("checkerConditionType").value === "New") return $("checkerPackaging").value === "Sealed" ? "NEW" : $("checkerPackaging").value;
-  const grade = $("checkerGrade").value;
-  return buyer === "Atlas" && grade !== "Parts" ? "Grade A" : grade;
+  return $("checkerGrade").value;
 }
 
 function renderPriceCheckerOptions() {
