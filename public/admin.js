@@ -37,9 +37,17 @@ function bindEvents() {
   $("logoutBtn").onclick = logout;
   $("refreshBtn").onclick = refreshAll;
   $("newPurchaseBtn").onclick = resetPurchaseForm;
-  $("lookupPhone").addEventListener("blur", lookupCustomer);
+  $("lookupPhone").addEventListener("input", debounce(showPhoneCustomerSuggestions, 180));
+  $("lookupPhone").addEventListener("focus", showPhoneCustomerSuggestions);
+  $("lookupPhone").addEventListener("blur", () => {
+    setTimeout(hidePhoneCustomerSuggestions, 160);
+    lookupCustomer();
+  });
   $("lookupPhone").addEventListener("keydown", (event) => {
-    if (event.key === "Enter") lookupCustomer();
+    if (event.key === "Enter") {
+      hidePhoneCustomerSuggestions();
+      lookupCustomer();
+    }
   });
   $("addItemBtn").onclick = addItem;
   $("clearItemBtn").onclick = clearItem;
@@ -155,6 +163,43 @@ async function lookupCustomer() {
   }
   renderHistory(result.invoices || []);
 }
+
+async function showPhoneCustomerSuggestions() {
+  const list = $("customerPhoneSuggestions");
+  if (!list) return;
+  const raw = $("lookupPhone").value.trim();
+  const digits = cleanPhone(raw);
+  if (digits.length < 3 && raw.length < 3) {
+    hidePhoneCustomerSuggestions();
+    return;
+  }
+  const result = await api(`/api/customers?search=${encodeURIComponent(raw || digits)}`, { silent: true });
+  const matches = (result.customers || [])
+    .filter((customer) => cleanPhone(customer.phone).includes(digits) || String(customer.name || "").toLowerCase().includes(raw.toLowerCase()))
+    .slice(0, 6);
+  if (!matches.length) {
+    list.innerHTML = `<div class="autocomplete-empty">No matching customers</div>`;
+    list.classList.remove("hidden");
+    return;
+  }
+  list.innerHTML = matches.map((customer) => `
+    <button type="button" class="autocomplete-option" onmousedown="selectPhoneCustomer('${escapeAttr(customer.phone)}')">
+      <strong>${escapeHtml(customer.name || "No name yet")}</strong>
+      <span>${formatPhone(customer.phone)}${customer.source ? " - " + escapeHtml(customer.source) : ""}</span>
+    </button>
+  `).join("");
+  list.classList.remove("hidden");
+}
+
+function hidePhoneCustomerSuggestions() {
+  $("customerPhoneSuggestions")?.classList.add("hidden");
+}
+
+window.selectPhoneCustomer = async (phone) => {
+  $("lookupPhone").value = formatPhone(phone);
+  hidePhoneCustomerSuggestions();
+  await lookupCustomer();
+};
 
 function addItem() {
   const selectedProduct = getSelectedPriceProduct();
