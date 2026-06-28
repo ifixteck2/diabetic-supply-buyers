@@ -27,12 +27,11 @@ function bindPhoneEvents() {
   $("savePhonePurchaseBtn").onclick = savePhonePurchase;
   $("clearPhonePurchaseBtn").onclick = resetPhonePurchase;
   $("refreshPriceCheckerBtn").onclick = refreshPhonePortal;
-  ["phoneBuyer", "deviceType", "conditionType", "packaging", "grade", "phoneModel", "phoneCarrier"].forEach((id) => {
+  ["phoneBuyer", "deviceType", "phoneBrand", "conditionType", "packaging", "grade", "phoneModel", "phoneStorage", "phoneCarrier"].forEach((id) => {
     $(id).addEventListener("change", handleFlowChange);
   });
-  ["checkerDeviceType", "checkerBrand", "checkerConditionType", "checkerPackaging", "checkerGrade", "checkerModel", "checkerStorage", "checkerCarrier", "checkerQuantity", "deductCrackedBack", "deductCrackedLens", "deductBattery", "deductRepair", "deductFaceId"].forEach((id) => {
+  ["checkerDeviceType", "checkerBrand", "checkerConditionType", "checkerPackaging", "checkerGrade", "checkerModel", "checkerStorage", "checkerCarrier", "deductCrackedBack", "deductCrackedLens", "deductBattery", "deductRepair", "deductFaceId"].forEach((id) => {
     $(id).addEventListener("change", handlePriceCheckerChange);
-    if (id === "checkerQuantity") $(id).addEventListener("input", renderPriceCheckerResults);
   });
   document.querySelectorAll("[data-phone-tab]").forEach((button) => {
     button.onclick = () => openPhoneTab(button.dataset.phoneTab);
@@ -72,6 +71,7 @@ async function loadAtlasPrices() {
   const result = await api("/api/phone-price-sheet", { silent: true });
   atlasPrices = result.rows || [];
   renderModelOptions();
+  renderPhoneStorageOptions();
   renderCarrierOptions();
   updateProjectedPrice();
   renderPriceCheckerOptions();
@@ -120,7 +120,10 @@ function handleFlowChange(event) {
     toggleConditionFields();
     renderModelOptions();
   }
-  if (event.target.id === "phoneModel" || event.target.id === "conditionType" || event.target.id === "deviceType") {
+  if (event.target.id === "phoneModel" || event.target.id === "conditionType" || event.target.id === "deviceType" || event.target.id === "phoneBrand") {
+    renderPhoneStorageOptions();
+  }
+  if (event.target.id === "phoneModel" || event.target.id === "phoneStorage" || event.target.id === "conditionType" || event.target.id === "deviceType" || event.target.id === "phoneBrand") {
     renderCarrierOptions();
   }
   if (event.target.id === "phoneBuyer") renderInvoiceSelect();
@@ -137,7 +140,7 @@ function matchingRows() {
   const deviceType = $("deviceType").value;
   const conditionType = $("conditionType").value;
   const buyer = $("phoneBuyer").value;
-  return atlasPrices.filter((row) => row.buyer === buyer && row.device_type === deviceType && row.condition_type === conditionType);
+  return atlasPrices.filter((row) => row.buyer === buyer && row.device_type === deviceType && row.condition_type === conditionType && rowBrand(row) === $("phoneBrand").value);
 }
 
 function modelKey(row) {
@@ -146,16 +149,28 @@ function modelKey(row) {
 
 function renderModelOptions() {
   const previous = $("phoneModel").value;
-  const models = [...new Set(matchingRows().map(modelKey).filter(Boolean))]
+  const models = [...new Set(matchingRows().map(checkerModelName).filter(Boolean))]
     .sort((a, b) => modelSortValue(b) - modelSortValue(a) || a.localeCompare(b));
   $("phoneModel").innerHTML = models.map((model) => `<option value="${escapeAttr(model)}">${escapeHtml(model)}</option>`).join("")
     || `<option value="">No Atlas models loaded</option>`;
   if (models.includes(previous)) $("phoneModel").value = previous;
 }
 
+function renderPhoneStorageOptions() {
+  const selectedModel = $("phoneModel").value;
+  const rows = matchingRows().filter((row) => checkerModelName(row) === selectedModel);
+  const storageOptions = [...new Set(rows.map((row) => row.storage || "N/A").filter(Boolean))]
+    .sort((a, b) => storageSortValue(b) - storageSortValue(a) || a.localeCompare(b));
+  const previous = $("phoneStorage").value;
+  $("phoneStorage").innerHTML = storageOptions.map((storage) => `<option value="${escapeAttr(storage)}">${escapeHtml(storage)}</option>`).join("")
+    || `<option value="">Choose model first</option>`;
+  if (storageOptions.includes(previous)) $("phoneStorage").value = previous;
+}
+
 function renderCarrierOptions() {
   const selectedModel = $("phoneModel").value;
-  const rows = matchingRows().filter((row) => modelKey(row) === selectedModel);
+  const selectedStorage = $("phoneStorage").value;
+  const rows = matchingRows().filter((row) => checkerModelName(row) === selectedModel && (row.storage || "N/A") === selectedStorage);
   const carriers = [...new Set(rows.map((row) => row.carrier || "Unlocked"))].sort((a, b) => {
     if (a === "Unlocked") return -1;
     if (b === "Unlocked") return 1;
@@ -258,7 +273,6 @@ function findCheckerPrice(buyer) {
 }
 
 function renderPriceCheckerResults() {
-  const quantity = Number($("checkerQuantity").value || 1);
   const cards = ["Atlas", "KT"].map((buyer) => {
     const row = findCheckerPrice(buyer);
     if (!row) {
@@ -268,7 +282,7 @@ function renderPriceCheckerResults() {
     const finalEach = Math.max(0, Number(row.price || 0) - Number(deduction.amount || 0));
     const deductionText = deduction.amount ? `<i>Deductions: -${money(deduction.amount)}</i>` : "";
     const askText = deduction.notes.length ? `<i>${escapeHtml(deduction.notes.join(" | "))}</i>` : "";
-    return `<div class="price-check-card"><span>${buyer}</span><strong>${money(finalEach)}</strong><em>${escapeHtml(row.source_sheet || row.source || "Price sheet")} - ${escapeHtml(row.condition)} - ${escapeHtml(normalizeCheckerCarrier(row.carrier || "Any"))}</em>${deductionText}${askText}<b>${money(finalEach * quantity)} total</b></div>`;
+    return `<div class="price-check-card"><span>${buyer}</span><strong>${money(finalEach)}</strong><em>${escapeHtml(row.source_sheet || row.source || "Price sheet")} - ${escapeHtml(row.condition)} - ${escapeHtml(normalizeCheckerCarrier(row.carrier || "Any"))}</em>${deductionText}${askText}</div>`;
   }).join("");
   $("priceCheckerResults").innerHTML = cards;
 }
@@ -342,12 +356,36 @@ function atlasCrackedLensText(model) {
   return "ASK";
 }
 
+function imageFileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Could not read phone photo."));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("Could not load phone photo."));
+      img.onload = () => {
+        const max = 1200;
+        const scale = Math.min(1, max / Math.max(img.width, img.height));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(img.width * scale));
+        canvas.height = Math.max(1, Math.round(img.height * scale));
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve({ file_name: file.name, data_url: canvas.toDataURL("image/jpeg", 0.78) });
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 function updateProjectedPrice() {
   const selectedModel = $("phoneModel").value;
+  const selectedStorage = $("phoneStorage").value;
   const carrier = $("phoneCarrier").value;
   const condition = pricingCondition();
-  const exact = matchingRows().find((row) => modelKey(row) === selectedModel && row.carrier === carrier && row.condition === condition);
-  const fallback = matchingRows().find((row) => modelKey(row) === selectedModel && row.condition === condition);
+  const exact = matchingRows().find((row) => checkerModelName(row) === selectedModel && (row.storage || "N/A") === selectedStorage && row.carrier === carrier && row.condition === condition);
+  const fallback = matchingRows().find((row) => checkerModelName(row) === selectedModel && (row.storage || "N/A") === selectedStorage && row.condition === condition);
   const row = exact || fallback;
   if (row?.price) {
     $("phoneProjected").value = row.price;
@@ -380,6 +418,8 @@ async function createPhoneInvoice() {
 }
 
 async function savePhonePurchase() {
+  const photoFile = $("phonePhoto").files?.[0] || null;
+  const photo = photoFile ? await imageFileToDataUrl(photoFile) : null;
   const result = await api("/api/phone-purchases", {
     method: "POST",
     body: {
@@ -390,11 +430,13 @@ async function savePhonePurchase() {
       condition_type: $("conditionType").value,
       packaging: $("conditionType").value === "New" ? $("packaging").value : "",
       grade: $("conditionType").value === "Used" ? $("grade").value : "",
-      model: $("phoneModel").value,
+      model: [$("phoneModel").value, $("phoneStorage").value && $("phoneStorage").value !== "N/A" ? $("phoneStorage").value : ""].filter(Boolean).join(" "),
       carrier: $("phoneCarrier").value,
       quantity: Number($("phoneQuantity").value || 0),
       cost_each: Number($("phoneCost").value || 0),
       projected_sell_each: Number($("phoneProjected").value || 0),
+      imei: $("phoneImei").value.trim(),
+      photo,
       notes: $("phoneNotes").value.trim(),
     },
   });
@@ -409,13 +451,17 @@ function resetPhonePurchase(clearStatus = true) {
   $("conditionType").value = "Used";
   $("packaging").value = "Sealed";
   $("grade").value = "Grade A";
+  $("phoneBrand").value = "Apple";
   $("phoneQuantity").value = 1;
   $("phoneCost").value = "";
   $("phoneProjected").value = "";
+  $("phoneImei").value = "";
+  $("phonePhoto").value = "";
   $("phonePurchaseDate").value = new Date().toISOString().slice(0, 10);
   $("phoneNotes").value = "";
   toggleConditionFields();
   renderModelOptions();
+  renderPhoneStorageOptions();
   renderCarrierOptions();
   updateProjectedPrice();
   if (clearStatus) status("phonePurchaseStatus", "");
@@ -484,6 +530,8 @@ function renderPhoneInvoiceCard(invoice) {
       <td class="phone-device-cell">
         <strong>${escapeHtml(row.model)}</strong>
         <span>${escapeHtml(phoneInvoiceItemCondition(row))}</span>
+        ${row.imei ? `<em>IMEI ${escapeHtml(row.imei)}</em>` : ""}
+        ${row.photo_data_url ? `<button class="phone-photo-link" onclick="openPhonePhoto(${row.id})">View photo</button>` : ""}
       </td>
       <td>${escapeHtml(row.carrier || "")}</td>
       <td>${row.quantity}</td>
@@ -543,6 +591,15 @@ function renderPhoneInvoiceCard(invoice) {
 
 window.togglePastInvoice = (id) => {
   $(`pastInvoiceDetail${id}`).classList.toggle("hidden");
+};
+
+window.openPhonePhoto = (id) => {
+  const purchase = phoneInvoices.flatMap((invoice) => invoice.purchases || []).find((row) => Number(row.id) === Number(id));
+  if (!purchase?.photo_data_url) return;
+  const viewer = document.createElement("div");
+  viewer.className = "photo-viewer";
+  viewer.innerHTML = `<div class="photo-viewer-backdrop" onclick="this.parentElement.remove()"></div><div class="photo-viewer-panel"><button class="photo-viewer-close" onclick="this.closest('.photo-viewer').remove()">Close</button><img src="${escapeAttr(purchase.photo_data_url)}" alt="Phone photo"><p>${escapeHtml(purchase.model || "Phone")} ${purchase.imei ? `- IMEI ${escapeHtml(purchase.imei)}` : ""}</p></div>`;
+  document.body.appendChild(viewer);
 };
 
 function phoneInvoiceItemCondition(row) {

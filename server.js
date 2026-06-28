@@ -220,8 +220,8 @@ app.post("/api/phone-purchases", requirePhoneAuth, async (req, res) => {
     if (matchedProjected) projectedSellEach = matchedProjected;
     const purchase = await client.query(
       `insert into phone_purchases
-       (invoice_id, buyer, purchase_date, device_type, condition_type, packaging, grade, model, carrier, quantity, cost_each, projected_sell_each, notes)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+       (invoice_id, buyer, purchase_date, device_type, condition_type, packaging, grade, model, carrier, quantity, cost_each, projected_sell_each, imei, photo_file_name, photo_data_url, notes)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
        returning *`,
       [
         invoice.id,
@@ -236,6 +236,9 @@ app.post("/api/phone-purchases", requirePhoneAuth, async (req, res) => {
         quantity,
         costEach,
         projectedSellEach,
+        String(input.imei || "").trim(),
+        String(input.photo?.file_name || "").slice(0, 160),
+        isAllowedPhotoDataUrl(input.photo?.data_url) ? String(input.photo.data_url) : "",
         String(input.notes || "").trim(),
       ]
     );
@@ -861,6 +864,9 @@ async function migrate() {
       quantity integer not null default 1,
       cost_each numeric(12,2) not null default 0,
       projected_sell_each numeric(12,2) not null default 0,
+      imei text not null default '',
+      photo_file_name text not null default '',
+      photo_data_url text not null default '',
       notes text not null default '',
       invoice_removed_at timestamptz,
       invoice_removed_reason text not null default '',
@@ -888,6 +894,9 @@ async function migrate() {
     alter table purchase_items add column if not exists invoice_removed_reason text not null default '';
     alter table phone_purchases add column if not exists invoice_removed_at timestamptz;
     alter table phone_purchases add column if not exists invoice_removed_reason text not null default '';
+    alter table phone_purchases add column if not exists imei text not null default '';
+    alter table phone_purchases add column if not exists photo_file_name text not null default '';
+    alter table phone_purchases add column if not exists photo_data_url text not null default '';
     alter table phone_invoices add column if not exists sale_price numeric(12,2);
     alter table phone_invoices add column if not exists sale_notes text not null default '';
     alter table phone_invoices add column if not exists shipped_at timestamptz;
@@ -1245,6 +1254,10 @@ function extractSeedGrade(notes, condition, buyer = "", item = "") {
 
 function parseSeedMoney(value) {
   return Number(String(value || "").replace(/[$,\s]/g, "")) || 0;
+}
+
+function isAllowedPhotoDataUrl(value) {
+  return /^data:image\/(png|jpeg|jpg|webp);base64,/i.test(String(value || ""));
 }
 
 function findPhonePrice(purchase, priceRows, buyer) {

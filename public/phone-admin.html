@@ -59,12 +59,16 @@
               <h2>Device Flow</h2>
               <div class="form-grid three">
                 <label>Phone or Tablet<select id="deviceType"><option>Phone</option><option>Tablet</option></select></label>
+                <label>Brand<select id="phoneBrand"><option>Apple</option><option>Samsung</option><option>Google</option></select></label>
                 <label>New or Used<select id="conditionType"><option>Used</option><option>New</option></select></label>
-                <label id="packagingWrap" class="hidden">Open or Sealed<select id="packaging"><option>Sealed</option><option>Open</option></select></label>
-                <label id="gradeWrap">Grade<select id="grade"><option>Grade A</option><option>Grade B</option><option>Grade C</option><option>Grade D</option></select></label>
               </div>
               <div class="form-grid three">
+                <label id="packagingWrap" class="hidden">Open or Sealed<select id="packaging"><option>Sealed</option><option>Open</option></select></label>
+                <label id="gradeWrap">Grade<select id="grade"><option>Grade A</option><option>Grade B</option><option>Grade C</option><option>Grade D</option><option>Parts</option></select></label>
                 <label>Model<select id="phoneModel"></select></label>
+              </div>
+              <div class="form-grid three">
+                <label>Gigabytes<select id="phoneStorage"></select></label>
                 <label>Carrier<select id="phoneCarrier"></select></label>
                 <label>Quantity<input id="phoneQuantity" type="number" min="1" value="1"></label>
               </div>
@@ -73,7 +77,11 @@
                 <label>Projected Sell Each<input id="phoneProjected" type="number" min="0" step="0.01"></label>
                 <label>Purchase Date<input id="phonePurchaseDate" type="date"></label>
               </div>
-              <label>Notes<input id="phoneNotes" placeholder="IMEI notes, damage notes, payment details"></label>
+              <div class="form-grid three">
+                <label>IMEI<input id="phoneImei" placeholder="IMEI or serial"></label>
+                <label>Phone Photo<input id="phonePhoto" type="file" accept="image/*"></label>
+                <label>Notes<input id="phoneNotes" placeholder="Damage notes, payment details"></label>
+              </div>
               <div id="phonePricePreview" class="price-box quote-only hidden"></div>
               <div class="actions"><button class="btn phone-btn" id="savePhonePurchaseBtn">Add Purchase To Invoice</button></div>
               <div id="phonePurchaseStatus"></div>
@@ -99,7 +107,6 @@
               <div class="form-grid three">
                 <label>Gigabytes<select id="checkerStorage"></select></label>
                 <label>Carrier<select id="checkerCarrier"></select></label>
-                <label>Quantity<input id="checkerQuantity" type="number" min="1" value="1"></label>
               </div>
               <div class="deduction-box">
                 <strong>Deductions</strong>
