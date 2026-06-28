@@ -115,7 +115,7 @@ async function refreshAll() {
 }
 
 function openTab(name) {
-  const titles = { dashboard: "Dashboard", growth: "Growth CRM", leads: "Leads", followups: "Follow Ups", purchase: "New Purchase", invoices: "Active Invoices", history: "Invoice History", customers: "Customers" };
+  const titles = { dashboard: "Dashboard", growth: "Growth CRM", leads: "Leads", followups: "Follow Ups", templates: "Templates", purchase: "New Purchase", invoices: "Active Invoices", history: "Invoice History", customers: "Customers" };
   document.querySelectorAll(".tab").forEach((button) => button.classList.toggle("active", button.dataset.tab === name));
   document.querySelectorAll(".tab-panel").forEach((panel) => panel.classList.add("hidden"));
   $(`${name}Tab`).classList.remove("hidden");
@@ -131,6 +131,7 @@ function openTab(name) {
   }
   if (name === "followups") loadFollowups();
   if (name === "leads") loadCustomers();
+  if (name === "templates") renderTemplateGroups();
 }
 
 async function lookupCustomer() {
@@ -527,7 +528,7 @@ function renderGrowthCrm() {
   $("growthFollowups").innerHTML = followupsCache.slice(0, 8).map(renderGrowthFollowupRow).join("") || `<div class="empty">No follow-ups due right now.</div>`;
   renderGrowthSources(sourceStats);
   $("growthRepeatTargets").innerHTML = repeatCustomers.slice(0, 8).map(renderRepeatTargetRow).join("") || `<div class="empty">No repeat sellers yet.</div>`;
-  renderGrowthTemplates();
+  renderTemplateGroups();
 }
 
 function buildSourceStats() {
@@ -613,6 +614,60 @@ function renderGrowthTemplates() {
       <p>${escapeHtml(template.text.replace("{name}", "there"))}</p>
       <button class="mini-btn" onclick="copyTextTemplate('${template.id}')">Copy</button>
     </article>
+  `).join("");
+}
+
+function messageTemplateGroups() {
+  return [
+    {
+      title: "New Customers",
+      description: "Use these when someone is ready to sell for the first time.",
+      templates: [
+        { id: "new_quote", title: "Ask For Photos", text: "Hi {name}, thanks for reaching out. Please text me clear pictures of what you have, the expiration dates, and your city. I buy sealed Omnipods, Dexcom, Libre, and test strips and can give you a fast quote." },
+        { id: "new_payment", title: "Payment Options", text: "Hi {name}, once I confirm the supplies and expiration dates, I can pay by cash, Zelle, Cash App, Venmo, or another agreed method. Send pictures when you get a chance and I will price everything out." },
+        { id: "new_pickup", title: "Pickup Details", text: "Hi {name}, I can meet locally or arrange shipping depending on what you have. Send me your general area and pictures of the sealed boxes so I can give you the best offer." },
+      ],
+    },
+    {
+      title: "Follow Ups",
+      description: "Use these for the 28-day follow-up cycle and repeat sellers.",
+      templates: [
+        { id: "followup", title: "28-Day Follow Up", text: "Hi {name}, this is Sell Diabetics. Just checking in to see if you have any diabetic supplies available this month. I am buying Omnipods, Dexcom, Libre, and test strips. You can text me pictures and expiration dates anytime." },
+        { id: "repeat", title: "Repeat Seller", text: "Hi {name}, hope you are doing well. I am still buying diabetic supplies and wanted to check if you have anything new available. I can usually give you a quote quickly if you send pictures and expiration dates." },
+        { id: "followup_soft", title: "Soft Check-In", text: "Hi {name}, just wanted to follow up and see if you had any extra sealed diabetic supplies this month. No rush, but I am available if you want a quick quote." },
+      ],
+    },
+    {
+      title: "Leads",
+      description: "Use these for Facebook, Instagram, marketplace replies, and cold leads.",
+      templates: [
+        { id: "lead", title: "New Ad Reply", text: "Hi {name}, thanks for reaching out. I buy sealed diabetic supplies like Omnipods, Dexcom G7, Libre sensors, and test strips. Send me a picture of what you have, the expiration date, and your city, and I will give you a fast quote." },
+        { id: "lead_second", title: "Second Message", text: "Hi {name}, following up from my ad. If you have sealed diabetic supplies available, send pictures of the boxes and expiration dates and I can let you know what I am paying today." },
+        { id: "lead_not_ready", title: "Not Ready Yet", text: "No problem, {name}. I buy every month, so feel free to save my number. When you have sealed diabetic supplies available, just text pictures and expiration dates for a quote." },
+      ],
+    },
+  ];
+}
+
+function renderTemplateGroups() {
+  const container = $("templateGroups");
+  if (!container) return;
+  container.innerHTML = messageTemplateGroups().map((group) => `
+    <section class="template-group">
+      <div class="template-group-head">
+        <h3>${escapeHtml(group.title)}</h3>
+        <p>${escapeHtml(group.description)}</p>
+      </div>
+      <div class="template-grid">
+        ${group.templates.map((template) => `
+          <article class="template-card">
+            <h3>${escapeHtml(template.title)}</h3>
+            <p>${escapeHtml(template.text.replace("{name}", "there"))}</p>
+            <button class="mini-btn" onclick="copyTextTemplate('${template.id}')">Copy</button>
+          </article>
+        `).join("")}
+      </div>
+    </section>
   `).join("");
 }
 
@@ -1288,11 +1343,18 @@ window.copyCustomerMessage = async (phone, type = "followup") => {
 };
 
 window.copyTextTemplate = async (type) => {
-  await copyText(makeCustomerMessage(type, "there"));
+  const template = findMessageTemplate(type);
+  await copyText(template ? template.text.replace("{name}", "there") : makeCustomerMessage(type, "there"));
 };
+
+function findMessageTemplate(id) {
+  return messageTemplateGroups().flatMap((group) => group.templates).find((template) => template.id === id) || null;
+}
 
 function makeCustomerMessage(type, name) {
   const who = name || "there";
+  const template = findMessageTemplate(type);
+  if (template) return template.text.replace("{name}", who);
   if (type === "lead") {
     return `Hi ${who}, thanks for reaching out. I buy sealed diabetic supplies like Omnipods, Dexcom G7, Libre sensors, and test strips. Send me a picture of what you have, the expiration date, and your city, and I’ll give you a fast quote.`;
   }
