@@ -160,7 +160,7 @@ function renderPhoneStorageOptions() {
   const selectedModel = $("phoneModel").value;
   const rows = matchingRows().filter((row) => checkerModelName(row) === selectedModel);
   const storageOptions = [...new Set(rows.map((row) => row.storage || "N/A").filter(Boolean))]
-    .sort((a, b) => storageSortValue(b) - storageSortValue(a) || a.localeCompare(b));
+    .sort((a, b) => storageSortValue(a) - storageSortValue(b) || a.localeCompare(b));
   const previous = $("phoneStorage").value;
   $("phoneStorage").innerHTML = storageOptions.map((storage) => `<option value="${escapeAttr(storage)}">${escapeHtml(storage)}</option>`).join("")
     || `<option value="">Choose model first</option>`;
@@ -240,7 +240,7 @@ function renderPriceCheckerStorage() {
   const selectedModel = $("checkerModel").value;
   const rows = checkerRows().filter((row) => checkerModelName(row) === selectedModel);
   const storageOptions = [...new Set(rows.map((row) => row.storage || "N/A").filter(Boolean))]
-    .sort((a, b) => storageSortValue(b) - storageSortValue(a) || a.localeCompare(b));
+    .sort((a, b) => storageSortValue(a) - storageSortValue(b) || a.localeCompare(b));
   const previous = $("checkerStorage").value;
   $("checkerStorage").innerHTML = storageOptions.map((storage) => `<option value="${escapeAttr(storage)}">${escapeHtml(storage)}</option>`).join("")
     || `<option value="">Choose model first</option>`;
