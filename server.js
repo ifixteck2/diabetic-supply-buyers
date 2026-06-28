@@ -1236,6 +1236,7 @@ function findPhonePrice(purchase, priceRows, buyer) {
     if (buyer && row.buyer && row.buyer !== buyer) return false;
     if (row.device_type !== purchase.device_type) return false;
     if (row.condition_type !== purchase.condition_type) return false;
+    if (wantedCondition === "Grade A" && /hso|swap/i.test(row.condition || "")) return false;
     if (wantedCondition && row.condition !== wantedCondition) return false;
     if (storage && String(row.storage || "").toLowerCase() !== storage) return false;
     const rowModel = normalizePhonePriceMatchText(row.base_model || row.model);
@@ -1248,6 +1249,7 @@ function findPhonePrice(purchase, priceRows, buyer) {
   const looserCandidates = candidates.length ? candidates : priceRows.filter((row) => {
     if (buyer && row.buyer && row.buyer !== buyer) return false;
     if (row.condition_type !== purchase.condition_type) return false;
+    if (wantedCondition === "Grade A" && /hso|swap/i.test(row.condition || "")) return false;
     if (wantedCondition && row.condition !== wantedCondition) return false;
     if (storage && String(row.storage || "").toLowerCase() !== storage) return false;
     return normalizePhonePriceMatchText(row.base_model || row.model) === modelText;
@@ -1656,7 +1658,7 @@ function normalizeAtlasCarrier(value) {
 
 function defaultAtlasHeader(source, index) {
   if (source.conditionType === "New") return ["NEW", "Open", "HSO", "Grade A", "Grade B", "DOA"][index] || `Price ${index + 1}`;
-  return ["Grade A", "Grade B", "Grade C", "Grade D", "DOA", "Parts"][index] || `Price ${index + 1}`;
+  return ["SWAP / HSO", "Grade A", "Grade B", "Grade C", "Grade D", "DOA"][index] || `Price ${index + 1}`;
 }
 
 function normalizeAtlasCondition(conditionType, label) {
@@ -1666,6 +1668,7 @@ function normalizeAtlasCondition(conditionType, label) {
     if (/sealed|new|nib/i.test(text)) return "NEW";
     return text || "NEW";
   }
+  if (/swap|hso/i.test(text)) return "HSO";
   const grade = text.match(/Grade\s*([ABCD])/i);
   if (grade) return `Grade ${grade[1].toUpperCase()}`;
   return text || "Grade A";
