@@ -1097,14 +1097,39 @@ function sortPhonePurchases(purchases) {
     const bCondition = phoneConditionRank(b);
     if (aCondition !== bCondition) return aCondition - bCondition;
 
-    const modelCompare = String(a.model || "").localeCompare(String(b.model || ""), undefined, {
-      numeric: true,
-      sensitivity: "base",
-    });
+    const modelCompare = phoneModelSortValue(b.model) - phoneModelSortValue(a.model)
+      || String(a.model || "").localeCompare(String(b.model || ""), undefined, {
+        numeric: true,
+        sensitivity: "base",
+      });
     if (modelCompare !== 0) return modelCompare;
 
     return Number(a.id || 0) - Number(b.id || 0);
   });
+}
+
+function phoneModelSortValue(model) {
+  const text = String(model || "");
+  const iphoneNumber = Number(text.match(/iPhone\s+(\d+)/i)?.[1] || text.match(/^(\d+)\b/)?.[1] || 0);
+  if (iphoneNumber) {
+    const pro = /pro/i.test(text) ? 10 : 0;
+    const max = /max/i.test(text) ? 5 : 0;
+    const air = /air/i.test(text) ? 3 : 0;
+    const plus = /plus/i.test(text) ? 2 : 0;
+    const e = /\b\d+e\b/i.test(text) ? -1 : 0;
+    const storage = Number(text.match(/(\d+)\s*TB/i)?.[1] || 0) * 1000
+      || Number(text.match(/(\d+)\s*GB/i)?.[1] || 0);
+    return iphoneNumber * 100000 + (pro + max + air + plus + e) * 1000 + storage;
+  }
+  const galaxyNumber = Number(text.match(/\bS(\d+)/i)?.[1] || 0);
+  if (galaxyNumber) {
+    const ultra = /ultra/i.test(text) ? 10 : 0;
+    const plus = /plus|\+/i.test(text) ? 5 : 0;
+    const storage = Number(text.match(/(\d+)\s*TB/i)?.[1] || 0) * 1000
+      || Number(text.match(/(\d+)\s*GB/i)?.[1] || 0);
+    return galaxyNumber * 100000 + (ultra + plus) * 1000 + storage;
+  }
+  return 0;
 }
 
 function phoneConditionRank(purchase) {
