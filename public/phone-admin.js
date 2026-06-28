@@ -30,7 +30,7 @@ function bindPhoneEvents() {
   ["phoneBuyer", "deviceType", "conditionType", "packaging", "grade", "phoneModel", "phoneCarrier"].forEach((id) => {
     $(id).addEventListener("change", handleFlowChange);
   });
-  ["checkerDeviceType", "checkerConditionType", "checkerPackaging", "checkerGrade", "checkerModel", "checkerCarrier", "checkerQuantity"].forEach((id) => {
+  ["checkerDeviceType", "checkerBrand", "checkerConditionType", "checkerPackaging", "checkerGrade", "checkerModel", "checkerStorage", "checkerCarrier", "checkerQuantity", "deductCrackedBack", "deductCrackedLens", "deductBattery", "deductRepair", "deductFaceId"].forEach((id) => {
     $(id).addEventListener("change", handlePriceCheckerChange);
     if (id === "checkerQuantity") $(id).addEventListener("input", renderPriceCheckerResults);
   });
@@ -102,11 +102,14 @@ function openPhoneTab(name) {
 }
 
 function handlePriceCheckerChange(event) {
-  if (event.target.id === "checkerConditionType" || event.target.id === "checkerDeviceType") {
+  if (event.target.id === "checkerConditionType" || event.target.id === "checkerDeviceType" || event.target.id === "checkerBrand") {
     toggleCheckerConditionFields();
     renderPriceCheckerModels();
   }
-  if (event.target.id === "checkerModel" || event.target.id === "checkerConditionType" || event.target.id === "checkerDeviceType") {
+  if (event.target.id === "checkerModel" || event.target.id === "checkerConditionType" || event.target.id === "checkerDeviceType" || event.target.id === "checkerBrand") {
+    renderPriceCheckerStorage();
+  }
+  if (event.target.id === "checkerModel" || event.target.id === "checkerStorage" || event.target.id === "checkerConditionType" || event.target.id === "checkerDeviceType" || event.target.id === "checkerBrand") {
     renderPriceCheckerCarriers();
   }
   renderPriceCheckerResults();
@@ -178,7 +181,11 @@ function pricingCondition() {
 }
 
 function checkerRows() {
-  return atlasPrices.filter((row) => row.device_type === $("checkerDeviceType").value && row.condition_type === $("checkerConditionType").value);
+  return atlasPrices.filter((row) => (
+    row.device_type === $("checkerDeviceType").value
+    && row.condition_type === $("checkerConditionType").value
+    && rowBrand(row) === $("checkerBrand").value
+  ));
 }
 
 function checkerConditionForBuyer(buyer) {
@@ -190,6 +197,7 @@ function checkerConditionForBuyer(buyer) {
 function renderPriceCheckerOptions() {
   toggleCheckerConditionFields();
   renderPriceCheckerModels();
+  renderPriceCheckerStorage();
   renderPriceCheckerCarriers();
   renderPriceCheckerResults();
 }
@@ -202,19 +210,34 @@ function toggleCheckerConditionFields() {
 
 function renderPriceCheckerModels() {
   const previous = $("checkerModel").value;
-  const models = [...new Set(checkerRows().map(modelKey).filter(Boolean))]
+  const models = [...new Set(checkerRows().map(checkerModelName).filter(Boolean))]
     .sort((a, b) => modelSortValue(b) - modelSortValue(a) || a.localeCompare(b));
   $("checkerModel").innerHTML = models.map((model) => `<option value="${escapeAttr(model)}">${escapeHtml(model)}</option>`).join("")
     || `<option value="">No models loaded</option>`;
   if (models.includes(previous)) $("checkerModel").value = previous;
 }
 
+function renderPriceCheckerStorage() {
+  const selectedModel = $("checkerModel").value;
+  const rows = checkerRows().filter((row) => checkerModelName(row) === selectedModel);
+  const storageOptions = [...new Set(rows.map((row) => row.storage || "N/A").filter(Boolean))]
+    .sort((a, b) => storageSortValue(b) - storageSortValue(a) || a.localeCompare(b));
+  const previous = $("checkerStorage").value;
+  $("checkerStorage").innerHTML = storageOptions.map((storage) => `<option value="${escapeAttr(storage)}">${escapeHtml(storage)}</option>`).join("")
+    || `<option value="">Choose model first</option>`;
+  if (storageOptions.includes(previous)) $("checkerStorage").value = previous;
+}
+
 function renderPriceCheckerCarriers() {
   const selectedModel = $("checkerModel").value;
-  const rows = checkerRows().filter((row) => modelKey(row) === selectedModel);
-  const carriers = [...new Set(rows.map((row) => row.carrier || "Unlocked"))].sort((a, b) => {
+  const selectedStorage = $("checkerStorage").value;
+  const rows = checkerRows().filter((row) => checkerModelName(row) === selectedModel && (row.storage || "N/A") === selectedStorage);
+  const allowed = new Set(["Unlocked", "Carrier Locked", "AT&T (Clean)"]);
+  const carriers = [...new Set(rows.map((row) => normalizeCheckerCarrier(row.carrier || "Unlocked")).filter((carrier) => allowed.has(carrier)))].sort((a, b) => {
     if (a === "Unlocked") return -1;
     if (b === "Unlocked") return 1;
+    if (a === "Carrier Locked") return -1;
+    if (b === "Carrier Locked") return 1;
     return a.localeCompare(b);
   });
   const previous = $("checkerCarrier").value;
@@ -225,11 +248,12 @@ function renderPriceCheckerCarriers() {
 
 function findCheckerPrice(buyer) {
   const selectedModel = $("checkerModel").value;
+  const selectedStorage = $("checkerStorage").value;
   const carrier = $("checkerCarrier").value;
   const condition = checkerConditionForBuyer(buyer);
   const rows = checkerRows().filter((row) => row.buyer === buyer);
-  const exact = rows.find((row) => modelKey(row) === selectedModel && row.carrier === carrier && row.condition === condition);
-  const fallback = rows.find((row) => modelKey(row) === selectedModel && row.condition === condition);
+  const exact = rows.find((row) => checkerModelName(row) === selectedModel && (row.storage || "N/A") === selectedStorage && normalizeCheckerCarrier(row.carrier) === carrier && row.condition === condition);
+  const fallback = rows.find((row) => checkerModelName(row) === selectedModel && (row.storage || "N/A") === selectedStorage && row.condition === condition);
   return exact || fallback || null;
 }
 
@@ -240,9 +264,82 @@ function renderPriceCheckerResults() {
     if (!row) {
       return `<div class="price-check-card missing"><span>${buyer}</span><strong>No price found</strong><em>${escapeHtml(checkerConditionForBuyer(buyer))}</em></div>`;
     }
-    return `<div class="price-check-card"><span>${buyer}</span><strong>${money(row.price)}</strong><em>${escapeHtml(row.source_sheet || row.source || "Price sheet")} - ${escapeHtml(row.condition)} - ${escapeHtml(row.carrier || "Any")}</em><b>${money(Number(row.price || 0) * quantity)} total</b></div>`;
+    const deduction = buyer === "Atlas" ? selectedAtlasDeduction(row) : { amount: 0, notes: [] };
+    const finalEach = Math.max(0, Number(row.price || 0) - Number(deduction.amount || 0));
+    const deductionText = deduction.amount ? `<i>Deductions: -${money(deduction.amount)}</i>` : "";
+    const askText = deduction.notes.length ? `<i>${escapeHtml(deduction.notes.join(" | "))}</i>` : "";
+    return `<div class="price-check-card"><span>${buyer}</span><strong>${money(finalEach)}</strong><em>${escapeHtml(row.source_sheet || row.source || "Price sheet")} - ${escapeHtml(row.condition)} - ${escapeHtml(normalizeCheckerCarrier(row.carrier || "Any"))}</em>${deductionText}${askText}<b>${money(finalEach * quantity)} total</b></div>`;
   }).join("");
   $("priceCheckerResults").innerHTML = cards;
+}
+
+function checkerModelName(row) {
+  return row.base_model || String(row.model || "").replace(/\b\d+\s*(GB|TB)\b/i, "").replace(/\b(Unlocked|Carrier Locked|AT&T \(Clean\)|AT&T|T-Mobile|Verizon|Cricket|Metro|Spectrum|Xfinity|US Cellular|Boost)\b/ig, "").replace(/\s+/g, " ").trim();
+}
+
+function rowBrand(row) {
+  const text = `${row.base_model || ""} ${row.model || ""}`.toLowerCase();
+  if (/pixel|google/.test(text)) return "Google";
+  if (/samsung|galaxy|\bs\d{2}/.test(text)) return "Samsung";
+  return "Apple";
+}
+
+function normalizeCheckerCarrier(carrier) {
+  const text = String(carrier || "").trim();
+  if (/^locked$/i.test(text) || /carrier locked/i.test(text)) return "Carrier Locked";
+  if (/at&t/i.test(text)) return "AT&T (Clean)";
+  if (/unlocked/i.test(text)) return "Unlocked";
+  return text;
+}
+
+function storageSortValue(storage) {
+  return Number(String(storage || "").match(/(\d+)\s*TB/i)?.[1] || 0) * 1000
+    || Number(String(storage || "").match(/(\d+)\s*GB/i)?.[1] || 0);
+}
+
+function selectedAtlasDeduction(row) {
+  const notes = [];
+  let amount = 0;
+  if ($("deductCrackedBack").checked) {
+    const deduction = atlasCrackedBackDeduction(row.base_model || row.model);
+    if (deduction) amount += deduction;
+    else notes.push("Cracked back: ASK");
+  }
+  if ($("deductCrackedLens").checked) notes.push(`Cracked lens: ${atlasCrackedLensText(row.base_model || row.model)}`);
+  if ($("deductBattery").checked) notes.push("Battery / degraded battery: ASK");
+  if ($("deductRepair").checked) notes.push("Repair message: ASK");
+  if ($("deductFaceId").checked) notes.push("Bad Face ID: price as Parts or ASK");
+  return { amount, notes };
+}
+
+function atlasCrackedBackDeduction(model) {
+  const text = String(model || "").toLowerCase();
+  if (/15 pro max/.test(text)) return 90;
+  if (/14 pro max/.test(text)) return 80;
+  if (/14 pro/.test(text)) return 50;
+  if (/14 plus/.test(text)) return 50;
+  if (/\b14\b/.test(text)) return 70;
+  if (/16 pro max/.test(text)) return 120;
+  if (/16 plus/.test(text)) return 70;
+  if (/\b16e\b/.test(text)) return 100;
+  if (/\b16\b/.test(text)) return 60;
+  if (/17 pro max/.test(text)) return 160;
+  if (/17 pro/.test(text)) return 140;
+  if (/17 air/.test(text)) return 100;
+  if (/\b17\b/.test(text)) return 100;
+  if (/15 pro/.test(text)) return 60;
+  if (/15 plus/.test(text)) return 60;
+  if (/\b15\b/.test(text)) return 90;
+  if (/13 pro max/.test(text)) return 60;
+  return 0;
+}
+
+function atlasCrackedLensText(model) {
+  const text = String(model || "").toLowerCase();
+  if (/15 pro max/.test(text)) return "-$70";
+  if (/14 pro max/.test(text)) return "-$50";
+  if (/14|15|16/.test(text)) return "-$40 to -$60";
+  return "ASK";
 }
 
 function updateProjectedPrice() {

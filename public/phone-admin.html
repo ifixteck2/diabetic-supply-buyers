@@ -88,14 +88,26 @@
               </div>
               <div class="form-grid three">
                 <label>Phone or Tablet<select id="checkerDeviceType"><option>Phone</option><option>Tablet</option></select></label>
+                <label>Brand<select id="checkerBrand"><option>Apple</option><option>Samsung</option><option>Google</option></select></label>
                 <label>New or Used<select id="checkerConditionType"><option>Used</option><option>New</option></select></label>
-                <label id="checkerPackagingWrap" class="hidden">Open or Sealed<select id="checkerPackaging"><option>Sealed</option><option>Open</option></select></label>
-                <label id="checkerGradeWrap">Grade<select id="checkerGrade"><option>Grade A</option><option>Grade B</option><option>Grade C</option><option>Grade D</option><option>Parts</option></select></label>
               </div>
               <div class="form-grid three">
+                <label id="checkerPackagingWrap" class="hidden">Open or Sealed<select id="checkerPackaging"><option>Sealed</option><option>Open</option></select></label>
+                <label id="checkerGradeWrap">Grade<select id="checkerGrade"><option>Grade A</option><option>Grade B</option><option>Grade C</option><option>Grade D</option><option>Parts</option></select></label>
                 <label>Model<select id="checkerModel"></select></label>
+              </div>
+              <div class="form-grid three">
+                <label>Gigabytes<select id="checkerStorage"></select></label>
                 <label>Carrier<select id="checkerCarrier"></select></label>
                 <label>Quantity<input id="checkerQuantity" type="number" min="1" value="1"></label>
+              </div>
+              <div class="deduction-box">
+                <strong>Deductions</strong>
+                <label><input id="deductCrackedBack" type="checkbox"> Cracked back</label>
+                <label><input id="deductCrackedLens" type="checkbox"> Cracked lens</label>
+                <label><input id="deductBattery" type="checkbox"> Battery message / degraded battery</label>
+                <label><input id="deductRepair" type="checkbox"> Repair message</label>
+                <label><input id="deductFaceId" type="checkbox"> Bad Face ID</label>
               </div>
               <div id="priceCheckerResults" class="price-check-grid"></div>
             </section>
