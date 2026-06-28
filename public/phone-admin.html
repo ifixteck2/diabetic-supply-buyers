@@ -26,9 +26,8 @@
             <button class="tab active phone-tab" data-phone-tab="purchase">Add Purchase</button>
             <button class="tab phone-tab" data-phone-tab="priceChecker">Price Checker</button>
             <button class="tab phone-tab" data-phone-tab="atlasPending">Atlas Pending</button>
-            <button class="tab phone-tab" data-phone-tab="atlasPast">Atlas Past</button>
             <button class="tab phone-tab" data-phone-tab="ktPending">KT Pending</button>
-            <button class="tab phone-tab" data-phone-tab="ktPast">KT Past</button>
+            <button class="tab phone-tab" data-phone-tab="pastInvoices">Past Invoices</button>
           </nav>
           <button class="btn danger logout" id="phoneLogoutBtn">Log Out</button>
         </aside>
@@ -116,14 +115,11 @@
           <section id="atlasPendingPhoneTab" class="tab-panel hidden">
             <section class="panel"><div class="panel-head"><div><h2>Atlas Pending</h2><p>Open Atlas invoices.</p></div></div><div id="atlasPendingList" class="invoice-list"></div></section>
           </section>
-          <section id="atlasPastPhoneTab" class="tab-panel hidden">
-            <section class="panel"><div class="panel-head"><div><h2>Atlas Past</h2><p>Sold, shipped, and closed Atlas invoices.</p></div></div><div id="atlasPastList" class="invoice-list"></div></section>
-          </section>
           <section id="ktPendingPhoneTab" class="tab-panel hidden">
             <section class="panel"><div class="panel-head"><div><h2>KT Pending</h2><p>Open KT invoices.</p></div></div><div id="ktPendingList" class="invoice-list"></div></section>
           </section>
-          <section id="ktPastPhoneTab" class="tab-panel hidden">
-            <section class="panel"><div class="panel-head"><div><h2>KT Past</h2><p>Sold, shipped, and closed KT invoices.</p></div></div><div id="ktPastList" class="invoice-list"></div></section>
+          <section id="pastInvoicesPhoneTab" class="tab-panel hidden">
+            <section class="panel"><div class="panel-head"><div><h2>Past Invoices</h2><p>All sold, shipped, and closed invoices by date and buyer.</p></div></div><div id="pastInvoicesList" class="invoice-list"></div></section>
           </section>
         </section>
       </div>

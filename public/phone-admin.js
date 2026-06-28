@@ -91,9 +91,8 @@ function openPhoneTab(name) {
     purchase: "Add Purchase",
     priceChecker: "Price Checker",
     atlasPending: "Atlas Pending",
-    atlasPast: "Atlas Past",
     ktPending: "KT Pending",
-    ktPast: "KT Past",
+    pastInvoices: "Past Invoices",
   };
   document.querySelectorAll("[data-phone-tab]").forEach((button) => button.classList.toggle("active", button.dataset.phoneTab === name));
   document.querySelectorAll(".tab-panel").forEach((panel) => panel.classList.add("hidden"));
@@ -327,9 +326,8 @@ function resetPhonePurchase(clearStatus = true) {
 
 function renderInvoiceLists() {
   renderInvoiceGroup("atlasPendingList", "Atlas", "Pending");
-  renderInvoiceGroup("atlasPastList", "Atlas", "Past");
   renderInvoiceGroup("ktPendingList", "KT", "Pending");
-  renderInvoiceGroup("ktPastList", "KT", "Past");
+  renderPastInvoices();
 }
 
 function renderInvoiceGroup(id, buyer, view) {
@@ -338,6 +336,13 @@ function renderInvoiceGroup(id, buyer, view) {
     return view === "Pending" ? invoice.status === "Pending" : invoice.status !== "Pending";
   });
   $(id).innerHTML = list.map(renderPhoneInvoiceCard).join("") || `<div class="empty">No ${buyer} ${view.toLowerCase()} invoices yet.</div>`;
+}
+
+function renderPastInvoices() {
+  const list = phoneInvoices
+    .filter((invoice) => invoice.status !== "Pending")
+    .sort((a, b) => new Date(b.status_updated_at || b.closed_at || b.created_at) - new Date(a.status_updated_at || a.closed_at || a.created_at));
+  $("pastInvoicesList").innerHTML = list.map(renderPhoneInvoiceCard).join("") || `<div class="empty">No past invoices yet.</div>`;
 }
 
 function renderPhoneInvoiceCard(invoice) {
