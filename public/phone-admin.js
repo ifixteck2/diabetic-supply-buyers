@@ -342,14 +342,44 @@ function renderPastInvoices() {
   const list = phoneInvoices
     .filter((invoice) => invoice.status !== "Pending")
     .sort((a, b) => new Date(b.status_updated_at || b.closed_at || b.created_at) - new Date(a.status_updated_at || a.closed_at || a.created_at));
-  $("pastInvoicesList").innerHTML = list.map(renderPhoneInvoiceCard).join("") || `<div class="empty">No past invoices yet.</div>`;
+  $("pastInvoicesList").innerHTML = list.map(renderPastInvoiceCard).join("") || `<div class="empty">No past invoices yet.</div>`;
+}
+
+function invoiceTotals(invoice) {
+  const purchases = invoice.purchases || [];
+  const totalCost = purchases.reduce((sum, row) => sum + Number(row.quantity || 0) * Number(row.cost_each || 0), 0);
+  const projected = purchases.reduce((sum, row) => sum + Number(row.quantity || 0) * Number(row.projected_sell_each || 0), 0);
+  const units = purchases.reduce((sum, row) => sum + Number(row.quantity || 0), 0);
+  const salePrice = invoice.sale_price === null || invoice.sale_price === undefined || invoice.sale_price === "" ? null : Number(invoice.sale_price);
+  const profit = salePrice === null ? projected - totalCost : salePrice - totalCost;
+  return { totalCost, projected, units, salePrice, profit };
+}
+
+function renderPastInvoiceCard(invoice) {
+  const totals = invoiceTotals(invoice);
+  const date = new Date(invoice.status_updated_at || invoice.closed_at || invoice.created_at).toLocaleDateString();
+  return `
+    <article class="invoice-card phone-invoice-card past-invoice-card">
+      <button class="past-invoice-summary" onclick="togglePastInvoice(${invoice.id})">
+        <span><b>${escapeHtml(invoice.buyer)}</b><em>${escapeHtml(invoice.label || `${invoice.buyer} Invoice`)}</em></span>
+        <span><small>Date</small>${date}</span>
+        <span><small>Status</small>${escapeHtml(invoice.status)}</span>
+        <span><small>Units</small>${totals.units}</span>
+        <span><small>Cost</small>${money(totals.totalCost)}</span>
+        <span><small>${totals.salePrice === null ? "Projected" : "Sold For"}</small>${money(totals.salePrice ?? totals.projected)}</span>
+        <span class="${totals.profit >= 0 ? "profit-good" : "profit-bad"}"><small>Profit</small>${money(totals.profit)}</span>
+        <strong>Open</strong>
+      </button>
+      <div id="pastInvoiceDetail${invoice.id}" class="past-invoice-detail hidden">
+        ${renderPhoneInvoiceCard(invoice)}
+      </div>
+    </article>
+  `;
 }
 
 function renderPhoneInvoiceCard(invoice) {
   const purchases = invoice.purchases || [];
-  const totalCost = purchases.reduce((sum, row) => sum + Number(row.quantity || 0) * Number(row.cost_each || 0), 0);
-  const projected = purchases.reduce((sum, row) => sum + Number(row.quantity || 0) * Number(row.projected_sell_each || 0), 0);
-  const salePrice = invoice.sale_price === null || invoice.sale_price === undefined || invoice.sale_price === "" ? null : Number(invoice.sale_price);
+  const { totalCost, projected, salePrice } = invoiceTotals(invoice);
   const actualProfit = salePrice === null ? null : salePrice - totalCost;
   const canRemove = invoice.status === "Pending";
   const rows = purchases.map((row) => `
@@ -413,6 +443,10 @@ function renderPhoneInvoiceCard(invoice) {
     </article>
   `;
 }
+
+window.togglePastInvoice = (id) => {
+  $(`pastInvoiceDetail${id}`).classList.toggle("hidden");
+};
 
 function phoneInvoiceItemCondition(row) {
   if (row.condition_type === "New") return row.packaging ? `NEW - ${row.packaging}` : "NEW";
