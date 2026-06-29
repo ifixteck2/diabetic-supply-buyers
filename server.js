@@ -2204,6 +2204,7 @@ function createBuyerInvoicePdf(batch, mercuryPrices = [], options = {}) {
         description,
         condition: item.condition || "Sealed",
         expiration: formatExpiration(item.expiration),
+        expirations: new Map([[formatExpiration(item.expiration), quantity]]),
         unitPrice,
         lineTotal,
       };
@@ -2216,7 +2217,8 @@ function createBuyerInvoicePdf(batch, mercuryPrices = [], options = {}) {
       if (existing) {
         existing.quantity += row.quantity;
         existing.lineTotal = existing.lineTotal === null || row.lineTotal === null ? null : existing.lineTotal + row.lineTotal;
-        if (existing.expiration !== row.expiration) existing.expiration = "Mixed";
+        existing.expirations.set(row.expiration, (existing.expirations.get(row.expiration) || 0) + row.quantity);
+        if (existing.expiration !== row.expiration) existing.expiration = "See below";
       } else {
         groupedRows.set(rowKey, row);
       }
@@ -2226,7 +2228,11 @@ function createBuyerInvoicePdf(batch, mercuryPrices = [], options = {}) {
       if (image) photos.push(image);
     }
   }
-  const itemRows = Array.from(groupedRows.values());
+  const itemRows = Array.from(groupedRows.values()).map((row) => ({
+    ...row,
+    expirationBreakdown: Array.from(row.expirations.entries())
+      .map(([expiration, quantity]) => ({ expiration, quantity })),
+  }));
 
   const lines = [
     { text: "SELL DIABETICS LLC", x: 50, y: 746, size: 20, font: "bold" },
@@ -2252,10 +2258,12 @@ function createBuyerInvoicePdf(batch, mercuryPrices = [], options = {}) {
   let y = 590;
   for (const row of itemRows) {
     const descriptionLines = wrapPdfLine(row.description, 31).slice(0, 2);
+    const expirationBreakdown = row.expirationBreakdown || [];
+    const hasExpirationBreakdown = expirationBreakdown.length > 1;
     lines.push({ text: String(row.quantity), x: 54, y, size: 8 });
     lines.push({ text: descriptionLines[0] || "", x: 82, y, size: 8 });
     lines.push({ text: row.condition, x: 294, y, size: 8 });
-    lines.push({ text: row.expiration, x: 370, y, size: 8 });
+    lines.push({ text: hasExpirationBreakdown ? "See below" : row.expiration, x: 370, y, size: 8 });
     if (showPrices) {
       lines.push({ text: row.unitPrice === null ? "" : formatCurrency(row.unitPrice), x: 448, y, size: 8 });
       lines.push({ text: row.lineTotal === null ? "" : formatCurrency(row.lineTotal), x: 512, y, size: 8 });
@@ -2263,6 +2271,12 @@ function createBuyerInvoicePdf(batch, mercuryPrices = [], options = {}) {
     if (descriptionLines[1]) {
       y -= 13;
       lines.push({ text: descriptionLines[1], x: 82, y, size: 8 });
+    }
+    if (hasExpirationBreakdown) {
+      for (const entry of expirationBreakdown) {
+        y -= 12;
+        lines.push({ text: `-${entry.quantity} Expiration ${entry.expiration}`, x: 82, y, size: 8 });
+      }
     }
     y -= 24;
     if (y < 142) break;

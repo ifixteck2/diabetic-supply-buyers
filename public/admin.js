@@ -693,6 +693,11 @@ function renderBatchCard(batch) {
       ${removedHtml ? `<div class="removed-list">${removedHtml}</div>` : ""}
       ${renderPhotoStrip(purchase.photos || [])}
       ${purchase.notes ? `<p class="mini">${escapeHtml(purchase.notes)}</p>` : ""}
+      <div class="actions compact-actions">
+        <button class="mini-btn" onclick="editPurchaseFromInvoice(${batch.id}, ${purchase.id})">Edit Purchase</button>
+        <button class="mini-btn" onclick="addPhotosToPurchase(${purchase.id})">Add Photos</button>
+      </div>
+      <div id="purchaseEditor-${purchase.id}"></div>
     </div>`;
   }).join("");
   return `
@@ -1009,15 +1014,30 @@ function renderManagerHistory(invoices) {
   `).join("");
 }
 
+function findEditablePurchase(id) {
+  const purchaseId = Number(id);
+  return managerInvoicesCache.find((entry) => Number(entry.id) === purchaseId)
+    || [...batchesCache, ...allBatchesCache]
+      .flatMap((batch) => batch.purchases || [])
+      .find((entry) => Number(entry.id) === purchaseId);
+}
+
+window.editPurchaseFromInvoice = (batchId, id) => {
+  const invoice = findEditablePurchase(id);
+  if (!invoice) return alert("Purchase not found. Refresh invoices and try again.");
+  editItemsByPurchase[id] = (invoice.items || []).map((item) => ({ ...item }));
+  renderPurchaseEditor(invoice);
+};
+
 window.editPurchase = (id) => {
-  const invoice = managerInvoicesCache.find((entry) => Number(entry.id) === Number(id));
+  const invoice = findEditablePurchase(id);
   if (!invoice) return alert("Purchase not found. Refresh the customer and try again.");
   editItemsByPurchase[id] = (invoice.items || []).map((item) => ({ ...item }));
   renderPurchaseEditor(invoice);
 };
 
 window.addEditPurchaseItem = (id) => {
-  const invoice = managerInvoicesCache.find((entry) => Number(entry.id) === Number(id));
+  const invoice = findEditablePurchase(id);
   if (!invoice) return;
   editItemsByPurchase[id] = readEditPurchaseItems(id);
   editItemsByPurchase[id].push({
@@ -1035,7 +1055,7 @@ window.addEditPurchaseItem = (id) => {
 };
 
 window.removeEditPurchaseItem = (id, index) => {
-  const invoice = managerInvoicesCache.find((entry) => Number(entry.id) === Number(id));
+  const invoice = findEditablePurchase(id);
   if (!invoice) return;
   editItemsByPurchase[id] = readEditPurchaseItems(id).filter((_, itemIndex) => itemIndex !== index);
   renderPurchaseEditor(invoice);
@@ -1063,7 +1083,9 @@ window.saveEditedPurchase = async (id) => {
   });
   if (!result?.ok) return status(`editStatus-${id}`, result?.error || "Could not update purchase.", "bad");
   status(`editStatus-${id}`, "Purchase updated.");
-  await reloadCustomerManager();
+  await Promise.all([loadBatches(), loadCustomers(), loadFollowups()]);
+  if (managerPhone) await reloadCustomerManager();
+  renderDashboard();
 };
 
 window.addPhotosToPurchase = (id) => {
@@ -1085,7 +1107,9 @@ window.addPhotosToPurchase = (id) => {
       body: { photos: newPhotos },
     });
     if (!result?.ok) return alert(result?.error || "Could not add photos.");
-    await reloadCustomerManager();
+    await Promise.all([loadBatches(), loadCustomers()]);
+    if (managerPhone) await reloadCustomerManager();
+    renderDashboard();
   };
   input.click();
 };
