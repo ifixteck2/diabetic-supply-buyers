@@ -116,17 +116,18 @@ function handlePriceCheckerChange(event) {
 }
 
 function handleFlowChange(event) {
-  if (event.target.id === "conditionType" || event.target.id === "deviceType") {
+  const id = event.target.id;
+  if (id === "conditionType" || id === "deviceType" || id === "phoneBrand" || id === "phoneBuyer") {
     toggleConditionFields();
     renderModelOptions();
   }
-  if (event.target.id === "phoneModel" || event.target.id === "conditionType" || event.target.id === "deviceType" || event.target.id === "phoneBrand") {
+  if (id === "phoneModel" || id === "conditionType" || id === "deviceType" || id === "phoneBrand" || id === "phoneBuyer") {
     renderPhoneStorageOptions();
   }
-  if (event.target.id === "phoneModel" || event.target.id === "phoneStorage" || event.target.id === "conditionType" || event.target.id === "deviceType" || event.target.id === "phoneBrand") {
+  if (id === "phoneModel" || id === "phoneStorage" || id === "conditionType" || id === "deviceType" || id === "phoneBrand" || id === "phoneBuyer") {
     renderCarrierOptions();
   }
-  if (event.target.id === "phoneBuyer") renderInvoiceSelect();
+  if (id === "phoneBuyer") renderInvoiceSelect();
   updateProjectedPrice();
 }
 
