@@ -2185,6 +2185,7 @@ function createBuyerInvoicePdf(batch, mercuryPrices = [], options = {}) {
   const groupedRows = new Map();
   const photos = [];
   let mercuryTotal = 0;
+  const invoiceNumber = formatInvoiceStartDate(batch.created_at);
   for (const purchase of batch.purchases || []) {
     for (const item of activeInvoiceItems(purchase.items || [])) {
       const product = findMercuryProductForItem(item, mercuryPrices);
@@ -2239,7 +2240,7 @@ function createBuyerInvoicePdf(batch, mercuryPrices = [], options = {}) {
     { text: "Buyer Invoice", x: 50, y: 724, size: 12, font: "bold" },
     { text: "Phone: 561-510-1236", x: 50, y: 706, size: 10 },
     { text: process.env.COMPANY_ADDRESS || "5100 Lake Worth Rd, Greenacres, FL 33463", x: 50, y: 690, size: 10 },
-    { text: `Invoice #: ${batch.id}`, x: 410, y: 746, size: 11, font: "bold" },
+    { text: `Invoice #: ${invoiceNumber}`, x: 410, y: 746, size: 11, font: "bold" },
     { text: `Date: ${new Date().toLocaleDateString("en-US")}`, x: 410, y: 728, size: 10 },
     { text: `Status: ${batch.status || "Active"}`, x: 410, y: 710, size: 10 },
     { text: batch.sold_to ? `Buyer: ${batch.sold_to}` : "Buyer: ", x: 410, y: 692, size: 10 },
@@ -2527,6 +2528,12 @@ function formatExpiration(value) {
     return `${month}/${year}`;
   }
   return text;
+}
+
+function formatInvoiceStartDate(value) {
+  const date = value ? new Date(value) : new Date();
+  if (Number.isNaN(date.getTime())) return new Date().toLocaleDateString("en-US");
+  return date.toLocaleDateString("en-US");
 }
 
 function formatCurrency(value) {

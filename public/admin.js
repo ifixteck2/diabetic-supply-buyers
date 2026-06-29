@@ -385,7 +385,7 @@ async function loadBatches() {
 function renderBatchOptions() {
   const active = allBatchesCache.filter((batch) => batch.status === "Active");
   $("activeBatchSelect").innerHTML = active.map((batch) => (
-    `<option value="${batch.id}">#${batch.id} - ${escapeHtml(batch.label || "Open Invoice")} (${batch.purchase_count} purchase${batch.purchase_count === 1 ? "" : "s"})</option>`
+    `<option value="${batch.id}">${escapeHtml(formatInvoiceNumber(batch))} - ${escapeHtml(batch.label || "Open Invoice")} (${batch.purchase_count} purchase${batch.purchase_count === 1 ? "" : "s"})</option>`
   )).join("") || `<option value="">No active invoice</option>`;
 }
 
@@ -472,7 +472,7 @@ function renderInvoiceHistoryCard(batch) {
     <article class="invoice-card invoice-history-card">
       <div class="invoice-top">
         <div>
-          <h3>Invoice #${batch.id} - ${escapeHtml(batch.label || "Invoice")}</h3>
+          <h3>${escapeHtml(formatInvoiceNumber(batch))} - ${escapeHtml(batch.label || "Invoice")}</h3>
           <p>${batch.purchase_count} purchase${batch.purchase_count === 1 ? "" : "s"} - Created ${formatDateTime(batch.created_at)} - Updated ${formatDateTime(batch.status_updated_at)}</p>
         </div>
         <span class="pill ${batch.status?.toLowerCase()}">${escapeHtml(batch.status || "Active")}</span>
@@ -705,7 +705,7 @@ function renderBatchCard(batch, context = "active") {
     <article class="invoice-card">
       <div class="invoice-top">
         <div>
-          <h3>Invoice #${batch.id} - ${escapeHtml(batch.label || "Open Invoice")}</h3>
+          <h3>${escapeHtml(formatInvoiceNumber(batch))} - ${escapeHtml(batch.label || "Open Invoice")}</h3>
           <p>${batch.purchase_count} purchase${batch.purchase_count === 1 ? "" : "s"} inside this invoice</p>
         </div>
         <span class="pill ${batch.status?.toLowerCase()}">${escapeHtml(batch.status || "Active")}</span>
@@ -1610,6 +1610,11 @@ function isDue(value) {
 
 function firstName(value) {
   return String(value || "").trim().split(/\s+/)[0] || "there";
+}
+
+function formatInvoiceNumber(batch) {
+  const created = batch?.created_at ? formatDateOnly(batch.created_at) : "";
+  return created && created !== "N/A" ? `Invoice ${created}` : `Invoice #${batch?.id || ""}`;
 }
 
 function toMonthInputValue(value) {
