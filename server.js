@@ -253,6 +253,104 @@ app.post("/api/phone-purchases", requirePhoneAuth, async (req, res) => {
   }
 });
 
+app.patch("/api/phone-purchases/:id", requirePhoneAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  const input = req.body || {};
+  const buyer = normalizeBuyer(input.buyer || "");
+  const invoiceId = Number(input.invoice_id || 0) || null;
+  const quantity = Number(input.quantity || 0);
+  const costEach = Number(input.cost_each || 0);
+  let projectedSellEach = Number(input.projected_sell_each || 0);
+  if (!id) return res.status(400).json({ error: "Purchase ID is required." });
+  if (!buyer) return res.status(400).json({ error: "Choose KT or Atlas." });
+  if (!invoiceId) return res.status(400).json({ error: "Choose an invoice." });
+  if (!quantity || quantity < 1) return res.status(400).json({ error: "Quantity must be at least 1." });
+  if (!String(input.model || "").trim()) return res.status(400).json({ error: "Choose a model." });
+
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    const invoice = await findAnyPhoneInvoice(client, invoiceId, buyer);
+    if (!invoice) {
+      await client.query("rollback");
+      return res.status(404).json({ error: "Invoice not found for that buyer." });
+    }
+    const existing = await client.query("select * from phone_purchases where id = $1", [id]);
+    if (!existing.rows[0]) {
+      await client.query("rollback");
+      return res.status(404).json({ error: "Phone purchase not found." });
+    }
+    const priceRows = buyer === "KT" ? await getKtPrices() : await getAtlasPrices();
+    const matchedProjected = findPhonePrice(
+      {
+        device_type: normalizeDeviceType(input.device_type || ""),
+        condition_type: normalizeConditionType(input.condition_type || ""),
+        packaging: String(input.packaging || "").trim(),
+        grade: String(input.grade || "").trim(),
+        model: String(input.model || "").trim(),
+        carrier: String(input.carrier || "").trim(),
+      },
+      priceRows,
+      buyer
+    );
+    if (matchedProjected) projectedSellEach = matchedProjected;
+
+    const hasNewPhoto = input.photo && typeof input.photo === "object";
+    const photoFileName = hasNewPhoto ? String(input.photo?.file_name || "").slice(0, 160) : existing.rows[0].photo_file_name;
+    const photoDataUrl = hasNewPhoto && isAllowedPhotoDataUrl(input.photo?.data_url)
+      ? String(input.photo.data_url)
+      : existing.rows[0].photo_data_url;
+    const result = await client.query(
+      `update phone_purchases
+       set invoice_id = $1,
+         buyer = $2,
+         purchase_date = $3,
+         device_type = $4,
+         condition_type = $5,
+         packaging = $6,
+         grade = $7,
+         model = $8,
+         carrier = $9,
+         quantity = $10,
+         cost_each = $11,
+         projected_sell_each = $12,
+         imei = $13,
+         photo_file_name = $14,
+         photo_data_url = $15,
+         notes = $16
+       where id = $17
+       returning *`,
+      [
+        invoice.id,
+        buyer,
+        input.purchase_date || new Date().toISOString().slice(0, 10),
+        normalizeDeviceType(input.device_type || ""),
+        normalizeConditionType(input.condition_type || ""),
+        String(input.packaging || "").trim(),
+        String(input.grade || "").trim(),
+        String(input.model || "").trim(),
+        String(input.carrier || "").trim(),
+        quantity,
+        costEach,
+        projectedSellEach,
+        String(input.imei || "").trim(),
+        photoFileName,
+        photoDataUrl,
+        String(input.notes || "").trim(),
+        id,
+      ]
+    );
+    await client.query("commit");
+    res.json({ ok: true, invoice, purchase: result.rows[0] });
+  } catch (error) {
+    await client.query("rollback");
+    console.error(error);
+    res.status(500).json({ error: "Could not update phone purchase." });
+  } finally {
+    client.release();
+  }
+});
+
 app.patch("/api/phone-purchases/:id/invoice-removal", requirePhoneAuth, async (req, res) => {
   const id = Number(req.params.id);
   const remove = req.body?.remove !== false;
@@ -975,6 +1073,14 @@ async function findBatch(client, batchId) {
 async function findPhoneInvoice(client, invoiceId, buyer) {
   const result = await client.query(
     "select * from phone_invoices where id = $1 and buyer = $2 and status = 'Pending'",
+    [invoiceId, buyer]
+  );
+  return result.rows[0] || null;
+}
+
+async function findAnyPhoneInvoice(client, invoiceId, buyer) {
+  const result = await client.query(
+    "select * from phone_invoices where id = $1 and buyer = $2",
     [invoiceId, buyer]
   );
   return result.rows[0] || null;

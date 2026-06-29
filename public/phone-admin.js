@@ -6,6 +6,7 @@ const status = (id, message, type = "ok") => {
 
 let atlasPrices = [];
 let phoneInvoices = [];
+let editingPhonePurchaseId = null;
 
 initPhonePortal();
 
@@ -425,33 +426,42 @@ async function createPhoneInvoice() {
 async function savePhonePurchase() {
   const photoFile = $("phonePhoto").files?.[0] || null;
   const photo = photoFile ? await imageFileToDataUrl(photoFile) : null;
-  const result = await api("/api/phone-purchases", {
-    method: "POST",
-    body: {
-      buyer: $("phoneBuyer").value,
-      invoice_id: Number($("phoneInvoiceSelect").value || 0) || null,
-      purchase_date: $("phonePurchaseDate").value,
-      device_type: $("deviceType").value,
-      condition_type: $("conditionType").value,
-      packaging: $("conditionType").value === "New" ? $("packaging").value : "",
-      grade: $("conditionType").value === "Used" ? $("grade").value : "",
-      model: [$("phoneModel").value, $("phoneStorage").value && $("phoneStorage").value !== "N/A" ? $("phoneStorage").value : ""].filter(Boolean).join(" "),
-      carrier: $("phoneCarrier").value,
-      quantity: Number($("phoneQuantity").value || 0),
-      cost_each: Number($("phoneCost").value || 0),
-      projected_sell_each: Number($("phoneProjected").value || 0),
-      imei: $("phoneImei").value.trim(),
-      photo,
-      notes: $("phoneNotes").value.trim(),
-    },
+  const body = phonePurchasePayload(photo);
+  const result = await api(editingPhonePurchaseId ? `/api/phone-purchases/${editingPhonePurchaseId}` : "/api/phone-purchases", {
+    method: editingPhonePurchaseId ? "PATCH" : "POST",
+    body,
   });
   if (!result?.ok) return status("phonePurchaseStatus", result?.error || "Could not save purchase.", "bad");
-  status("phonePurchaseStatus", `Added purchase to ${result.invoice.buyer} invoice #${result.invoice.id}.`);
+  status("phonePurchaseStatus", editingPhonePurchaseId ? `Updated phone on ${result.invoice.buyer} invoice #${result.invoice.id}.` : `Added purchase to ${result.invoice.buyer} invoice #${result.invoice.id}.`);
   resetPhonePurchase(false);
   await loadPhoneInvoices();
 }
 
+function phonePurchasePayload(photo) {
+  return {
+    buyer: $("phoneBuyer").value,
+    invoice_id: Number($("phoneInvoiceSelect").value || 0) || null,
+    purchase_date: $("phonePurchaseDate").value,
+    device_type: $("deviceType").value,
+    condition_type: $("conditionType").value,
+    packaging: $("conditionType").value === "New" ? $("packaging").value : "",
+    grade: $("conditionType").value === "Used" ? $("grade").value : "",
+    model: [$("phoneModel").value, $("phoneStorage").value && $("phoneStorage").value !== "N/A" ? $("phoneStorage").value : ""].filter(Boolean).join(" "),
+    carrier: $("phoneCarrier").value,
+    quantity: Number($("phoneQuantity").value || 0),
+    cost_each: Number($("phoneCost").value || 0),
+    projected_sell_each: Number($("phoneProjected").value || 0),
+    imei: $("phoneImei").value.trim(),
+    photo,
+    notes: $("phoneNotes").value.trim(),
+  };
+}
+
 function resetPhonePurchase(clearStatus = true) {
+  editingPhonePurchaseId = null;
+  $("savePhonePurchaseBtn").textContent = "Add Purchase To Invoice";
+  $("phoneEditNotice").classList.add("hidden");
+  $("phoneEditNotice").textContent = "";
   $("deviceType").value = "Phone";
   $("conditionType").value = "Used";
   $("packaging").value = "Sealed";
@@ -544,7 +554,7 @@ function renderPhoneInvoiceCard(invoice) {
       <td>${money(row.projected_sell_each)}</td>
       <td class="${profitClass(row)}">${money(profitEach(row))}</td>
       <td class="${profitClass(row)}"><strong>${money(profitTotal(row))}</strong></td>
-      <td>${canRemove ? `<button class="mini-btn danger" onclick="removePhonePurchaseFromInvoice(${row.id})">Remove</button>` : ""}</td>
+      <td><div class="phone-row-actions"><button class="mini-btn" onclick="startPhonePurchaseEdit(${row.id})">Edit</button>${canRemove ? `<button class="mini-btn danger" onclick="removePhonePurchaseFromInvoice(${row.id})">Remove</button>` : ""}</div></td>
     </tr>
   `).join("");
   return `
@@ -606,6 +616,73 @@ window.openPhonePhoto = (id) => {
   viewer.innerHTML = `<div class="photo-viewer-backdrop" onclick="this.parentElement.remove()"></div><div class="photo-viewer-panel"><button class="photo-viewer-close" onclick="this.closest('.photo-viewer').remove()">Close</button><img src="${escapeAttr(purchase.photo_data_url)}" alt="Phone photo"><p>${escapeHtml(purchase.model || "Phone")} ${purchase.imei ? `- IMEI ${escapeHtml(purchase.imei)}` : ""}</p></div>`;
   document.body.appendChild(viewer);
 };
+
+window.startPhonePurchaseEdit = (id) => {
+  const invoice = phoneInvoices.find((entry) => (entry.purchases || []).some((row) => Number(row.id) === Number(id)));
+  const purchase = invoice?.purchases?.find((row) => Number(row.id) === Number(id));
+  if (!invoice || !purchase) return alert("Could not find that phone purchase.");
+  editingPhonePurchaseId = Number(id);
+  $("phoneBuyer").value = purchase.buyer || invoice.buyer || "Atlas";
+  renderInvoiceSelect();
+  ensureSelectOption("phoneInvoiceSelect", String(invoice.id), `#${invoice.id} - ${invoice.label || invoice.buyer} (${invoice.status})`);
+  $("phoneInvoiceSelect").value = String(invoice.id);
+  $("deviceType").value = purchase.device_type || "Phone";
+  $("conditionType").value = purchase.condition_type || "Used";
+  $("packaging").value = purchase.packaging || "Sealed";
+  $("grade").value = purchase.grade || "Grade A";
+  $("phoneBrand").value = brandForPurchase(purchase);
+  toggleConditionFields();
+  renderModelOptions();
+  const parsed = splitPhoneModel(purchase.model);
+  ensureSelectOption("phoneModel", parsed.model, parsed.model);
+  $("phoneModel").value = parsed.model;
+  renderPhoneStorageOptions();
+  ensureSelectOption("phoneStorage", parsed.storage, parsed.storage);
+  $("phoneStorage").value = parsed.storage;
+  renderCarrierOptions();
+  ensureSelectOption("phoneCarrier", purchase.carrier || "Unlocked", purchase.carrier || "Unlocked");
+  $("phoneCarrier").value = purchase.carrier || "Unlocked";
+  $("phoneQuantity").value = purchase.quantity || 1;
+  $("phoneCost").value = purchase.cost_each || "";
+  $("phoneProjected").value = purchase.projected_sell_each || "";
+  $("phonePurchaseDate").value = String(purchase.purchase_date || "").slice(0, 10) || new Date().toISOString().slice(0, 10);
+  $("phoneImei").value = purchase.imei || "";
+  $("phonePhoto").value = "";
+  $("phoneNotes").value = purchase.notes || "";
+  $("savePhonePurchaseBtn").textContent = "Save Changes";
+  $("phoneEditNotice").classList.remove("hidden");
+  $("phoneEditNotice").textContent = `Editing ${purchase.model} from invoice #${invoice.id}. Choose a new photo only if you want to replace the old one.`;
+  updateProjectedPrice();
+  openPhoneTab("purchase");
+  status("phonePurchaseStatus", "");
+  window.scrollTo({ top: 0, behavior: "smooth" });
+};
+
+function splitPhoneModel(model) {
+  const text = String(model || "").replace(/\s+/g, " ").trim();
+  const storageMatch = text.match(/\b\d+\s*(?:GB|TB)\b/i);
+  const storage = storageMatch ? storageMatch[0].replace(/\s+/g, "") : "N/A";
+  const cleanModel = text
+    .replace(/\b\d+\s*(?:GB|TB)\b/i, "")
+    .replace(/AT&T\s*\(Clean\)|Carrier Locked|Unlocked|T-Mobile|Verizon|Cricket|Metro|Spectrum|Xfinity|US Cellular|Boost/ig, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return { model: cleanModel || text, storage };
+}
+
+function brandForPurchase(purchase) {
+  const text = `${purchase.model || ""}`.toLowerCase();
+  if (/pixel|google/.test(text)) return "Google";
+  if (/samsung|galaxy|\bs\d{2}|note\s+\d|z\s+(fold|flip)/.test(text)) return "Samsung";
+  return "Apple";
+}
+
+function ensureSelectOption(id, value, label) {
+  if (!value) return;
+  const select = $(id);
+  if ([...select.options].some((option) => option.value === value)) return;
+  select.insertAdjacentHTML("beforeend", `<option value="${escapeAttr(value)}">${escapeHtml(label || value)}</option>`);
+}
 
 function phoneInvoiceItemCondition(row) {
   if (row.condition_type === "New") return row.packaging ? `NEW - ${row.packaging}` : "NEW";
