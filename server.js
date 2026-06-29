@@ -1574,6 +1574,7 @@ async function getAtlasPrices() {
   }
   const sources = [
     { sheetId: atlasUsedSheetId, sheet: "iPhone Used", deviceType: "Phone", conditionType: "Used" },
+    { sheetId: atlasUsedSheetId, sheet: "Samsung", deviceType: "Phone", conditionType: "Used", parser: "samsung" },
     { sheetId: atlasUsedSheetId, sheet: "Parts / iC", deviceType: "Phone", conditionType: "Used", parser: "parts" },
     { sheetId: atlasUsedSheetId, sheet: "iPad Used", deviceType: "Tablet", conditionType: "Used" },
     { sheetId: atlasNewSheetId, gid: "1148430169", sheet: "New in Box", deviceType: "Phone", conditionType: "New", parser: "newBox" },
@@ -1587,6 +1588,7 @@ async function getAtlasPrices() {
     const csv = await response.text();
     if (source.parser === "newBox") return parseAtlasNewBoxCsv(csv, source);
     if (source.parser === "parts") return parseAtlasPartsCsv(csv, source);
+    if (source.parser === "samsung") return parseAtlasSamsungCsv(csv, source);
     return parseAtlasPriceCsv(csv, source);
   }));
   atlasPriceCache = { fetchedAt: Date.now(), rows: groups.flat() };
@@ -1637,6 +1639,54 @@ function parseAtlasPriceCsv(csv, source) {
     }
   }
   return rows;
+}
+
+function parseAtlasSamsungCsv(csv, source) {
+  const table = parseCsv(csv);
+  const rows = [];
+  let currentModel = "";
+  const priceColumns = [
+    { index: 3, conditionType: "New", condition: "NEW" },
+    { index: 4, conditionType: "Used", condition: "Grade A" },
+    { index: 5, conditionType: "Used", condition: "Grade B" },
+    { index: 6, conditionType: "Used", condition: "Grade C" },
+    { index: 7, conditionType: "Used", condition: "Grade D" },
+    { index: 8, conditionType: "Used", condition: "DOA" },
+  ];
+
+  for (const row of table) {
+    const possibleModel = normalizeAtlasSamsungModel(row[1]);
+    const carrier = normalizeAtlasCarrier(row[2]);
+
+    if (possibleModel) currentModel = possibleModel;
+    if (!currentModel || !/unlocked|carrier locked/i.test(carrier)) continue;
+
+    for (const column of priceColumns) {
+      const price = parseMoney(row[column.index]);
+      if (price === null) continue;
+      rows.push(makeAtlasSamsungPriceRow(source, currentModel, carrier, column.conditionType, column.condition, price));
+      if (column.conditionType === "New" && price >= 30) {
+        rows.push(makeAtlasSamsungPriceRow(source, currentModel, carrier, "New", "Open", price - 30));
+      }
+    }
+  }
+  return rows;
+}
+
+function makeAtlasSamsungPriceRow(source, model, carrier, conditionType, condition, price) {
+  return {
+    id: makePriceKey(`${source.sheet}-${model}-${carrier}-${condition}`),
+    buyer: "Atlas",
+    source_sheet: source.sheet,
+    device_type: source.deviceType,
+    condition_type: conditionType,
+    condition,
+    model,
+    base_model: model,
+    storage: "",
+    carrier,
+    price,
+  };
 }
 
 function parseAtlasPartsCsv(csv, source) {
@@ -1723,6 +1773,19 @@ function normalizeAtlasCarrier(value) {
   if (/unlocked/i.test(text)) return "Unlocked";
   if (/carrier locked/i.test(text)) return "Carrier Locked";
   return text;
+}
+
+function normalizeAtlasSamsungModel(value) {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  if (!text) return "";
+  const galaxyMatch = text.match(/\bGalaxy\s+(?:Z\s+)?(?:Fold|Flip)\s+\d+\b|\bGalaxy\s+S\d{2}\s*(?:Ultra|Plus|FE|EDGE)?\b/i);
+  if (galaxyMatch) return galaxyMatch[0].replace(/\bedge\b/i, "EDGE").replace(/\s+/g, " ").trim();
+  const noteMatch = text.match(/\bNote\s+\d{2}\s*(?:Ultra)?\b/i);
+  if (noteMatch) return noteMatch[0].replace(/\s+/g, " ").trim();
+  if (/^S\d{2}\+$/i.test(text)) return `Galaxy ${text.toUpperCase().replace("+", " Plus")}`;
+  if (/^S\d{2}\s*(Ultra|Plus|FE|EDGE)?$/i.test(text)) return `Galaxy ${text}`.replace(/\bedge\b/i, "EDGE").replace(/\s+/g, " ").trim();
+  if (/^Z\s*(Fold|Flip)\s+\d+$/i.test(text)) return `Galaxy ${text}`.replace(/\s+/g, " ").trim();
+  return "";
 }
 
 function defaultAtlasHeader(source, index) {
