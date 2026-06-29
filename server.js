@@ -1238,6 +1238,7 @@ function normalizeSeedModel(model, storage) {
 
 function normalizeSeedCarrier(carrier) {
   const text = String(carrier || "").trim();
+  if (/at&t/i.test(text)) return "AT&T (Clean)";
   if (/unlocked/i.test(text)) return "Unlocked";
   if (/locked/i.test(text)) return "Carrier Locked";
   return text;
@@ -1283,6 +1284,7 @@ function findPhonePrice(purchase, priceRows, buyer) {
     if (carrier === "WiFi") return row.carrier === "WiFi" || row.carrier === "Any";
     if (carrier === "Unlocked") return row.carrier === "Unlocked";
     if (carrier === "Carrier Locked") return row.carrier === "Carrier Locked";
+    if (carrier === "AT&T (Clean)") return row.carrier === "AT&T (Clean)";
     return true;
   });
   const looserCandidates = candidates.length ? candidates : priceRows.filter((row) => {
@@ -1831,13 +1833,13 @@ function isAtlasModelRow(model) {
 function parseDeviceModel(model) {
   const text = String(model || "").trim();
   const deviceType = /^iPad/i.test(text) ? "Tablet" : /^iPhone/i.test(text) ? "Phone" : "";
-  const carrierMatch = text.match(/\b(Unlocked|Carrier Locked|AT&T \(Clean\)|AT&T|T-Mobile|Verizon|Cricket|Metro|Spectrum|Xfinity|US Cellular|Boost)\b/i);
-  const carrier = carrierMatch ? carrierMatch[0] : "";
+  const carrierMatch = text.match(/AT&T\s*\(Clean\)|Carrier Locked|Unlocked|T-Mobile|Verizon|Cricket|Metro|Spectrum|Xfinity|US Cellular|Boost/i);
+  const carrier = carrierMatch ? normalizeAtlasCarrier(carrierMatch[0]) : "";
   const storageMatch = text.match(/\b\d+\s*(?:GB|TB)\b/i);
   const storage = storageMatch ? storageMatch[0].replace(/\s+/g, "") : "";
   const baseModel = text
     .replace(/\b\d+\s*(?:GB|TB)\b/i, "")
-    .replace(/\b(Unlocked|Carrier Locked|AT&T \(Clean\)|AT&T|T-Mobile|Verizon|Cricket|Metro|Spectrum|Xfinity|US Cellular|Boost)\b/ig, "")
+    .replace(/AT&T\s*\(Clean\)|Carrier Locked|Unlocked|T-Mobile|Verizon|Cricket|Metro|Spectrum|Xfinity|US Cellular|Boost/ig, "")
     .replace(/\s+/g, " ")
     .trim();
   return { deviceType, baseModel, storage, carrier };

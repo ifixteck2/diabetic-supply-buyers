@@ -293,7 +293,7 @@ function renderPriceCheckerResults() {
 }
 
 function checkerModelName(row) {
-  return row.base_model || String(row.model || "").replace(/\b\d+\s*(GB|TB)\b/i, "").replace(/\b(Unlocked|Carrier Locked|AT&T \(Clean\)|AT&T|T-Mobile|Verizon|Cricket|Metro|Spectrum|Xfinity|US Cellular|Boost)\b/ig, "").replace(/\s+/g, " ").trim();
+  return row.base_model || String(row.model || "").replace(/\b\d+\s*(GB|TB)\b/i, "").replace(/AT&T\s*\(Clean\)|Carrier Locked|Unlocked|T-Mobile|Verizon|Cricket|Metro|Spectrum|Xfinity|US Cellular|Boost/ig, "").replace(/\s+/g, " ").trim();
 }
 
 function rowBrand(row) {
