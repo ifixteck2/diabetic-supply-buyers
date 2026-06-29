@@ -17,6 +17,7 @@ let managerPhone = "";
 let managerInvoicesCache = [];
 let editingCustomerPhone = "";
 let editItemsByPurchase = {};
+let editEditorByPurchase = {};
 let mercuryPrices = [];
 let loginFollowupNoticeShown = false;
 
@@ -510,7 +511,7 @@ function renderDashboard() {
   $("followupCount").textContent = followupsCache.length;
   $("activeValue").textContent = money(allActive.reduce((sum, batch) => sum + Number(batch.total_paid || 0), 0));
   $("dashboardFollowups").innerHTML = followupsCache.slice(0, 4).map(renderCustomerRow).join("") || `<div class="empty">No follow ups due right now.</div>`;
-  $("dashboardInvoices").innerHTML = allActive.slice(0, 5).map(renderBatchCard).join("") || `<div class="empty">No active invoices right now.</div>`;
+  $("dashboardInvoices").innerHTML = allActive.slice(0, 5).map((batch) => renderBatchCard(batch, "dashboard")).join("") || `<div class="empty">No active invoices right now.</div>`;
   renderGrowthCrm();
 }
 
@@ -672,7 +673,7 @@ function renderTemplateGroups() {
   `).join("");
 }
 
-function renderBatchCard(batch) {
+function renderBatchCard(batch, context = "active") {
   const profit = Number(batch.sale_price || 0) - Number(batch.total_paid || 0);
   const mercuryTotal = calculateMercuryInvoiceTotal(batch);
   const purchasesHtml = (batch.purchases || []).map((purchase) => {
@@ -694,10 +695,10 @@ function renderBatchCard(batch) {
       ${renderPhotoStrip(purchase.photos || [])}
       ${purchase.notes ? `<p class="mini">${escapeHtml(purchase.notes)}</p>` : ""}
       <div class="actions compact-actions">
-        <button class="mini-btn" onclick="editPurchaseFromInvoice(${batch.id}, ${purchase.id})">Edit Purchase</button>
+        <button class="mini-btn" onclick="editPurchaseFromInvoice(${batch.id}, ${purchase.id}, 'purchaseEditor-${context}-${batch.id}-${purchase.id}')">Edit Purchase</button>
         <button class="mini-btn" onclick="addPhotosToPurchase(${purchase.id})">Add Photos</button>
       </div>
-      <div id="purchaseEditor-${purchase.id}"></div>
+      <div id="purchaseEditor-${context}-${batch.id}-${purchase.id}"></div>
     </div>`;
   }).join("");
   return `
@@ -1022,9 +1023,14 @@ function findEditablePurchase(id) {
       .find((entry) => Number(entry.id) === purchaseId);
 }
 
-window.editPurchaseFromInvoice = (batchId, id) => {
+function getPurchaseEditor(id) {
+  return $(editEditorByPurchase[id] || `purchaseEditor-${id}`);
+}
+
+window.editPurchaseFromInvoice = (batchId, id, editorId) => {
   const invoice = findEditablePurchase(id);
   if (!invoice) return alert("Purchase not found. Refresh invoices and try again.");
+  editEditorByPurchase[id] = editorId;
   editItemsByPurchase[id] = (invoice.items || []).map((item) => ({ ...item }));
   renderPurchaseEditor(invoice);
 };
@@ -1032,6 +1038,7 @@ window.editPurchaseFromInvoice = (batchId, id) => {
 window.editPurchase = (id) => {
   const invoice = findEditablePurchase(id);
   if (!invoice) return alert("Purchase not found. Refresh the customer and try again.");
+  editEditorByPurchase[id] = `purchaseEditor-${id}`;
   editItemsByPurchase[id] = (invoice.items || []).map((item) => ({ ...item }));
   renderPurchaseEditor(invoice);
 };
@@ -1063,7 +1070,7 @@ window.removeEditPurchaseItem = (id, index) => {
 
 window.cancelEditPurchase = (id) => {
   editItemsByPurchase[id] = [];
-  const editor = $(`purchaseEditor-${id}`);
+  const editor = getPurchaseEditor(id);
   if (editor) editor.innerHTML = "";
 };
 
@@ -1116,7 +1123,7 @@ window.addPhotosToPurchase = (id) => {
 
 function renderPurchaseEditor(invoice) {
   const id = invoice.id;
-  const editor = $(`purchaseEditor-${id}`);
+  const editor = getPurchaseEditor(id);
   if (!editor) return;
   const editableItems = editItemsByPurchase[id] || [];
   editor.innerHTML = `
@@ -1167,7 +1174,7 @@ function renderMercuryProductOptions(selectedId = "") {
 }
 
 window.applyEditMercuryProduct = (id, index) => {
-  const row = document.querySelector(`#purchaseEditor-${id} [data-edit-item="${index}"]`);
+  const row = getPurchaseEditor(id)?.querySelector(`[data-edit-item="${index}"]`);
   if (!row) return;
   const productId = row.querySelector('[data-field="price_product"]')?.value || "";
   const product = mercuryPrices.find((entry) => entry.id === productId);
@@ -1179,7 +1186,7 @@ window.applyEditMercuryProduct = (id, index) => {
 };
 
 window.updateEditMercuryPrice = (id, index) => {
-  const row = document.querySelector(`#purchaseEditor-${id} [data-edit-item="${index}"]`);
+  const row = getPurchaseEditor(id)?.querySelector(`[data-edit-item="${index}"]`);
   if (!row) return;
   const productId = row.querySelector('[data-field="price_product"]')?.value || "";
   const product = mercuryPrices.find((entry) => entry.id === productId);
@@ -1193,9 +1200,11 @@ window.updateEditMercuryPrice = (id, index) => {
 };
 
 function readEditPurchaseItems(id) {
-  return Array.from(document.querySelectorAll(`#purchaseEditor-${id} [data-edit-item]`)).map((row) => {
+  const editor = getPurchaseEditor(id);
+  if (!editor) return [];
+  return Array.from(editor.querySelectorAll(`[data-edit-item]`)).map((row) => {
     const index = row.dataset.editItem;
-    const notesRow = document.querySelector(`#purchaseEditor-${id} [data-edit-item-notes="${index}"]`);
+    const notesRow = editor.querySelector(`[data-edit-item-notes="${index}"]`);
     const get = (field) => row.querySelector(`[data-field="${field}"]`)?.value || "";
     return {
       category: get("category"),
