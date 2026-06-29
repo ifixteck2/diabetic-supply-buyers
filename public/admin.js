@@ -745,14 +745,16 @@ function renderPendingInvoiceItemRow(batch, item) {
   const profitEach = buyerEach === null ? null : buyerEach - paidEach;
   const totalProfit = profitEach === null ? null : profitEach * quantity;
   const itemName = [item.brand, item.model].filter(Boolean).join(" ") || item.category || "Item";
+  const expiration = formatExpirationForDisplay(item.expiration);
   return `
     <tr class="pending-item-row">
       <td>${quantity}</td>
       <td>
         <strong>${escapeHtml(itemName)}</strong>
         <span>${escapeHtml(item.condition || "Sealed")}</span>
+        <span class="expiration-line">Exp: ${escapeHtml(expiration)}</span>
       </td>
-      <td>${escapeHtml(item.expiration || "N/A")}</td>
+      <td><strong>${escapeHtml(expiration)}</strong></td>
       <td>${money(paidEach)}</td>
       <td>${buyerEach === null ? "N/A" : money(buyerEach)}</td>
       <td class="${profitEach === null ? "" : profitEach >= 0 ? "profit-good" : "profit-bad"}">${profitEach === null ? "N/A" : money(profitEach)}</td>
