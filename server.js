@@ -583,10 +583,11 @@ app.get("/api/batches/:id/buyer-pdf", requireAuth, async (req, res) => {
   const batches = await attachPurchases([batch]);
   const fullBatch = batches[0];
   const mercuryPrices = await getMercuryPrices();
-  const pdf = createBuyerInvoicePdf(fullBatch, mercuryPrices);
+  const showPrices = String(req.query.prices || "1") !== "0";
+  const pdf = createBuyerInvoicePdf(fullBatch, mercuryPrices, { showPrices });
 
   res.setHeader("Content-Type", "application/pdf");
-  res.setHeader("Content-Disposition", `attachment; filename="buyer-invoice-${id}.pdf"`);
+  res.setHeader("Content-Disposition", `attachment; filename="buyer-invoice-${id}${showPrices ? "" : "-no-prices"}.pdf"`);
   res.send(pdf);
 });
 
@@ -2179,7 +2180,8 @@ function normalizeMatchText(value) {
     .trim();
 }
 
-function createBuyerInvoicePdf(batch, mercuryPrices = []) {
+function createBuyerInvoicePdf(batch, mercuryPrices = [], options = {}) {
+  const showPrices = options.showPrices !== false;
   const groupedRows = new Map();
   const photos = [];
   let mercuryTotal = 0;
@@ -2241,8 +2243,10 @@ function createBuyerInvoicePdf(batch, mercuryPrices = []) {
     { text: "Description", x: 82, y: 612, size: 8, font: "bold" },
     { text: "Condition", x: 294, y: 612, size: 8, font: "bold" },
     { text: "Expiration", x: 370, y: 612, size: 8, font: "bold" },
-    { text: "Unit Price", x: 448, y: 612, size: 8, font: "bold" },
-    { text: "Line Total", x: 512, y: 612, size: 8, font: "bold" },
+    ...(showPrices ? [
+      { text: "Unit Price", x: 448, y: 612, size: 8, font: "bold" },
+      { text: "Line Total", x: 512, y: 612, size: 8, font: "bold" },
+    ] : []),
   ];
 
   let y = 590;
@@ -2252,8 +2256,10 @@ function createBuyerInvoicePdf(batch, mercuryPrices = []) {
     lines.push({ text: descriptionLines[0] || "", x: 82, y, size: 8 });
     lines.push({ text: row.condition, x: 294, y, size: 8 });
     lines.push({ text: row.expiration, x: 370, y, size: 8 });
-    lines.push({ text: row.unitPrice === null ? "" : formatCurrency(row.unitPrice), x: 448, y, size: 8 });
-    lines.push({ text: row.lineTotal === null ? "" : formatCurrency(row.lineTotal), x: 512, y, size: 8 });
+    if (showPrices) {
+      lines.push({ text: row.unitPrice === null ? "" : formatCurrency(row.unitPrice), x: 448, y, size: 8 });
+      lines.push({ text: row.lineTotal === null ? "" : formatCurrency(row.lineTotal), x: 512, y, size: 8 });
+    }
     if (descriptionLines[1]) {
       y -= 13;
       lines.push({ text: descriptionLines[1], x: 82, y, size: 8 });
@@ -2263,7 +2269,9 @@ function createBuyerInvoicePdf(batch, mercuryPrices = []) {
   }
 
   const total = mercuryTotal > 0 ? mercuryTotal : Number(batch.sale_price || 0);
-  lines.push({ text: `Invoice Total: ${formatCurrency(total)}`, x: 360, y: 108, size: 14, font: "bold" });
+  if (showPrices) {
+    lines.push({ text: `Invoice Total: ${formatCurrency(total)}`, x: 360, y: 108, size: 14, font: "bold" });
+  }
   if (batch.sale_notes) {
     lines.push({ text: `Notes: ${batch.sale_notes}`, x: 50, y: 86, size: 9 });
   }

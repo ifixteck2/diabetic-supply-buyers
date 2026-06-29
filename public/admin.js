@@ -493,6 +493,7 @@ function renderInvoiceHistoryCard(batch) {
         <strong>${money(sold || paid)}</strong>
         <div>
           <a class="mini-btn" href="/api/batches/${batch.id}/buyer-pdf" target="_blank">Buyer PDF</a>
+          <a class="mini-btn" href="/api/batches/${batch.id}/buyer-pdf?prices=0" target="_blank">PDF No Prices</a>
           <button class="mini-btn" onclick="reopenInvoice(${batch.id})">Reopen</button>
         </div>
       </div>
@@ -724,6 +725,7 @@ function renderBatchCard(batch) {
           <button class="mini-btn" onclick="setBatchStatus(${batch.id}, 'Sold')">Sold</button>
           <button class="mini-btn" onclick="setBatchStatus(${batch.id}, 'Shipped')">Shipped</button>
           <a class="mini-btn" href="/api/batches/${batch.id}/buyer-pdf" target="_blank">Buyer PDF</a>
+          <a class="mini-btn" href="/api/batches/${batch.id}/buyer-pdf?prices=0" target="_blank">PDF No Prices</a>
         </div>
       </div>
     </article>
