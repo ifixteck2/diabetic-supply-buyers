@@ -58,6 +58,9 @@ function bindEvents() {
   $("saveLeadBtn").onclick = saveLead;
   $("clearLeadBtn").onclick = clearLead;
   $("refreshLeadsBtn").onclick = loadCustomers;
+  $("leadSearch").addEventListener("input", debounce(renderLeads, 180));
+  $("leadSourceFilter").onchange = renderLeads;
+  $("leadFollowupFilter").onchange = renderLeads;
   $("refreshFollowupsBtn").onclick = loadFollowups;
   $("saveCustomerProfileBtn").onclick = saveCustomerProfile;
   $("clearCustomerProfileBtn").onclick = clearCustomerProfile;
@@ -894,7 +897,107 @@ function renderLeads() {
   const container = $("leadList");
   if (!container) return;
   const leads = customersCache.filter((customer) => (customer.crm_status || "").toLowerCase() === "lead");
-  container.innerHTML = leads.map(renderCustomerRow).join("") || `<div class="empty">No saved leads yet.</div>`;
+  renderLeadStats(leads);
+  renderLeadSourceOptions(leads);
+  const filteredLeads = filterLeads(leads);
+  container.innerHTML = filteredLeads
+    .sort(sortLeads)
+    .map(renderLeadCard)
+    .join("") || `<div class="empty">No saved leads match this view.</div>`;
+}
+
+function renderLeadStats(leads) {
+  const due = leads.filter((lead) => isDue(lead.next_follow_up_at));
+  const soon = leads.filter((lead) => isWithinDays(lead.next_follow_up_at, 7) && !isDue(lead.next_follow_up_at));
+  const withAddress = leads.filter((lead) => String(lead.address || "").trim());
+  const sourceStats = leadSourceStats(leads);
+  $("leadTotalCount").textContent = leads.length;
+  $("leadDueCount").textContent = due.length;
+  $("leadSoonCount").textContent = soon.length;
+  $("leadAddressCount").textContent = withAddress.length;
+  $("leadTopSource").textContent = sourceStats[0]?.source || "N/A";
+}
+
+function renderLeadSourceOptions(leads) {
+  const select = $("leadSourceFilter");
+  if (!select) return;
+  const current = select.value;
+  const sources = [...new Set(leads.map((lead) => normalizeSource(lead.source)).filter(Boolean))].sort();
+  select.innerHTML = `<option value="">All sources</option>` + sources.map((source) => (
+    `<option value="${escapeAttr(source)}">${escapeHtml(source)}</option>`
+  )).join("");
+  select.value = sources.includes(current) ? current : "";
+}
+
+function filterLeads(leads) {
+  const search = String($("leadSearch")?.value || "").trim().toLowerCase();
+  const source = $("leadSourceFilter")?.value || "";
+  const followupFilter = $("leadFollowupFilter")?.value || "";
+  return leads.filter((lead) => {
+    const haystack = [
+      lead.name,
+      lead.phone,
+      lead.email,
+      lead.address,
+      lead.location,
+      lead.source,
+      lead.notes,
+    ].join(" ").toLowerCase();
+    if (search && !haystack.includes(search)) return false;
+    if (source && normalizeSource(lead.source) !== source) return false;
+    if (followupFilter === "due" && !isDue(lead.next_follow_up_at)) return false;
+    if (followupFilter === "soon" && (!isWithinDays(lead.next_follow_up_at, 7) || isDue(lead.next_follow_up_at))) return false;
+    if (followupFilter === "none" && lead.next_follow_up_at) return false;
+    return true;
+  });
+}
+
+function sortLeads(a, b) {
+  const aDue = leadDueRank(a.next_follow_up_at);
+  const bDue = leadDueRank(b.next_follow_up_at);
+  if (aDue !== bDue) return aDue - bDue;
+  return String(a.name || a.phone).localeCompare(String(b.name || b.phone));
+}
+
+function renderLeadCard(lead) {
+  const source = normalizeSource(lead.source);
+  const dueClass = isDue(lead.next_follow_up_at) ? "due" : isWithinDays(lead.next_follow_up_at, 7) ? "soon" : lead.next_follow_up_at ? "scheduled" : "none";
+  const dueLabel = lead.next_follow_up_at ? formatDateOnly(lead.next_follow_up_at) : "No date";
+  return `
+    <article class="lead-card ${dueClass}">
+      <div class="lead-main">
+        <div>
+          <span class="lead-source">${escapeHtml(source || "Unknown source")}</span>
+          <h3>${escapeHtml(lead.name || "No name yet")}</h3>
+          <p>${formatPhone(lead.phone)}${lead.email ? ` - ${escapeHtml(lead.email)}` : ""}</p>
+        </div>
+        <span class="lead-follow ${dueClass}">${escapeHtml(dueLabel)}</span>
+      </div>
+      <div class="lead-details">
+        ${lead.address ? `<p><b>Address:</b> ${escapeHtml(lead.address)}</p>` : ""}
+        ${lead.location ? `<p><b>Area:</b> ${escapeHtml(lead.location)}</p>` : ""}
+        ${lead.notes ? `<p><b>Notes:</b> ${escapeHtml(lead.notes)}</p>` : `<p><b>Notes:</b> Add what they have and preferred pricing.</p>`}
+      </div>
+      <div class="lead-actions">
+        <button class="mini-btn" onclick="copyCustomerMessage('${lead.phone}', 'lead')">Copy Intro</button>
+        <button class="mini-btn" onclick="copyCustomerMessage('${lead.phone}', 'lead_second')">Copy Follow Up</button>
+        <button class="mini-btn" onclick="loadCustomerIntoPurchase('${lead.phone}')">Start Purchase</button>
+        <button class="mini-btn" onclick="editCustomerProfile('${lead.phone}')">Edit</button>
+        <button class="mini-btn" onclick="markFollowedUp(${lead.id})">Done</button>
+      </div>
+    </article>
+  `;
+}
+
+function leadSourceStats(leads) {
+  const counts = new Map();
+  for (const lead of leads) {
+    const source = normalizeSource(lead.source);
+    counts.set(source, (counts.get(source) || 0) + 1);
+  }
+  return Array.from(counts.entries())
+    .map(([source, count]) => ({ source, count }))
+    .sort((a, b) => b.count - a.count || a.source.localeCompare(b.source));
 }
 
 function renderCustomerRow(customer) {
@@ -1364,6 +1467,12 @@ function clearLead(clearMessage = true) {
   if (clearMessage) status("leadStatus", "");
 }
 
+window.setLeadFollowupDays = (days) => {
+  const date = new Date();
+  date.setDate(date.getDate() + Number(days || 0));
+  $("leadFollowup").value = date.toISOString().slice(0, 10);
+};
+
 window.markFollowedUp = async (id) => {
   const result = await api(`/api/customers/${id}/followup`, { method: "PATCH", body: {} });
   if (!result?.ok) return alert(result?.error || "Could not update follow up.");
@@ -1606,6 +1715,24 @@ function isDue(value) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   return due <= today;
+}
+
+function isWithinDays(value, days) {
+  if (!value) return false;
+  const due = new Date(`${String(value).slice(0, 10)}T00:00:00`);
+  if (Number.isNaN(due.getTime())) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const target = new Date(today);
+  target.setDate(target.getDate() + Number(days || 0));
+  return due >= today && due <= target;
+}
+
+function leadDueRank(value) {
+  if (isDue(value)) return 0;
+  if (isWithinDays(value, 7)) return 1;
+  if (value) return 2;
+  return 3;
 }
 
 function firstName(value) {

@@ -108,6 +108,13 @@
           </section>
 
           <section id="leadsTab" class="tab-panel hidden">
+            <div class="stats lead-stats">
+              <article class="stat"><span>Total leads</span><strong id="leadTotalCount">0</strong></article>
+              <article class="stat"><span>Due now</span><strong id="leadDueCount">0</strong></article>
+              <article class="stat"><span>Due soon</span><strong id="leadSoonCount">0</strong></article>
+              <article class="stat"><span>With address</span><strong id="leadAddressCount">0</strong></article>
+              <article class="stat"><span>Top source</span><strong id="leadTopSource">N/A</strong></article>
+            </div>
             <section class="panel">
               <div class="panel-head">
                 <div><h2>Add Lead</h2><p>Save people who may sell supplies later, even before you buy anything.</p></div>
@@ -126,6 +133,12 @@
                 <label>Follow up date<input id="leadFollowup" type="date"></label>
                 <label>Notes<input id="leadNotes" placeholder="What they have, preferred prices, details"></label>
               </div>
+              <div class="lead-quick-actions">
+                <button class="mini-btn" type="button" onclick="setLeadFollowupDays(1)">Tomorrow</button>
+                <button class="mini-btn" type="button" onclick="setLeadFollowupDays(3)">3 Days</button>
+                <button class="mini-btn" type="button" onclick="setLeadFollowupDays(7)">7 Days</button>
+                <button class="mini-btn" type="button" onclick="setLeadFollowupDays(28)">28 Days</button>
+              </div>
               <div class="actions"><button class="btn" id="saveLeadBtn">Save Lead</button></div>
               <div id="leadStatus"></div>
             </section>
@@ -134,7 +147,12 @@
                 <div><h2>Saved Leads</h2><p>People saved as leads before their first purchase.</p></div>
                 <button class="btn secondary" id="refreshLeadsBtn">Refresh</button>
               </div>
-              <div id="leadList" class="customer-list"></div>
+              <div class="lead-toolbar">
+                <label>Search leads<input id="leadSearch" placeholder="Name, phone, notes, city..."></label>
+                <label>Source<select id="leadSourceFilter"><option value="">All sources</option></select></label>
+                <label>Follow up<select id="leadFollowupFilter"><option value="">All leads</option><option value="due">Due now</option><option value="soon">Due next 7 days</option><option value="none">No date set</option></select></label>
+              </div>
+              <div id="leadList" class="lead-board"></div>
             </section>
           </section>
 
