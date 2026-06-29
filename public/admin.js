@@ -1144,7 +1144,7 @@ function renderPurchaseEditor(invoice) {
                 <td><input data-field="brand" value="${escapeAttr(item.brand || "")}"></td>
                 <td><input data-field="model" value="${escapeAttr(item.model || "")}"></td>
                 <td><input data-field="quantity" type="number" min="1" step="1" value="${Number(item.quantity || 1)}"></td>
-                <td><input data-field="expiration" value="${escapeAttr(item.expiration || "")}" onchange="updateEditMercuryPrice(${id}, ${index})"></td>
+                <td><input data-field="expiration" type="month" value="${escapeAttr(toMonthInputValue(item.expiration))}" onchange="updateEditMercuryPrice(${id}, ${index})"></td>
                 <td><input data-field="condition" value="${escapeAttr(item.condition || "Sealed")}" onchange="updateEditMercuryPrice(${id}, ${index})"></td>
                 <td><input data-field="unit_cost" type="number" min="0" step="0.01" value="${Number(item.unit_cost || 0)}"></td>
                 <td><input data-field="expected_sell_each" type="number" min="0" step="0.01" value="${Number(item.expected_sell_each || 0)}"></td>
@@ -1327,7 +1327,7 @@ function renderHistory(invoices) {
         <span class="pill ${invoice.batch_status?.toLowerCase()}">${escapeHtml(invoice.batch_status || "Active")}</span>
       </div>
       <p class="mini">Payout: ${escapeHtml(invoice.payout_method)} ${invoice.notes ? "- " + escapeHtml(invoice.notes) : ""}</p>
-      <ul>${invoice.items.map((item) => `<li>${item.quantity}x ${escapeHtml(item.brand)} ${escapeHtml(item.model)} - ${escapeHtml(item.condition)} - ${money(item.unit_cost)} each</li>`).join("")}</ul>
+      <ul>${invoice.items.map((item) => `<li>${item.quantity}x ${escapeHtml(item.brand)} ${escapeHtml(item.model)} - ${escapeHtml(item.condition)} - ${money(item.unit_cost)} each${item.expiration ? " - exp " + escapeHtml(formatExpirationForDisplay(item.expiration)) : ""}</li>`).join("")}</ul>
       ${renderPhotoStrip(invoice.photos || [])}
     </article>
   `).join("");
@@ -1607,6 +1607,23 @@ function isDue(value) {
 
 function firstName(value) {
   return String(value || "").trim().split(/\s+/)[0] || "there";
+}
+
+function toMonthInputValue(value) {
+  const text = String(value || "").trim();
+  if (/^\d{4}-\d{2}$/.test(text)) return text;
+  let match = text.match(/^(\d{1,2})[/-](\d{4})$/);
+  if (match) return `${match[2]}-${match[1].padStart(2, "0")}`;
+  match = text.match(/^(\d{4})[/-](\d{1,2})$/);
+  if (match) return `${match[1]}-${match[2].padStart(2, "0")}`;
+  return "";
+}
+
+function formatExpirationForDisplay(value) {
+  const monthValue = toMonthInputValue(value);
+  if (!monthValue) return String(value || "N/A");
+  const [year, month] = monthValue.split("-");
+  return `${month}/${year}`;
 }
 
 function formatDateOnly(value) {

@@ -2259,11 +2259,11 @@ function createBuyerInvoicePdf(batch, mercuryPrices = [], options = {}) {
   for (const row of itemRows) {
     const descriptionLines = wrapPdfLine(row.description, 31).slice(0, 2);
     const expirationBreakdown = row.expirationBreakdown || [];
-    const hasExpirationBreakdown = expirationBreakdown.length > 1;
+    const hasEnteredExpiration = expirationBreakdown.some((entry) => entry.expiration !== "N/A");
     lines.push({ text: String(row.quantity), x: 54, y, size: 8 });
     lines.push({ text: descriptionLines[0] || "", x: 82, y, size: 8 });
     lines.push({ text: row.condition, x: 294, y, size: 8 });
-    lines.push({ text: hasExpirationBreakdown ? "See below" : row.expiration, x: 370, y, size: 8 });
+    lines.push({ text: hasEnteredExpiration ? "Listed below" : row.expiration, x: 370, y, size: 8 });
     if (showPrices) {
       lines.push({ text: row.unitPrice === null ? "" : formatCurrency(row.unitPrice), x: 448, y, size: 8 });
       lines.push({ text: row.lineTotal === null ? "" : formatCurrency(row.lineTotal), x: 512, y, size: 8 });
@@ -2272,7 +2272,7 @@ function createBuyerInvoicePdf(batch, mercuryPrices = [], options = {}) {
       y -= 13;
       lines.push({ text: descriptionLines[1], x: 82, y, size: 8 });
     }
-    if (hasExpirationBreakdown) {
+    if (hasEnteredExpiration) {
       for (const entry of expirationBreakdown) {
         y -= 12;
         lines.push({ text: `-${entry.quantity} Expiration ${entry.expiration}`, x: 82, y, size: 8 });
