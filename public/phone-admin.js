@@ -540,6 +540,7 @@ function renderPhoneInvoiceCard(invoice) {
   const { totalCost, projected, units, salePrice } = invoiceTotals(invoice);
   const actualProfit = salePrice === null ? null : salePrice - totalCost;
   const canRemove = invoice.status === "Pending";
+  const isPending = invoice.status === "Pending";
   const rows = purchases.map((row) => `
     <tr class="phone-purchase-row">
       <td class="phone-device-cell">
@@ -557,8 +558,21 @@ function renderPhoneInvoiceCard(invoice) {
       <td><div class="phone-row-actions"><button class="mini-btn" onclick="startPhonePurchaseEdit(${row.id})">Edit</button>${canRemove ? `<button class="mini-btn danger" onclick="removePhonePurchaseFromInvoice(${row.id})">Remove</button>` : ""}</div></td>
     </tr>
   `).join("");
+  const saleControls = `
+    <div class="sale-box phone-sale-box">
+      <div class="form-grid three">
+        <label>Actual Sale Amount<input id="phoneSalePrice${invoice.id}" type="number" min="0" step="0.01" value="${salePrice === null ? "" : salePrice}"></label>
+        <label>Sale Notes<input id="phoneSaleNotes${invoice.id}" value="${escapeHtml(invoice.sale_notes || "")}" placeholder="Payment, tracking, buyer notes"></label>
+        <label>Status<select id="phoneInvoiceStatus${invoice.id}"><option ${invoice.status === "Pending" ? "selected" : ""}>Pending</option><option ${invoice.status === "Shipped" ? "selected" : ""}>Shipped</option><option ${invoice.status === "Sold" ? "selected" : ""}>Sold</option><option ${invoice.status === "Closed" ? "selected" : ""}>Closed</option></select></label>
+      </div>
+      <div class="actions">
+        <button class="mini-btn" onclick="savePhoneInvoiceSale(${invoice.id})">Save Sale Amount</button>
+        <button class="mini-btn" onclick="setPhoneInvoiceStatusFromSelect(${invoice.id})">Save Status</button>
+      </div>
+    </div>
+  `;
   return `
-    <article class="invoice-card phone-invoice-card">
+    <article class="invoice-card phone-invoice-card ${isPending ? "phone-invoice-compact" : ""}">
       <div class="invoice-top">
         <div>
           <h3>${escapeHtml(invoice.label || `${invoice.buyer} Invoice`)}</h3>
@@ -579,17 +593,7 @@ function renderPhoneInvoiceCard(invoice) {
         <strong>Profit ${money(projected - totalCost)}</strong>
         ${actualProfit === null ? "" : `<strong class="${actualProfit >= 0 ? "profit-good" : "profit-bad"}">Actual Profit ${money(actualProfit)}</strong>`}
       </div>
-      <div class="sale-box phone-sale-box">
-        <div class="form-grid three">
-          <label>Actual Sale Amount<input id="phoneSalePrice${invoice.id}" type="number" min="0" step="0.01" value="${salePrice === null ? "" : salePrice}"></label>
-          <label>Sale Notes<input id="phoneSaleNotes${invoice.id}" value="${escapeHtml(invoice.sale_notes || "")}" placeholder="Payment, tracking, buyer notes"></label>
-          <label>Status<select id="phoneInvoiceStatus${invoice.id}"><option ${invoice.status === "Pending" ? "selected" : ""}>Pending</option><option ${invoice.status === "Shipped" ? "selected" : ""}>Shipped</option><option ${invoice.status === "Sold" ? "selected" : ""}>Sold</option><option ${invoice.status === "Closed" ? "selected" : ""}>Closed</option></select></label>
-        </div>
-        <div class="actions">
-          <button class="mini-btn" onclick="savePhoneInvoiceSale(${invoice.id})">Save Sale Amount</button>
-          <button class="mini-btn" onclick="setPhoneInvoiceStatusFromSelect(${invoice.id})">Save Status</button>
-        </div>
-      </div>
+      ${isPending ? `<details class="phone-controls"><summary>Sale / Status Controls</summary>${saleControls}</details>` : saleControls}
       <div class="invoice-actions">
         <strong>${money(projected || totalCost)}</strong>
         <div>
