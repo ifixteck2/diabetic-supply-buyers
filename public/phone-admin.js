@@ -28,7 +28,7 @@ function bindPhoneEvents() {
   $("savePhonePurchaseBtn").onclick = savePhonePurchase;
   $("clearPhonePurchaseBtn").onclick = resetPhonePurchase;
   $("refreshPriceCheckerBtn").onclick = refreshPhonePortal;
-  ["phoneBuyer", "deviceType", "phoneBrand", "conditionType", "packaging", "grade", "phoneModel", "phoneStorage", "phoneCarrier"].forEach((id) => {
+  ["phoneBuyer", "deviceType", "phoneBrand", "conditionType", "packaging", "grade", "phoneModel", "phoneStorage", "phoneCarrier", "ktDeductCrackedBack"].forEach((id) => {
     $(id).addEventListener("change", handleFlowChange);
   });
   ["checkerDeviceType", "checkerBrand", "checkerConditionType", "checkerPackaging", "checkerGrade", "checkerModel", "checkerStorage", "checkerCarrier", "deductCrackedBack", "deductCrackedLens", "deductBattery", "deductRepair", "deductFaceId"].forEach((id) => {
@@ -268,10 +268,13 @@ function renderPriceCheckerCarriers() {
 }
 
 function findCheckerPrice(buyer) {
+  return findCheckerPriceWithCondition(buyer, checkerConditionForBuyer(buyer));
+}
+
+function findCheckerPriceWithCondition(buyer, condition) {
   const selectedModel = $("checkerModel").value;
   const selectedStorage = $("checkerStorage").value;
   const carrier = $("checkerCarrier").value;
-  const condition = checkerConditionForBuyer(buyer);
   const rows = checkerRows().filter((row) => row.buyer === buyer);
   const exact = rows.find((row) => checkerModelName(row) === selectedModel && (row.storage || "N/A") === selectedStorage && normalizeCheckerCarrier(row.carrier) === carrier && row.condition === condition);
   const fallback = rows.find((row) => checkerModelName(row) === selectedModel && (row.storage || "N/A") === selectedStorage && row.condition === condition);
@@ -284,11 +287,13 @@ function renderPriceCheckerResults() {
     if (!row) {
       return `<div class="price-check-card missing"><span>${buyer}</span><strong>No price found</strong><em>${escapeHtml(checkerConditionForBuyer(buyer))}</em></div>`;
     }
-    const deduction = buyer === "Atlas" ? selectedAtlasDeduction(row) : { amount: 0, notes: [] };
-    const finalEach = Math.max(0, Number(row.price || 0) - Number(deduction.amount || 0));
+    const ktDeductedRow = buyer === "KT" && $("deductCrackedBack").checked ? findCheckerPriceWithCondition("KT", "Grade B") : null;
+    const pricedRow = ktDeductedRow || row;
+    const deduction = buyer === "Atlas" ? selectedAtlasDeduction(row) : { amount: 0, notes: ktDeductedRow ? ["KT cracked back glass: Grade B pricing"] : [] };
+    const finalEach = Math.max(0, Number(pricedRow.price || 0) - Number(deduction.amount || 0));
     const deductionText = deduction.amount ? `<i>Deductions: -${money(deduction.amount)}</i>` : "";
     const askText = deduction.notes.length ? `<i>${escapeHtml(deduction.notes.join(" | "))}</i>` : "";
-    return `<div class="price-check-card"><span>${buyer}</span><strong>${money(finalEach)}</strong><em>${escapeHtml(row.source_sheet || row.source || "Price sheet")} - ${escapeHtml(row.condition)} - ${escapeHtml(normalizeCheckerCarrier(row.carrier || "Any"))}</em>${deductionText}${askText}</div>`;
+    return `<div class="price-check-card"><span>${buyer}</span><strong>${money(finalEach)}</strong><em>${escapeHtml(pricedRow.source_sheet || pricedRow.source || "Price sheet")} - ${escapeHtml(pricedRow.condition)} - ${escapeHtml(normalizeCheckerCarrier(pricedRow.carrier || "Any"))}</em>${deductionText}${askText}</div>`;
   }).join("");
   $("priceCheckerResults").innerHTML = cards;
 }
@@ -389,17 +394,30 @@ function updateProjectedPrice() {
   const selectedModel = $("phoneModel").value;
   const selectedStorage = $("phoneStorage").value;
   const carrier = $("phoneCarrier").value;
-  const condition = pricingCondition();
+  const condition = phonePricingCondition();
   const exact = matchingRows().find((row) => checkerModelName(row) === selectedModel && (row.storage || "N/A") === selectedStorage && row.carrier === carrier && row.condition === condition);
   const fallback = matchingRows().find((row) => checkerModelName(row) === selectedModel && (row.storage || "N/A") === selectedStorage && row.condition === condition);
   const row = exact || fallback;
   if (row?.price) {
     $("phoneProjected").value = row.price;
     $("phonePricePreview").classList.remove("hidden");
-    $("phonePricePreview").innerHTML = `<span>${escapeHtml($("phoneBuyer").value)} projected sell price</span><strong>${money(row.price)}</strong><em>${escapeHtml(row.source_sheet || row.source || "Price sheet")} - ${escapeHtml(row.condition)} - ${escapeHtml(row.carrier || "Unlocked")}</em>`;
+    const deductionText = selectedKtPurchaseDeductions().length ? ` - ${escapeHtml(selectedKtPurchaseDeductions().join(", "))}` : "";
+    $("phonePricePreview").innerHTML = `<span>${escapeHtml($("phoneBuyer").value)} projected sell price</span><strong>${money(row.price)}</strong><em>${escapeHtml(row.source_sheet || row.source || "Price sheet")} - ${escapeHtml(row.condition)} - ${escapeHtml(row.carrier || "Unlocked")}${deductionText}</em>`;
   } else {
     $("phonePricePreview").classList.add("hidden");
   }
+}
+
+function phonePricingCondition() {
+  if ($("phoneBuyer").value === "KT" && $("conditionType").value === "Used" && $("ktDeductCrackedBack").checked) return "Grade B";
+  return pricingCondition();
+}
+
+function selectedKtPurchaseDeductions() {
+  if ($("phoneBuyer").value !== "KT") return [];
+  const deductions = [];
+  if ($("ktDeductCrackedBack")?.checked) deductions.push("KT cracked back glass: Grade B pricing");
+  return deductions;
 }
 
 function renderInvoiceSelect() {
@@ -438,6 +456,8 @@ async function savePhonePurchase() {
 }
 
 function phonePurchasePayload(photo) {
+  const ktDeductions = selectedKtPurchaseDeductions();
+  const notes = [$("phoneNotes").value.trim(), ...ktDeductions].filter(Boolean).join(" | ");
   return {
     buyer: $("phoneBuyer").value,
     invoice_id: Number($("phoneInvoiceSelect").value || 0) || null,
@@ -445,7 +465,7 @@ function phonePurchasePayload(photo) {
     device_type: $("deviceType").value,
     condition_type: $("conditionType").value,
     packaging: $("conditionType").value === "New" ? $("packaging").value : "",
-    grade: $("conditionType").value === "Used" ? $("grade").value : "",
+    grade: $("conditionType").value === "Used" ? phonePricingCondition() : "",
     model: [$("phoneModel").value, $("phoneStorage").value && $("phoneStorage").value !== "N/A" ? $("phoneStorage").value : ""].filter(Boolean).join(" "),
     carrier: $("phoneCarrier").value,
     quantity: Number($("phoneQuantity").value || 0),
@@ -453,7 +473,7 @@ function phonePurchasePayload(photo) {
     projected_sell_each: Number($("phoneProjected").value || 0),
     imei: $("phoneImei").value.trim(),
     photo,
-    notes: $("phoneNotes").value.trim(),
+    notes,
   };
 }
 
@@ -472,6 +492,7 @@ function resetPhonePurchase(clearStatus = true) {
   $("phoneProjected").value = "";
   $("phoneImei").value = "";
   $("phonePhoto").value = "";
+  $("ktDeductCrackedBack").checked = false;
   $("phonePurchaseDate").value = new Date().toISOString().slice(0, 10);
   $("phoneNotes").value = "";
   toggleConditionFields();
@@ -653,6 +674,7 @@ window.startPhonePurchaseEdit = (id) => {
   $("phoneImei").value = purchase.imei || "";
   $("phonePhoto").value = "";
   $("phoneNotes").value = purchase.notes || "";
+  $("ktDeductCrackedBack").checked = /cracked back/i.test(purchase.notes || "");
   $("savePhonePurchaseBtn").textContent = "Save Changes";
   $("phoneEditNotice").classList.remove("hidden");
   $("phoneEditNotice").textContent = `Editing ${purchase.model} from invoice #${invoice.id}. Choose a new photo only if you want to replace the old one.`;
