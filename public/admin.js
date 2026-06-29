@@ -968,6 +968,7 @@ function renderLeadCard(lead) {
       <div class="lead-main">
         <div>
           <span class="lead-source">${escapeHtml(source || "Unknown source")}</span>
+          <span class="lead-source customer-number-badge">${escapeHtml(formatCustomerNumber(lead))}</span>
           <h3>${escapeHtml(lead.name || "No name yet")}</h3>
           <p>${formatPhone(lead.phone)}${lead.email ? ` - ${escapeHtml(lead.email)}` : ""}</p>
         </div>
@@ -1004,7 +1005,7 @@ function renderCustomerRow(customer) {
   return `
     <article class="customer-row">
       <div>
-        <h3>${escapeHtml(customer.name || "No name yet")}</h3>
+        <h3>${escapeHtml(formatCustomerNumber(customer))} - ${escapeHtml(customer.name || "No name yet")}</h3>
         <p>${formatPhone(customer.phone)} ${customer.email ? "- " + escapeHtml(customer.email) : ""}</p>
         ${customer.address ? `<p class="mini"><b>Address:</b> ${escapeHtml(customer.address)}</p>` : ""}
         ${customer.location ? `<p class="mini"><b>Location:</b> ${escapeHtml(customer.location)}</p>` : ""}
@@ -1075,14 +1076,14 @@ function renderCustomerManager(customer, invoices) {
   const itemCount = invoices.reduce((sum, invoice) => sum + (invoice.items || []).reduce((itemSum, item) => itemSum + Number(item.quantity || 0), 0), 0);
   return `
     <div class="stats customer-stats">
+      <article class="stat"><span>Customer #</span><strong>${escapeHtml(formatCustomerNumber(customer).replace("Customer #", ""))}</strong></article>
       <article class="stat"><span>Total paid</span><strong>${money(totalPaid)}</strong></article>
       <article class="stat"><span>Purchases</span><strong>${invoices.length}</strong></article>
       <article class="stat"><span>Items bought</span><strong>${itemCount}</strong></article>
       <article class="stat"><span>Follow up</span><strong>${customer.next_follow_up_at ? formatDateOnly(customer.next_follow_up_at) : "None"}</strong></article>
-      <article class="stat"><span>Source</span><strong>${escapeHtml(customer.source || "Unknown")}</strong></article>
     </div>
     <article class="history-card">
-      <h3>${escapeHtml(customer.name || "No name yet")}</h3>
+      <h3>${escapeHtml(formatCustomerNumber(customer))} - ${escapeHtml(customer.name || "No name yet")}</h3>
       <p class="mini"><b>Phone:</b> ${formatPhone(customer.phone)} ${customer.email ? `<b>Email:</b> ${escapeHtml(customer.email)}` : ""}</p>
       ${customer.address ? `<p class="mini"><b>Home address:</b> ${escapeHtml(customer.address)}</p>` : ""}
       ${customer.location ? `<p class="mini"><b>Location notes:</b> ${escapeHtml(customer.location)}</p>` : ""}
@@ -1349,7 +1350,7 @@ function fillEditCustomerProfile(customer) {
   $("customerEditSummary").innerHTML = `
     <article class="customer-row compact">
       <div>
-        <h3>${escapeHtml(customer.name || "No name yet")}</h3>
+        <h3>${escapeHtml(formatCustomerNumber(customer))} - ${escapeHtml(customer.name || "No name yet")}</h3>
         <p>${formatPhone(customer.phone)} ${customer.email ? "- " + escapeHtml(customer.email) : ""}</p>
         ${customer.next_follow_up_at ? `<p class="mini"><b>Follow up:</b> ${formatDateOnly(customer.next_follow_up_at)}</p>` : ""}
       </div>
@@ -1742,6 +1743,11 @@ function firstName(value) {
 function formatInvoiceNumber(batch) {
   const created = batch?.created_at ? formatDateOnly(batch.created_at) : "";
   return created && created !== "N/A" ? `Invoice ${created}` : `Invoice #${batch?.id || ""}`;
+}
+
+function formatCustomerNumber(customer) {
+  const number = Number(customer?.customer_number || 0);
+  return number > 0 ? `Customer #${number}` : "Customer #";
 }
 
 function toMonthInputValue(value) {

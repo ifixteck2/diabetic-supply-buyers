@@ -414,7 +414,7 @@ app.get("/api/customers", requireAuth, async (req, res) => {
   let where = "";
   if (search) {
     params.push(`%${search.toLowerCase()}%`);
-    where = `where lower(c.name) like $1 or c.phone like $1 or lower(c.email) like $1 or lower(c.address) like $1 or lower(c.location) like $1 or lower(c.source) like $1 or lower(c.notes) like $1`;
+    where = `where lower(c.name) like $1 or c.phone like $1 or lower(c.email) like $1 or lower(c.address) like $1 or lower(c.location) like $1 or lower(c.source) like $1 or lower(c.notes) like $1 or c.customer_number::text like $1`;
   }
   const result = await pool.query(
     `select c.*, count(i.id)::int as invoice_count, coalesce(sum(i.total_paid),0)::numeric as total_paid,
@@ -879,6 +879,7 @@ async function migrate() {
 
     create table if not exists customers (
       id serial primary key,
+      customer_number integer unique not null,
       name text not null default '',
       phone text not null unique,
       email text not null default '',
@@ -975,6 +976,7 @@ async function migrate() {
 
   await pool.query(`
     alter table customers add column if not exists address text not null default '';
+    alter table customers add column if not exists customer_number integer;
     alter table customers add column if not exists location text not null default '';
     alter table customers add column if not exists source text not null default '';
     alter table customers add column if not exists crm_status text not null default 'Customer';
@@ -1022,13 +1024,27 @@ async function migrate() {
     ) latest
     where c.id = latest.customer_id
       and c.next_follow_up_at is null;
+
+    with numbered as (
+      select id,
+        row_number() over (order by created_at asc, id asc)::int + coalesce((select max(customer_number) from customers), 0) as next_number
+      from customers
+      where customer_number is null
+    )
+    update customers c
+    set customer_number = numbered.next_number
+    from numbered
+    where c.id = numbered.id;
+
+    create unique index if not exists customers_customer_number_idx on customers(customer_number);
+    alter table customers alter column customer_number set not null;
   `);
 }
 
 async function upsertCustomer(client, customer) {
   const result = await client.query(
-    `insert into customers (name, phone, email, address, location, source, notes, crm_status, next_follow_up_at)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+    `insert into customers (customer_number, name, phone, email, address, location, source, notes, crm_status, next_follow_up_at)
+     values ((select coalesce(max(customer_number),0) + 1 from customers), $1,$2,$3,$4,$5,$6,$7,$8,$9)
      on conflict (phone) do update set
        name = coalesce(nullif(excluded.name,''), customers.name),
        email = coalesce(nullif(excluded.email,''), customers.email),
