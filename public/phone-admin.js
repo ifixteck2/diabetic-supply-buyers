@@ -405,7 +405,7 @@ function renderInvoiceSelect() {
   const buyer = $("phoneBuyer").value;
   const pending = phoneInvoices.filter((invoice) => invoice.buyer === buyer && invoice.status === "Pending");
   $("phoneInvoiceSelect").innerHTML = pending.map((invoice) => (
-    `<option value="${invoice.id}">#${invoice.id} - ${escapeHtml(invoice.label)} (${invoice.purchases?.length || 0})</option>`
+    `<option value="${invoice.id}">#${invoice.id} - ${escapeHtml(invoice.label)} (${invoiceTotals(invoice).units} phones)</option>`
   )).join("") || `<option value="">Create/select pending invoice</option>`;
 }
 
@@ -527,7 +527,7 @@ function renderPastInvoiceCard(invoice) {
 
 function renderPhoneInvoiceCard(invoice) {
   const purchases = invoice.purchases || [];
-  const { totalCost, projected, salePrice } = invoiceTotals(invoice);
+  const { totalCost, projected, units, salePrice } = invoiceTotals(invoice);
   const actualProfit = salePrice === null ? null : salePrice - totalCost;
   const canRemove = invoice.status === "Pending";
   const rows = purchases.map((row) => `
@@ -552,7 +552,7 @@ function renderPhoneInvoiceCard(invoice) {
       <div class="invoice-top">
         <div>
           <h3>${escapeHtml(invoice.label || `${invoice.buyer} Invoice`)}</h3>
-          <p>#${invoice.id} - ${escapeHtml(invoice.buyer)} - ${new Date(invoice.created_at).toLocaleDateString()} - ${purchases.length} purchase${purchases.length === 1 ? "" : "s"}</p>
+          <p>#${invoice.id} - ${escapeHtml(invoice.buyer)} - ${new Date(invoice.created_at).toLocaleDateString()} - ${units} phone${units === 1 ? "" : "s"} total</p>
         </div>
         <span class="pill ${invoice.status?.toLowerCase()}">${escapeHtml(invoice.status)}</span>
       </div>
