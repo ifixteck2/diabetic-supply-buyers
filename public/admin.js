@@ -1146,7 +1146,7 @@ function renderPurchaseEditor(invoice) {
                 <td><input data-field="brand" value="${escapeAttr(item.brand || "")}"></td>
                 <td><input data-field="model" value="${escapeAttr(item.model || "")}"></td>
                 <td><input data-field="quantity" type="number" min="1" step="1" value="${Number(item.quantity || 1)}"></td>
-                <td><input data-field="expiration" type="month" value="${escapeAttr(toMonthInputValue(item.expiration))}" onchange="updateEditMercuryPrice(${id}, ${index})"></td>
+                <td><input data-field="expiration" value="${escapeAttr(formatExpirationForDisplay(item.expiration))}" placeholder="07/2027" onchange="updateEditMercuryPrice(${id}, ${index})"></td>
                 <td><input data-field="condition" value="${escapeAttr(item.condition || "Sealed")}" onchange="updateEditMercuryPrice(${id}, ${index})"></td>
                 <td><input data-field="unit_cost" type="number" min="0" step="0.01" value="${Number(item.unit_cost || 0)}"></td>
                 <td><input data-field="expected_sell_each" type="number" min="0" step="0.01" value="${Number(item.expected_sell_each || 0)}"></td>
@@ -1531,8 +1531,9 @@ function getMercuryPriceForItem(product, expiration, condition) {
 }
 
 function monthsUntilExpiration(expiration) {
-  if (!/^\d{4}-\d{2}$/.test(String(expiration || ""))) return null;
-  const [year, month] = expiration.split("-").map(Number);
+  const monthValue = toMonthInputValue(expiration);
+  if (!monthValue) return null;
+  const [year, month] = monthValue.split("-").map(Number);
   const now = new Date();
   return (year - now.getFullYear()) * 12 + (month - (now.getMonth() + 1));
 }
