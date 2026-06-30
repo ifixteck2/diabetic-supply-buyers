@@ -287,9 +287,8 @@ function renderPriceCheckerResults() {
     if (!row) {
       return `<div class="price-check-card missing"><span>${buyer}</span><strong>No price found</strong><em>${escapeHtml(checkerConditionForBuyer(buyer))}</em></div>`;
     }
-    const ktDeductedRow = buyer === "KT" && $("deductCrackedBack").checked ? findCheckerPriceWithCondition("KT", "Grade B") : null;
-    const pricedRow = ktDeductedRow || row;
-    const deduction = buyer === "Atlas" ? selectedAtlasDeduction(row) : { amount: 0, notes: ktDeductedRow ? ["KT cracked back glass: Grade B pricing"] : [] };
+    const pricedRow = row;
+    const deduction = buyer === "Atlas" ? selectedAtlasDeduction(row) : selectedKtDeduction(row, $("deductCrackedBack").checked);
     const finalEach = Math.max(0, Number(pricedRow.price || 0) - Number(deduction.amount || 0));
     const deductionText = deduction.amount ? `<i>Deductions: -${money(deduction.amount)}</i>` : "";
     const askText = deduction.notes.length ? `<i>${escapeHtml(deduction.notes.join(" | "))}</i>` : "";
@@ -335,6 +334,37 @@ function selectedAtlasDeduction(row) {
   if ($("deductRepair").checked) notes.push("Repair message: ASK");
   if ($("deductFaceId").checked) notes.push("Bad Face ID: price as Parts or ASK");
   return { amount, notes };
+}
+
+function selectedKtDeduction(row, crackedBack) {
+  if (!crackedBack) return { amount: 0, notes: [] };
+  const amount = ktCrackedBackDeduction(row.base_model || row.model);
+  return amount
+    ? { amount, notes: [`KT cracked back glass: -${money(amount)}`] }
+    : { amount: 0, notes: ["KT cracked back glass: ASK"] };
+}
+
+function ktCrackedBackDeduction(model) {
+  const text = String(model || "").toLowerCase();
+  if (/17 pro max/.test(text)) return 180;
+  if (/17 pro/.test(text)) return 140;
+  if (/\b17e\b/.test(text) || /\b17\b/.test(text)) return 200;
+  if (/16 pro max/.test(text)) return 120;
+  if (/16 pro/.test(text)) return 120;
+  if (/16 plus/.test(text)) return 60;
+  if (/\b16\b/.test(text)) return 60;
+  if (/15 pro max/.test(text)) return 80;
+  if (/15 pro/.test(text)) return 70;
+  if (/15 plus/.test(text)) return 70;
+  if (/\b15\b/.test(text)) return 40;
+  if (/14 pro max/.test(text)) return 50;
+  if (/14 pro/.test(text)) return 50;
+  if (/14 plus/.test(text)) return 50;
+  if (/\b14\b/.test(text)) return 60;
+  if (/13 pro max/.test(text)) return 50;
+  if (/13 pro/.test(text)) return 50;
+  if (/\b13\b/.test(text)) return 50;
+  return 0;
 }
 
 function atlasCrackedBackDeduction(model) {
@@ -399,24 +429,25 @@ function updateProjectedPrice() {
   const fallback = matchingRows().find((row) => checkerModelName(row) === selectedModel && (row.storage || "N/A") === selectedStorage && row.condition === condition);
   const row = exact || fallback;
   if (row?.price) {
-    $("phoneProjected").value = row.price;
+    const deduction = selectedKtDeduction(row, $("phoneBuyer").value === "KT" && $("ktDeductCrackedBack").checked);
+    const finalPrice = Math.max(0, Number(row.price || 0) - Number(deduction.amount || 0));
+    $("phoneProjected").value = finalPrice;
     $("phonePricePreview").classList.remove("hidden");
-    const deductionText = selectedKtPurchaseDeductions().length ? ` - ${escapeHtml(selectedKtPurchaseDeductions().join(", "))}` : "";
-    $("phonePricePreview").innerHTML = `<span>${escapeHtml($("phoneBuyer").value)} projected sell price</span><strong>${money(row.price)}</strong><em>${escapeHtml(row.source_sheet || row.source || "Price sheet")} - ${escapeHtml(row.condition)} - ${escapeHtml(row.carrier || "Unlocked")}${deductionText}</em>`;
+    const deductionText = deduction.notes.length ? ` - ${escapeHtml(deduction.notes.join(", "))}` : "";
+    $("phonePricePreview").innerHTML = `<span>${escapeHtml($("phoneBuyer").value)} projected sell price</span><strong>${money(finalPrice)}</strong><em>${escapeHtml(row.source_sheet || row.source || "Price sheet")} - ${escapeHtml(row.condition)} - ${escapeHtml(row.carrier || "Unlocked")}${deductionText}</em>`;
   } else {
     $("phonePricePreview").classList.add("hidden");
   }
 }
 
 function phonePricingCondition() {
-  if ($("phoneBuyer").value === "KT" && $("conditionType").value === "Used" && $("ktDeductCrackedBack").checked) return "Grade B";
   return pricingCondition();
 }
 
 function selectedKtPurchaseDeductions() {
   if ($("phoneBuyer").value !== "KT") return [];
   const deductions = [];
-  if ($("ktDeductCrackedBack")?.checked) deductions.push("KT cracked back glass: Grade B pricing");
+  if ($("ktDeductCrackedBack")?.checked) deductions.push("KT cracked back glass");
   return deductions;
 }
 
@@ -457,7 +488,8 @@ async function savePhonePurchase() {
 
 function phonePurchasePayload(photo) {
   const ktDeductions = selectedKtPurchaseDeductions();
-  const notes = [$("phoneNotes").value.trim(), ...ktDeductions].filter(Boolean).join(" | ");
+  const cleanNotes = $("phoneNotes").value.trim().replace(/\s*\|\s*KT cracked back glass(?::[^|]*)?/gi, "").replace(/^KT cracked back glass(?::[^|]*)?\s*\|\s*/i, "").trim();
+  const notes = [cleanNotes, ...ktDeductions].filter(Boolean).join(" | ");
   return {
     buyer: $("phoneBuyer").value,
     invoice_id: Number($("phoneInvoiceSelect").value || 0) || null,
@@ -465,7 +497,7 @@ function phonePurchasePayload(photo) {
     device_type: $("deviceType").value,
     condition_type: $("conditionType").value,
     packaging: $("conditionType").value === "New" ? $("packaging").value : "",
-    grade: $("conditionType").value === "Used" ? phonePricingCondition() : "",
+    grade: $("conditionType").value === "Used" ? selectedCondition() : "",
     model: [$("phoneModel").value, $("phoneStorage").value && $("phoneStorage").value !== "N/A" ? $("phoneStorage").value : ""].filter(Boolean).join(" "),
     carrier: $("phoneCarrier").value,
     quantity: Number($("phoneQuantity").value || 0),

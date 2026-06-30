@@ -213,6 +213,7 @@ app.post("/api/phone-purchases", requirePhoneAuth, async (req, res) => {
         grade: String(input.grade || "").trim(),
         model: String(input.model || "").trim(),
         carrier: String(input.carrier || "").trim(),
+        notes: String(input.notes || "").trim(),
       },
       priceRows,
       buyer
@@ -289,6 +290,7 @@ app.patch("/api/phone-purchases/:id", requirePhoneAuth, async (req, res) => {
         grade: String(input.grade || "").trim(),
         model: String(input.model || "").trim(),
         carrier: String(input.carrier || "").trim(),
+        notes: String(input.notes || "").trim(),
       },
       priceRows,
       buyer
@@ -1418,7 +1420,38 @@ function findPhonePrice(purchase, priceRows, buyer) {
     if (storage && String(row.storage || "").toLowerCase() !== storage) return false;
     return normalizePhonePriceMatchText(row.base_model || row.model) === modelText;
   });
-  return Number(looserCandidates[0]?.price || 0);
+  return ktAdjustedPhonePrice(purchase, looserCandidates[0], buyer);
+}
+
+function ktAdjustedPhonePrice(purchase, row, buyer) {
+  const basePrice = Number(row?.price || 0);
+  if (!basePrice) return 0;
+  if (buyer !== "KT" || !/cracked?\s+back|back\s+crack|back\s+glass/i.test(purchase.notes || "")) return basePrice;
+  const deduction = ktCrackedBackDeduction(row.base_model || purchase.model);
+  return Math.max(0, basePrice - deduction);
+}
+
+function ktCrackedBackDeduction(model) {
+  const text = String(model || "").toLowerCase();
+  if (/17 pro max/.test(text)) return 180;
+  if (/17 pro/.test(text)) return 140;
+  if (/\b17e\b/.test(text) || /\b17\b/.test(text)) return 200;
+  if (/16 pro max/.test(text)) return 120;
+  if (/16 pro/.test(text)) return 120;
+  if (/16 plus/.test(text)) return 60;
+  if (/\b16\b/.test(text)) return 60;
+  if (/15 pro max/.test(text)) return 80;
+  if (/15 pro/.test(text)) return 70;
+  if (/15 plus/.test(text)) return 70;
+  if (/\b15\b/.test(text)) return 40;
+  if (/14 pro max/.test(text)) return 50;
+  if (/14 pro/.test(text)) return 50;
+  if (/14 plus/.test(text)) return 50;
+  if (/\b14\b/.test(text)) return 60;
+  if (/13 pro max/.test(text)) return 50;
+  if (/13 pro/.test(text)) return 50;
+  if (/\b13\b/.test(text)) return 50;
+  return 0;
 }
 
 async function backfillPhoneProjectedPrices() {
