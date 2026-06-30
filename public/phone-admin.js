@@ -351,7 +351,12 @@ function atlasDeductionFromSelection(row, selection) {
     if (deduction) amount += deduction;
     else notes.push("Atlas cracked back: ASK");
   }
-  if (selection.crackedLens) notes.push(`Atlas cracked lens: ${atlasCrackedLensText(row.base_model || row.model)}`);
+  if (selection.crackedLens) {
+    const lensText = atlasCrackedLensText(row.base_model || row.model);
+    const lensAmount = atlasDeductionAmountFromText(lensText);
+    if (lensAmount) amount += lensAmount;
+    notes.push(`Atlas cracked lens: ${lensText}`);
+  }
   if (selection.battery) notes.push("Atlas battery / degraded battery: ASK");
   if (selection.repair) notes.push("Atlas repair message: ASK");
   if (selection.faceId) notes.push("Atlas bad Face ID: price as Parts or ASK");
@@ -418,6 +423,12 @@ function atlasCrackedLensText(model) {
   if (/14 pro max/.test(text)) return "-$50";
   if (/14|15|16/.test(text)) return "-$40 to -$60";
   return "ASK";
+}
+
+function atlasDeductionAmountFromText(value) {
+  const text = String(value || "");
+  if (/to|ask/i.test(text)) return 0;
+  return Number(text.match(/\$?(\d+(?:\.\d+)?)/)?.[1] || 0);
 }
 
 function imageFileToDataUrl(file) {

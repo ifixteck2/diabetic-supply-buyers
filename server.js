@@ -1431,11 +1431,20 @@ function adjustedPhonePrice(purchase, row, buyer) {
     const deduction = ktCrackedBackDeduction(row.base_model || purchase.model);
     return Math.max(0, basePrice - deduction);
   }
-  if (buyer === "Atlas" && /atlas cracked back/i.test(notes)) {
-    const deduction = atlasCrackedBackDeduction(row.base_model || purchase.model);
+  if (buyer === "Atlas") {
+    const deduction = atlasPhoneDeductions(purchase, row);
     return Math.max(0, basePrice - deduction);
   }
   return basePrice;
+}
+
+function atlasPhoneDeductions(purchase, row) {
+  const notes = String(purchase.notes || "");
+  const model = row.base_model || purchase.model;
+  let amount = 0;
+  if (/atlas cracked back/i.test(notes)) amount += atlasCrackedBackDeduction(model);
+  if (/atlas cracked lens/i.test(notes)) amount += atlasCrackedLensDeduction(model);
+  return amount;
 }
 
 function atlasCrackedBackDeduction(model) {
@@ -1457,6 +1466,13 @@ function atlasCrackedBackDeduction(model) {
   if (/15 plus/.test(text)) return 60;
   if (/\b15\b/.test(text)) return 90;
   if (/13 pro max/.test(text)) return 60;
+  return 0;
+}
+
+function atlasCrackedLensDeduction(model) {
+  const text = String(model || "").toLowerCase();
+  if (/15 pro max/.test(text)) return 70;
+  if (/14 pro max/.test(text)) return 50;
   return 0;
 }
 
