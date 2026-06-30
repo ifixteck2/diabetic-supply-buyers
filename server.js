@@ -1418,6 +1418,7 @@ function findPhonePrice(purchase, priceRows, buyer) {
     if (wantedCondition === "Grade A" && /hso|swap/i.test(row.condition || "")) return false;
     if (wantedCondition && row.condition !== wantedCondition) return false;
     if (storage && String(row.storage || "").toLowerCase() !== storage) return false;
+    if (carrier && row.carrier && row.carrier !== "Any" && row.carrier !== carrier) return false;
     return normalizePhonePriceMatchText(row.base_model || row.model) === modelText;
   });
   return adjustedPhonePrice(purchase, looserCandidates[0], buyer);

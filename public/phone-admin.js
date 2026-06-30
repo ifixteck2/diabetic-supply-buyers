@@ -281,7 +281,7 @@ function findCheckerPriceWithCondition(buyer, condition) {
   const carrier = $("checkerCarrier").value;
   const rows = checkerRows().filter((row) => row.buyer === buyer);
   const exact = rows.find((row) => checkerModelName(row) === selectedModel && (row.storage || "N/A") === selectedStorage && normalizeCheckerCarrier(row.carrier) === carrier && row.condition === condition);
-  const fallback = rows.find((row) => checkerModelName(row) === selectedModel && (row.storage || "N/A") === selectedStorage && row.condition === condition);
+  const fallback = rows.find((row) => checkerModelName(row) === selectedModel && (row.storage || "N/A") === selectedStorage && normalizeCheckerCarrier(row.carrier || "Any") === "Any" && row.condition === condition);
   return exact || fallback || null;
 }
 
@@ -461,8 +461,8 @@ function updateProjectedPrice() {
   const selectedStorage = $("phoneStorage").value;
   const carrier = $("phoneCarrier").value;
   const condition = phonePricingCondition();
-  const exact = matchingRows().find((row) => checkerModelName(row) === selectedModel && (row.storage || "N/A") === selectedStorage && row.carrier === carrier && row.condition === condition);
-  const fallback = matchingRows().find((row) => checkerModelName(row) === selectedModel && (row.storage || "N/A") === selectedStorage && row.condition === condition);
+  const exact = matchingRows().find((row) => checkerModelName(row) === selectedModel && (row.storage || "N/A") === selectedStorage && normalizeCheckerCarrier(row.carrier) === carrier && row.condition === condition);
+  const fallback = matchingRows().find((row) => checkerModelName(row) === selectedModel && (row.storage || "N/A") === selectedStorage && normalizeCheckerCarrier(row.carrier || "Any") === "Any" && row.condition === condition);
   const row = exact || fallback;
   if (row?.price) {
     const deduction = selectedPhonePurchaseDeduction(row);
