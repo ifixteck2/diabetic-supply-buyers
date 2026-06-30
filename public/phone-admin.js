@@ -543,9 +543,9 @@ async function savePhonePurchase(options = {}) {
 }
 
 async function parseQuickPhoneText(saveAfterParse) {
-  const lines = quickPhoneLines();
-  if (saveAfterParse && lines.length > 1) return addQuickPhoneLines(lines);
-  const parsed = parseQuickPhoneLine(lines[0] || "");
+  const entries = quickPhoneEntries();
+  if (saveAfterParse && entries.length > 1) return addQuickPhoneLines(entries);
+  const parsed = parseQuickPhoneLine(entries[0] || "");
   if (!parsed.modelText) {
     return status("quickPhoneStatus", "Type at least a model, like iPhone 17 256GB unlocked grade C.", "bad");
   }
@@ -567,13 +567,17 @@ function quickPhoneLines() {
     .filter(Boolean);
 }
 
-async function addQuickPhoneLines(lines) {
+function quickPhoneEntries() {
+  return splitQuickPhoneEntries($("quickPhoneText").value);
+}
+
+async function addQuickPhoneLines(entries) {
   let added = 0;
   const failures = [];
-  for (const line of lines) {
-    const parsed = parseQuickPhoneLine(line);
+  for (const entry of entries) {
+    const parsed = parseQuickPhoneLine(entry);
     if (!parsed.modelText) {
-      failures.push(line);
+      failures.push(typeof entry === "string" ? entry : entry.text);
       continue;
     }
     applyQuickPhoneFields(parsed);
@@ -593,20 +597,46 @@ async function addQuickPhoneLines(lines) {
 }
 
 function parseQuickPhoneLine(value) {
-  const raw = String(value || "").replace(/\s+/g, " ").trim();
+  const entry = typeof value === "object" && value ? value : { text: String(value || "") };
+  const raw = normalizeQuickPurchaseInput([entry.text, entry.seller ? `From ${entry.seller}` : "", entry.purchaseLocation ? `Bought at ${entry.purchaseLocation}` : ""].filter(Boolean).join(" "));
+  const sellerLocation = extractQuickSellerLocation(raw);
+  let seller = entry.seller || sellerLocation?.seller || extractQuickInlineSeller(raw) || "";
+  const purchaseLocation = entry.purchaseLocation || sellerLocation?.purchaseLocation || extractQuickInlinePurchaseLocation(raw) || "";
+  const itemRaw = removeQuickSellerAndLocation(raw, seller, purchaseLocation);
   const text = raw.toLowerCase();
-  const buyer = /\bkt\b|kt corp/i.test(raw) ? "KT" : /\batlas\b/i.test(raw) ? "Atlas" : $("phoneBuyer").value;
-  const deviceType = /\bipad|tablet\b/i.test(raw) ? "Tablet" : "Phone";
-  const brand = /pixel|google/i.test(raw) ? "Google" : /samsung|galaxy|\bs\d{2}\b|z\s*(fold|flip)|note\s*\d/i.test(raw) ? "Samsung" : "Apple";
-  const conditionType = /\bnew|sealed|open\b/i.test(raw) && !/\bused|grade|parts\b/i.test(raw) ? "New" : "Used";
-  const packaging = /\bopen\b/i.test(raw) ? "Open" : "Sealed";
-  const gradeMatch = raw.match(/\bgrade\s*([abcd])\b/i) || raw.match(/\b([abcd])\s*(?:grade)?\b/i);
-  const grade = /\bparts?\b/i.test(raw) ? "Parts" : gradeMatch ? `Grade ${gradeMatch[1].toUpperCase()}` : "Grade A";
-  const storageMatch = raw.match(/\b\d+\s*(?:gb|tb)\b/i)?.[0] || raw.match(/\b(?:64|128|256|512|1024)\b/i)?.[0] || "";
-  const storage = storageMatch ? (/\b1024\b/.test(storageMatch) ? "1TB" : /[gt]b/i.test(storageMatch) ? storageMatch.replace(/\s+/g, "").toUpperCase() : `${storageMatch}GB`) : "N/A";
-  const carrier = /at&t|att\s*clean/i.test(raw) ? "AT&T (Clean)" : /\bunlocked\b/i.test(raw) ? "Unlocked" : /\blocked|carrier locked|sim locked\b/i.test(raw) ? "Carrier Locked" : "Unlocked";
-  const quantity = Number(raw.match(/\b(?:qty|quantity)\s*(\d+)\b/i)?.[1] || raw.match(/\b(\d+)\s*x\b/i)?.[1] || 1);
-  const cost = Number((raw.match(/\b(?:cost|paid|buy|bought|for)\s*\$?\s*(\d+(?:\.\d{1,2})?)\b/i) || raw.match(/\$\s*(\d+(?:\.\d{1,2})?)/))?.[1] || 0);
+  const atlasPurchase = entry.invoiceLane === "atlas" || /\b(?:atlas|parts|for parts|part out|parts only)\b/i.test(raw);
+  const buyer = atlasPurchase || /\batlas\b/i.test(raw) ? "Atlas" : /\bkt\b|kt corp/i.test(raw) ? "KT" : $("phoneBuyer").value;
+  const quantityResult = extractQuickQuantity(itemRaw);
+  let itemText = quantityResult.text;
+  const priceResult = extractQuickPrice(itemText);
+  const cost = priceResult.price || 0;
+  itemText = priceResult.text;
+  if (!seller) {
+    const looseSeller = extractQuickLooseSeller(itemText);
+    if (looseSeller) {
+      seller = looseSeller;
+      itemText = removeQuickLooseSeller(itemText);
+    }
+  }
+  const storageResult = extractQuickStorage(itemText);
+  const storage = atlasPurchase ? "N/A" : storageResult.storage || "N/A";
+  itemText = storageResult.text;
+  const conditionResult = extractQuickCondition(itemText);
+  const conditionValue = atlasPurchase ? "Parts" : conditionResult.condition;
+  itemText = conditionResult.text;
+  const carrierResult = extractQuickCarrier(itemText);
+  const carrier = atlasPurchase ? "Parts" : mapQuickCarrier(carrierResult.carrier);
+  itemText = carrierResult.text;
+  const gradeResult = extractQuickGrade(itemText);
+  const grade = atlasPurchase ? "Parts" : gradeResult.grade || "Grade A";
+  itemText = gradeResult.text;
+  const colorResult = extractQuickColor(itemText);
+  itemText = colorResult.text;
+  const modelText = quickCleanModel(itemText, raw);
+  const deviceType = /\bipad|tablet\b/i.test(modelText) ? "Tablet" : "Phone";
+  const brand = /pixel|google/i.test(modelText) ? "Google" : /samsung|galaxy|\bs\d{1,2}\b|z\s*(fold|flip)|note\s*\d/i.test(modelText) ? "Samsung" : "Apple";
+  const conditionType = conditionValue === "New" || conditionValue === "Open Box" ? "New" : "Used";
+  const packaging = conditionValue === "Open Box" ? "Open" : "Sealed";
   const imei = raw.match(/\bimei\s*[:#-]?\s*([a-z0-9-]{6,})\b/i)?.[1] || "";
   const deductions = {
     crackedBack: /cracked?\s+back|back\s+crack|back\s+glass/i.test(raw),
@@ -615,8 +645,14 @@ function parseQuickPhoneLine(value) {
     repair: /repair\s+message/i.test(raw),
     faceId: /face\s*id/i.test(raw),
   };
-  const modelText = quickModelText(raw, brand, storage, carrier);
-  return { raw, buyer, deviceType, brand, conditionType, packaging, grade, storage, carrier, quantity, cost, imei, deductions, modelText };
+  const notes = [
+    seller ? `Seller ${seller}` : "",
+    purchaseLocation ? `Bought at ${purchaseLocation}` : "",
+    gradeResult.raw ? gradeResult.raw : "",
+    colorResult.color ? colorResult.color : "",
+    atlasPurchase ? "Parts" : "",
+  ].filter(Boolean).join(" | ");
+  return { raw, buyer, deviceType, brand, conditionType, packaging, grade, storage, carrier, quantity: quantityResult.quantity, cost, imei, deductions, modelText, notes };
 }
 
 function quickModelText(raw, brand, storage, carrier) {
@@ -638,6 +674,286 @@ function quickModelText(raw, brand, storage, carrier) {
   if (brand === "Apple" && /^\d/.test(text)) text = `iPhone ${text}`;
   if (brand === "Samsung" && /^s\d/i.test(text)) text = `Galaxy ${text}`;
   return text.replace(/\s+/g, " ").trim();
+}
+
+function splitQuickPhoneEntries(value) {
+  const rawLines = String(value || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  if (rawLines.length <= 1) return rawLines.map((line) => ({ text: line }));
+  const entries = [];
+  let group = [];
+  let currentSeller = "";
+  let purchaseLocation = "";
+  let invoiceLane = "";
+  rawLines.forEach((line) => {
+    const lane = quickStandaloneLane(line);
+    if (lane) {
+      invoiceLane = lane;
+      group.forEach((entry) => { entry.invoiceLane = lane; });
+      return;
+    }
+    const sellerLocation = extractQuickSellerLocation(line);
+    if (sellerLocation) {
+      group.forEach((entry) => {
+        entry.seller = sellerLocation.seller;
+        entry.purchaseLocation = entry.purchaseLocation || sellerLocation.purchaseLocation;
+        entries.push(entry);
+      });
+      group = [];
+      currentSeller = sellerLocation.seller;
+      purchaseLocation = sellerLocation.purchaseLocation || purchaseLocation;
+      return;
+    }
+    const seller = extractQuickSeller(line);
+    if (seller) {
+      group.forEach((entry) => {
+        entry.seller = seller;
+        entries.push(entry);
+      });
+      group = [];
+      currentSeller = seller;
+      return;
+    }
+    const lineLocation = extractQuickPurchaseLocation(line);
+    if (lineLocation && !looksLikeQuickPurchaseLine(line)) {
+      purchaseLocation = lineLocation;
+      group.forEach((entry) => { entry.purchaseLocation = entry.purchaseLocation || purchaseLocation; });
+      return;
+    }
+    if (group.length && !looksLikeQuickPurchaseLine(line) && extractQuickPrice(line).price) {
+      group[group.length - 1].text += ` ${line}`;
+      return;
+    }
+    group.push({ text: line, seller: currentSeller, purchaseLocation: lineLocation || purchaseLocation, invoiceLane });
+  });
+  group.forEach((entry) => entries.push(entry));
+  return entries;
+}
+
+function quickStandaloneLane(line) {
+  const value = String(line || "").trim();
+  if (/^(?:atlas|parts|for\s+parts|parts\s+only|part\s+out)$/i.test(value)) return "atlas";
+  if (/^(?:kt|main|regular)$/i.test(value)) return "regular";
+  return "";
+}
+
+function normalizeQuickPurchaseInput(value) {
+  return String(value || "")
+    .replace(/\b(?:baught|bougnt|bougt|boughtt|buoght|boght|bouth|bough|bot|b0ught)\b/gi, "bought")
+    .replace(/[–—]/g, "-")
+    .replace(/\bapplewatch\b/gi, "apple watch")
+    .replace(/\bpromax\b/gi, "pro max")
+    .replace(/\bopenbox\b/gi, "open box")
+    .replace(/\bcarrier\s+lock(?:ed)?\b/gi, "locked")
+    .replace(/\bsim\s*lock(?:ed)?\b/gi, "locked")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function looksLikeQuickPurchaseLine(line) {
+  const value = normalizeQuickPurchaseInput(line);
+  const withoutQty = extractQuickQuantity(value).text;
+  return /\b(?:iphone\s*)?(?:[1-9]|1[0-9])e?(?:\s*(?:pro\s*max|pm|pro|p|max|plus|mini))?\b/i.test(withoutQty)
+    || /\b(?:ipad|i\s*pad)\b/i.test(withoutQty)
+    || /\b(?:google\s+)?pixel\s+\d+\b/i.test(withoutQty)
+    || /\bs\d{1,2}(?:\s+(?:ultra|plus|fe))?\b/i.test(withoutQty)
+    || /\bgalaxy\b/i.test(withoutQty);
+}
+
+function extractQuickSeller(line) {
+  const match = normalizeQuickPurchaseInput(line).match(/^(?:from|seller|vendor|source|bought\s+from)\s*[:\-]?\s+(.+)$/i);
+  return match ? quickTitle(stripQuickNoise(match[1])) : "";
+}
+
+function extractQuickSellerLocation(line) {
+  const value = normalizeQuickPurchaseInput(line);
+  const match = value.match(/\b(?:bought\s+)?from\s+(.+?)\s+(?:at|@)\s+(.+)$/i);
+  if (!match) return null;
+  return { seller: quickTitle(stripQuickNoise(match[1])), purchaseLocation: quickTitle(stripQuickNoise(match[2])) };
+}
+
+function extractQuickPurchaseLocation(line) {
+  const value = normalizeQuickPurchaseInput(line);
+  const match = value.match(/(?:bought|buy|purchase|purchased|got)\s+(?:at|@)\s+(.+)$/i) || value.match(/^(?:at|@)\s+(.+)$/i);
+  return match ? quickTitle(stripQuickNoise(match[1])) : "";
+}
+
+function extractQuickInlineSeller(line) {
+  const value = normalizeQuickPurchaseInput(line);
+  const match = value.match(/\b(?:from|seller|vendor|source|bought\s+from)\s*[:\-]?\s+([a-z][a-z0-9 .'-]*?)(?:\s+(?:bought\s+)?(?:at|@)\s+|$)/i);
+  return match ? quickTitle(stripQuickNoise(match[1])) : "";
+}
+
+function extractQuickInlinePurchaseLocation(line) {
+  const value = normalizeQuickPurchaseInput(line);
+  const match = value.match(/\b(?:bought|buy|purchase|purchased|got)\s+(?:at|@)\s+([a-z0-9 .'-]+)$/i) || value.match(/\b(?:at|@)\s+([a-z0-9 .'-]+)$/i);
+  return match ? quickTitle(stripQuickNoise(match[1])) : "";
+}
+
+function removeQuickSellerAndLocation(line, seller, location) {
+  let text = String(line || "");
+  text = text
+    .replace(/\b(?:from|seller|vendor|source|bought\s+from)\s*[:\-]?\s+[a-z][a-z0-9 .'-]*?(?=\s+(?:bought\s+)?(?:at|@)\s+|$)/ig, " ")
+    .replace(/\b(?:bought|buy|purchase|purchased|got)\s+(?:at|@)\s+[a-z0-9 .'-]+$/ig, " ")
+    .replace(/\b(?:at|@)\s+[a-z0-9 .'-]+$/ig, " ");
+  if (seller) text = text.replace(new RegExp(`\\b${escapeRegExp(seller)}\\b`, "ig"), " ");
+  if (location) text = text.replace(new RegExp(`\\b${escapeRegExp(location)}\\b`, "ig"), " ");
+  return text.replace(/\s+/g, " ").trim();
+}
+
+function stripQuickNoise(value) {
+  return String(value || "").replace(/[.,;:]+$/g, "").trim();
+}
+
+function extractQuickLooseSeller(value) {
+  const match = String(value || "").trim().match(/\s+([a-z][a-z'-]{1,24})$/i);
+  if (!match) return "";
+  const word = match[1].toLowerCase();
+  const blocked = new Set(["pro", "max", "plus", "mini", "ultra", "fold", "flip", "pixel", "iphone", "ipad", "new", "used", "locked", "unlocked", "lock", "grade", "parts", "black", "white", "blue", "silver", "gold", "orange", "green", "purple", "natural", "desert", "teal", "lavender"]);
+  return blocked.has(word) ? "" : quickTitle(word);
+}
+
+function removeQuickLooseSeller(value) {
+  const seller = extractQuickLooseSeller(value);
+  return seller ? String(value || "").replace(new RegExp(`\\s+${escapeRegExp(seller)}$`, "i"), "").trim() : value;
+}
+
+function extractQuickQuantity(value) {
+  let text = String(value || "").trim();
+  const patterns = [/^(\d+)\s*x\b\s*/i, /^x\s*(\d+)\b\s*/i, /^qty\s*[:\-]?\s*(\d+)\b\s*/i, /\bx\s*(\d+)\b/i, /\bqty\s*[:\-]?\s*(\d+)\b/i];
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match) return { quantity: Number(match[1]), text: removeQuickMatch(text, match) };
+  }
+  const leading = text.match(/^(\d+)\s+(?=(?:iphone\s*)?(?:1[0-9]|se|xr|xs)\b|(?:1[0-9])\s*(?:p|pm|pro|max|plus|mini)|s\d{1,2}\b)/i);
+  if (leading) return { quantity: Number(leading[1]), text: text.slice(leading[0].length).trim() };
+  return { quantity: 1, text };
+}
+
+function extractQuickPrice(value) {
+  const text = String(value || "");
+  const money = [...text.matchAll(/\$\s*([0-9][0-9,]*(?:\.\d{1,2})?)/g)];
+  const matches = money.length ? money : [...text.matchAll(/\b([0-9][0-9,]*(?:\.\d{1,2})?)\b/g)].filter((match) => {
+    const price = Number(match[1].replace(/,/g, ""));
+    const after = text.slice(match.index + match[0].length, match.index + match[0].length + 4);
+    return Number.isFinite(price) && price >= 50 && !normalizeQuickStorage(match[1], after.match(/^\s*(gb|g|tb|t)\b/i)?.[1] || "");
+  });
+  if (!matches.length) return { price: 0, text };
+  const match = matches[matches.length - 1];
+  return { price: Number(match[1].replace(/,/g, "")), text: removeQuickMatch(text, match) };
+}
+
+function extractQuickStorage(value) {
+  const text = String(value || "");
+  const explicit = text.match(/\b(\d+(?:\.\d+)?)\s*(TB|T|GB|G)\b/i);
+  if (explicit) return { storage: normalizeQuickStorage(explicit[1], explicit[2]), text: removeQuickMatch(text, explicit) };
+  const numbers = [...text.matchAll(/\b(\d{1,4})\b/g)];
+  for (const match of numbers) {
+    const storage = normalizeQuickStorage(match[1], "");
+    if (storage) return { storage, text: removeQuickMatch(text, match) };
+  }
+  return { storage: "", text };
+}
+
+function normalizeQuickStorage(amount, unit) {
+  const value = Number(String(amount || "").replace(/,/g, ""));
+  if (!Number.isFinite(value)) return "";
+  if (/^t/i.test(unit || "")) return `${Math.abs(value - 2) <= 0.1 ? 2 : 1}TB`;
+  if (value >= 900) return "1TB";
+  const snapped = [64, 128, 256, 512].find((target) => Math.abs(value - target) <= 2);
+  return snapped ? `${snapped}GB` : "";
+}
+
+function extractQuickCondition(value) {
+  const patterns = [
+    { regex: /\b(?:bnib|sealed|brand\s+new|new)\b/i, condition: "New" },
+    { regex: /\b(?:open\s*box|ob)\b/i, condition: "Open Box" },
+    { regex: /\b(?:pre\s*owned|preowned|used)\b/i, condition: "Used" },
+    { regex: /\bparts?\b/i, condition: "Parts" },
+  ];
+  for (const pattern of patterns) {
+    const match = String(value || "").match(pattern.regex);
+    if (match) return { condition: pattern.condition, text: removeQuickMatch(String(value || ""), match) };
+  }
+  return { condition: "", text: value };
+}
+
+function extractQuickCarrier(value) {
+  const patterns = [
+    { regex: /\bt[\-\s]?mobile\b|\btm\b/i, carrier: "Locked" },
+    { regex: /\bverizon\b|\bvzw\b/i, carrier: "Locked" },
+    { regex: /\bat&t\s*clean\b|\batt\s*clean\b|\batt\b|\bat&t\b/i, carrier: "AT&T" },
+    { regex: /\bf\/?u\b|\bfu\b|\bfactory\s+unlocked\b|\bsim\s*free\b|\bunlocked\b|\bunlock\b/i, carrier: "Unlocked" },
+    { regex: /\bcl\b|\blocked\b|\block\b/i, carrier: "Locked" },
+  ];
+  for (const pattern of patterns) {
+    const match = String(value || "").match(pattern.regex);
+    if (match) return { carrier: pattern.carrier, text: removeQuickMatch(String(value || ""), match) };
+  }
+  return { carrier: "", text: value };
+}
+
+function mapQuickCarrier(carrier) {
+  if (/^AT&T$/i.test(carrier || "")) return "AT&T (Clean)";
+  if (/^Locked$/i.test(carrier || "")) return "Carrier Locked";
+  if (/^Unlocked$/i.test(carrier || "")) return "Unlocked";
+  return "Unlocked";
+}
+
+function extractQuickGrade(value) {
+  const match = String(value || "").match(/\bgrade\s*[:\-]?\s*(ab|[a-d][+-]?|excellent|good|fair|poor)\b/i) || String(value || "").match(/\b(ab|[a-d][+-]?)\b/i);
+  if (!match) return { grade: "", raw: "", text: value };
+  const raw = `Grade ${match[1].toUpperCase()}`;
+  const simple = match[1].charAt(0).toUpperCase();
+  const grade = ["A", "B", "C", "D"].includes(simple) ? `Grade ${simple}` : "Grade A";
+  return { grade, raw, text: removeQuickMatch(String(value || ""), match) };
+}
+
+function extractQuickColor(value) {
+  const colors = ["lavender", "black", "white", "silver", "gold", "blue", "pink", "orange", "green", "purple", "natural", "desert", "teal", "ultramarine"];
+  for (const color of colors) {
+    const pattern = color === "lavender" ? /\blav(?:e|a)?nd(?:e|a)r\b|\blavdener\b/i : new RegExp(`\\b${color}\\b`, "i");
+    const match = String(value || "").match(pattern);
+    if (match) return { color: `Color ${quickTitle(color)}`, text: removeQuickMatch(String(value || ""), match) };
+  }
+  return { color: "", text: value };
+}
+
+function quickCleanModel(value, fallback) {
+  let text = normalizeQuickPurchaseInput(value)
+    .replace(/\b(?:bought|buy|purchase|purchased|got|phone|phones|iphone|google|parts|atlas|kt|part\s+out|only|from|seller|vendor|source)\b/gi, " ")
+    .replace(/\bi\s*pad\b/gi, "iPad")
+    .replace(/\b(\d{2})\s*e\b/gi, "$1e")
+    .replace(/\b(\d{2})\s*(?:pro\s*max|pm)\b/gi, "$1 Pro Max")
+    .replace(/\b(\d{2})\s*(?:pro|p)\b/gi, "$1 Pro")
+    .replace(/\b(\d{2})\s*plus\b/gi, "$1 Plus")
+    .replace(/\b(\d{2})\s*mini\b/gi, "$1 Mini")
+    .replace(/\bs(\d{1,2})\s*(ultra|plus|fe)?\b/gi, (_, num, suffix) => `Galaxy S${num}${suffix ? ` ${quickTitle(suffix)}` : ""}`)
+    .replace(/\bgoogle\s+pixel\b/gi, "Pixel")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!text) text = fallback;
+  text = quickTitle(text);
+  if (/^pixel\s+/i.test(text)) text = `Google ${text}`;
+  if (/^ipad\b/i.test(text)) text = text.replace(/^Ipad/i, "iPad");
+  return text;
+}
+
+function removeQuickMatch(text, match) {
+  return `${text.slice(0, match.index)} ${text.slice(match.index + match[0].length)}`.replace(/\s+/g, " ").trim();
+}
+
+function escapeRegExp(value) {
+  return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function quickTitle(value) {
+  return String(value || "").toLowerCase().split(/\s+/).filter(Boolean).map((word) => {
+    if (/^iphone$/i.test(word)) return "iPhone";
+    if (/^ipad$/i.test(word)) return "iPad";
+    if (/^(gb|tb)$/i.test(word)) return word.toUpperCase();
+    if (/^s\d+$/i.test(word)) return word.toUpperCase();
+    return word.charAt(0).toUpperCase() + word.slice(1);
+  }).join(" ");
 }
 
 function applyQuickPhoneFields(parsed) {
@@ -669,6 +985,7 @@ function applyQuickPhoneFields(parsed) {
   $("atlasDeductRepair").checked = parsed.buyer === "Atlas" && parsed.deductions.repair;
   $("atlasDeductFaceId").checked = parsed.buyer === "Atlas" && parsed.deductions.faceId;
   const notes = [
+    parsed.notes || "",
     parsed.deductions.crackedBack ? "Cracked back" : "",
     parsed.deductions.crackedLens ? "Cracked lens" : "",
     parsed.deductions.battery ? "Battery / degraded battery" : "",
@@ -685,6 +1002,16 @@ function bestQuickModel(parsed) {
   return options.find((model) => normalizePhonePriceMatchText(model) === wanted)
     || options.find((model) => normalizePhonePriceMatchText(model).includes(wanted) || wanted.includes(normalizePhonePriceMatchText(model)))
     || parsed.modelText;
+}
+
+function normalizePhonePriceMatchText(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/\biphone\b/g, "")
+    .replace(/\bgoogle\s+pixel\b/g, "pixel")
+    .replace(/\bgalaxy\s+s/g, "s")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
 }
 
 function phonePurchasePayload(photo) {
