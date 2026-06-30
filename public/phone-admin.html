@@ -55,6 +55,18 @@
               <div class="actions"><button class="btn secondary" id="createPhoneInvoiceBtn">Create Invoice</button></div>
             </section>
 
+            <section class="panel quick-phone-panel">
+              <div class="panel-head">
+                <div><h2>Quick Add</h2><p>Type a phone line and add it to the selected invoice.</p></div>
+              </div>
+              <label>Phone Text<textarea id="quickPhoneText" rows="3" placeholder="Example: iPhone 17 256GB unlocked grade C cracked back cost 300 imei 123456789"></textarea></label>
+              <div class="actions">
+                <button class="btn secondary" id="parseQuickPhoneBtn">Fill Flow</button>
+                <button class="btn phone-btn" id="addQuickPhoneBtn">Add From Text</button>
+              </div>
+              <div id="quickPhoneStatus"></div>
+            </section>
+
             <section class="panel">
               <h2>Device Flow</h2>
               <div class="form-grid three">

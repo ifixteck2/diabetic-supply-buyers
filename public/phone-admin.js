@@ -28,6 +28,8 @@ function bindPhoneEvents() {
   $("savePhonePurchaseBtn").onclick = savePhonePurchase;
   $("clearPhonePurchaseBtn").onclick = resetPhonePurchase;
   $("refreshPriceCheckerBtn").onclick = refreshPhonePortal;
+  $("parseQuickPhoneBtn").onclick = () => parseQuickPhoneText(false);
+  $("addQuickPhoneBtn").onclick = () => parseQuickPhoneText(true);
   ["phoneBuyer", "deviceType", "phoneBrand", "conditionType", "packaging", "grade", "phoneModel", "phoneStorage", "phoneCarrier", "ktDeductCrackedBack", "atlasDeductCrackedBack", "atlasDeductCrackedLens", "atlasDeductBattery", "atlasDeductRepair", "atlasDeductFaceId"].forEach((id) => {
     $(id).addEventListener("change", handleFlowChange);
   });
@@ -534,6 +536,117 @@ async function savePhonePurchase() {
   status("phonePurchaseStatus", editingPhonePurchaseId ? `Updated phone on ${result.invoice.buyer} invoice #${result.invoice.id}.` : `Added purchase to ${result.invoice.buyer} invoice #${result.invoice.id}.`);
   resetPhonePurchase(false);
   await loadPhoneInvoices();
+}
+
+async function parseQuickPhoneText(saveAfterParse) {
+  const parsed = parseQuickPhoneLine($("quickPhoneText").value);
+  if (!parsed.modelText) {
+    return status("quickPhoneStatus", "Type at least a model, like iPhone 17 256GB unlocked grade C.", "bad");
+  }
+  applyQuickPhoneFields(parsed);
+  if (!saveAfterParse) {
+    status("quickPhoneStatus", `Filled flow for ${escapeHtml($("phoneModel").value || parsed.modelText)}.`);
+    return null;
+  }
+  await savePhonePurchase();
+  status("quickPhoneStatus", `Added ${escapeHtml(parsed.modelText)} to the selected invoice.`);
+  $("quickPhoneText").value = "";
+  return null;
+}
+
+function parseQuickPhoneLine(value) {
+  const raw = String(value || "").replace(/\s+/g, " ").trim();
+  const text = raw.toLowerCase();
+  const buyer = /\bkt\b|kt corp/i.test(raw) ? "KT" : /\batlas\b/i.test(raw) ? "Atlas" : $("phoneBuyer").value;
+  const deviceType = /\bipad|tablet\b/i.test(raw) ? "Tablet" : "Phone";
+  const brand = /pixel|google/i.test(raw) ? "Google" : /samsung|galaxy|\bs\d{2}\b|z\s*(fold|flip)|note\s*\d/i.test(raw) ? "Samsung" : "Apple";
+  const conditionType = /\bnew|sealed|open\b/i.test(raw) && !/\bused|grade|parts\b/i.test(raw) ? "New" : "Used";
+  const packaging = /\bopen\b/i.test(raw) ? "Open" : "Sealed";
+  const gradeMatch = raw.match(/\bgrade\s*([abcd])\b/i) || raw.match(/\b([abcd])\s*(?:grade)?\b/i);
+  const grade = /\bparts?\b/i.test(raw) ? "Parts" : gradeMatch ? `Grade ${gradeMatch[1].toUpperCase()}` : "Grade A";
+  const storageMatch = raw.match(/\b\d+\s*(?:gb|tb)\b/i)?.[0] || raw.match(/\b(?:64|128|256|512|1024)\b/i)?.[0] || "";
+  const storage = storageMatch ? (/\b1024\b/.test(storageMatch) ? "1TB" : /[gt]b/i.test(storageMatch) ? storageMatch.replace(/\s+/g, "").toUpperCase() : `${storageMatch}GB`) : "N/A";
+  const carrier = /at&t|att\s*clean/i.test(raw) ? "AT&T (Clean)" : /\bunlocked\b/i.test(raw) ? "Unlocked" : /\blocked|carrier locked|sim locked\b/i.test(raw) ? "Carrier Locked" : "Unlocked";
+  const quantity = Number(raw.match(/\b(?:qty|quantity)\s*(\d+)\b/i)?.[1] || raw.match(/\b(\d+)\s*x\b/i)?.[1] || 1);
+  const cost = Number((raw.match(/\b(?:cost|paid|buy|bought|for)\s*\$?\s*(\d+(?:\.\d{1,2})?)\b/i) || raw.match(/\$\s*(\d+(?:\.\d{1,2})?)/))?.[1] || 0);
+  const imei = raw.match(/\bimei\s*[:#-]?\s*([a-z0-9-]{6,})\b/i)?.[1] || "";
+  const deductions = {
+    crackedBack: /cracked?\s+back|back\s+crack|back\s+glass/i.test(raw),
+    crackedLens: /cracked?\s+lens|camera\s+lens/i.test(raw),
+    battery: /battery|degraded/i.test(raw),
+    repair: /repair\s+message/i.test(raw),
+    faceId: /face\s*id/i.test(raw),
+  };
+  const modelText = quickModelText(raw, brand, storage, carrier);
+  return { raw, buyer, deviceType, brand, conditionType, packaging, grade, storage, carrier, quantity, cost, imei, deductions, modelText };
+}
+
+function quickModelText(raw, brand, storage, carrier) {
+  let text = String(raw || "")
+    .replace(/\b(?:atlas|kt|kt corp)\b/ig, " ")
+    .replace(/\b(?:qty|quantity)\s*\d+\b/ig, " ")
+    .replace(/\b\d+\s*x\b/ig, " ")
+    .replace(/\b(?:cost|paid|buy|bought|for)\s*\$?\s*\d+(?:\.\d{1,2})?\b/ig, " ")
+    .replace(/\bimei\s*[:#-]?\s*[a-z0-9-]{6,}\b/ig, " ")
+    .replace(/\bgrade\s*[abcd]\b/ig, " ")
+    .replace(/\b(?:grade|used|new|sealed|open|parts?|cracked?|back|glass|lens|battery|degraded|repair|message|face\s*id)\b/ig, " ")
+    .replace(/\b(?:unlocked|carrier locked|sim locked|locked|at&t|att clean)\b/ig, " ")
+    .replace(/\b\d+\s*(?:gb|tb)\b/ig, " ")
+    .replace(/\b(?:64|128|256|512|1024)\b/ig, " ")
+    .replace(/\$\s*\d+(?:\.\d{1,2})?/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!text) text = raw;
+  if (brand === "Apple" && /^\d/.test(text)) text = `iPhone ${text}`;
+  if (brand === "Samsung" && /^s\d/i.test(text)) text = `Galaxy ${text}`;
+  return text.replace(/\s+/g, " ").trim();
+}
+
+function applyQuickPhoneFields(parsed) {
+  $("phoneBuyer").value = parsed.buyer;
+  renderInvoiceSelect();
+  $("deviceType").value = parsed.deviceType;
+  $("phoneBrand").value = parsed.brand;
+  $("conditionType").value = parsed.conditionType;
+  $("packaging").value = parsed.packaging;
+  $("grade").value = parsed.grade;
+  toggleConditionFields();
+  renderModelOptions();
+  const model = bestQuickModel(parsed);
+  ensureSelectOption("phoneModel", model, model);
+  $("phoneModel").value = model;
+  renderPhoneStorageOptions();
+  ensureSelectOption("phoneStorage", parsed.storage, parsed.storage);
+  $("phoneStorage").value = parsed.storage;
+  renderCarrierOptions();
+  ensureSelectOption("phoneCarrier", parsed.carrier, parsed.carrier);
+  $("phoneCarrier").value = parsed.carrier;
+  $("phoneQuantity").value = parsed.quantity || 1;
+  $("phoneCost").value = parsed.cost || "";
+  $("phoneImei").value = parsed.imei;
+  $("ktDeductCrackedBack").checked = parsed.buyer === "KT" && parsed.deductions.crackedBack;
+  $("atlasDeductCrackedBack").checked = parsed.buyer === "Atlas" && parsed.deductions.crackedBack;
+  $("atlasDeductCrackedLens").checked = parsed.buyer === "Atlas" && parsed.deductions.crackedLens;
+  $("atlasDeductBattery").checked = parsed.buyer === "Atlas" && parsed.deductions.battery;
+  $("atlasDeductRepair").checked = parsed.buyer === "Atlas" && parsed.deductions.repair;
+  $("atlasDeductFaceId").checked = parsed.buyer === "Atlas" && parsed.deductions.faceId;
+  const notes = [
+    parsed.deductions.crackedBack ? "Cracked back" : "",
+    parsed.deductions.crackedLens ? "Cracked lens" : "",
+    parsed.deductions.battery ? "Battery / degraded battery" : "",
+    parsed.deductions.repair ? "Repair message" : "",
+    parsed.deductions.faceId ? "Bad Face ID" : "",
+  ].filter(Boolean).join(" | ");
+  $("phoneNotes").value = notes;
+  updateProjectedPrice();
+}
+
+function bestQuickModel(parsed) {
+  const wanted = normalizePhonePriceMatchText(parsed.modelText);
+  const options = [...new Set(matchingRows().map(checkerModelName).filter(Boolean))];
+  return options.find((model) => normalizePhonePriceMatchText(model) === wanted)
+    || options.find((model) => normalizePhonePriceMatchText(model).includes(wanted) || wanted.includes(normalizePhonePriceMatchText(model)))
+    || parsed.modelText;
 }
 
 function phonePurchasePayload(photo) {
