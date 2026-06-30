@@ -1443,7 +1443,7 @@ function atlasPhoneDeductions(purchase, row) {
   const notes = String(purchase.notes || "");
   const model = row.base_model || purchase.model;
   let amount = 0;
-  if (/atlas cracked back/i.test(notes)) amount += atlasCrackedBackDeduction(model);
+  if (/atlas cracked back|cracked?\s+back|back\s+crack|back\s+glass/i.test(notes)) amount += atlasCrackedBackDeduction(model);
   if (/atlas cracked lens/i.test(notes)) amount += atlasCrackedLensDeduction(model);
   return amount;
 }

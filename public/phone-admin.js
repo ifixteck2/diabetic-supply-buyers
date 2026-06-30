@@ -1279,7 +1279,7 @@ window.startPhonePurchaseEdit = (id) => {
   $("phonePhoto").value = "";
   $("phoneNotes").value = purchase.notes || "";
   $("ktDeductCrackedBack").checked = /cracked back/i.test(purchase.notes || "");
-  $("atlasDeductCrackedBack").checked = /atlas cracked back/i.test(purchase.notes || "");
+  $("atlasDeductCrackedBack").checked = /atlas cracked back|cracked?\s+back|back\s+crack|back\s+glass/i.test(purchase.notes || "");
   $("atlasDeductCrackedLens").checked = /atlas cracked lens/i.test(purchase.notes || "");
   $("atlasDeductBattery").checked = /atlas battery|degraded battery/i.test(purchase.notes || "");
   $("atlasDeductRepair").checked = /atlas repair message/i.test(purchase.notes || "");
