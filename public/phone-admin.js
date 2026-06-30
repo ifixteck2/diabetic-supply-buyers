@@ -524,7 +524,7 @@ async function createPhoneInvoice() {
   status("phonePurchaseStatus", `Created ${buyer} invoice #${result.invoice.id}.`);
 }
 
-async function savePhonePurchase() {
+async function savePhonePurchase(options = {}) {
   const photoFile = $("phonePhoto").files?.[0] || null;
   const photo = photoFile ? await imageFileToDataUrl(photoFile) : null;
   const body = phonePurchasePayload(photo);
@@ -532,14 +532,20 @@ async function savePhonePurchase() {
     method: editingPhonePurchaseId ? "PATCH" : "POST",
     body,
   });
-  if (!result?.ok) return status("phonePurchaseStatus", result?.error || "Could not save purchase.", "bad");
-  status("phonePurchaseStatus", editingPhonePurchaseId ? `Updated phone on ${result.invoice.buyer} invoice #${result.invoice.id}.` : `Added purchase to ${result.invoice.buyer} invoice #${result.invoice.id}.`);
-  resetPhonePurchase(false);
-  await loadPhoneInvoices();
+  if (!result?.ok) {
+    if (!options.silent) status("phonePurchaseStatus", result?.error || "Could not save purchase.", "bad");
+    return result;
+  }
+  if (!options.silent) status("phonePurchaseStatus", editingPhonePurchaseId ? `Updated phone on ${result.invoice.buyer} invoice #${result.invoice.id}.` : `Added purchase to ${result.invoice.buyer} invoice #${result.invoice.id}.`);
+  if (!options.keepForm) resetPhonePurchase(false);
+  if (!options.silent) await loadPhoneInvoices();
+  return result;
 }
 
 async function parseQuickPhoneText(saveAfterParse) {
-  const parsed = parseQuickPhoneLine($("quickPhoneText").value);
+  const lines = quickPhoneLines();
+  if (saveAfterParse && lines.length > 1) return addQuickPhoneLines(lines);
+  const parsed = parseQuickPhoneLine(lines[0] || "");
   if (!parsed.modelText) {
     return status("quickPhoneStatus", "Type at least a model, like iPhone 17 256GB unlocked grade C.", "bad");
   }
@@ -551,6 +557,38 @@ async function parseQuickPhoneText(saveAfterParse) {
   await savePhonePurchase();
   status("quickPhoneStatus", `Added ${escapeHtml(parsed.modelText)} to the selected invoice.`);
   $("quickPhoneText").value = "";
+  return null;
+}
+
+function quickPhoneLines() {
+  return String($("quickPhoneText").value || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+async function addQuickPhoneLines(lines) {
+  let added = 0;
+  const failures = [];
+  for (const line of lines) {
+    const parsed = parseQuickPhoneLine(line);
+    if (!parsed.modelText) {
+      failures.push(line);
+      continue;
+    }
+    applyQuickPhoneFields(parsed);
+    const result = await savePhonePurchase({ silent: true, keepForm: true });
+    if (result?.ok) added += 1;
+    else failures.push(`${line} (${result?.error || "not saved"})`);
+  }
+  await loadPhoneInvoices();
+  if (failures.length) {
+    status("quickPhoneStatus", `Added ${added}. Could not add: ${escapeHtml(failures.join("; "))}`, "bad");
+  } else {
+    status("quickPhoneStatus", `Added ${added} phones to the selected invoice.`);
+    $("quickPhoneText").value = "";
+  }
+  resetPhonePurchase(false);
   return null;
 }
 
