@@ -652,6 +652,7 @@ function renderPhoneInvoiceCard(invoice) {
   const purchases = invoice.purchases || [];
   const { totalCost, projected, units, salePrice } = invoiceTotals(invoice);
   const actualProfit = salePrice === null ? null : salePrice - totalCost;
+  const projectedProfit = projected - totalCost;
   const canRemove = invoice.status === "Pending";
   const isPending = invoice.status === "Pending";
   const rows = purchases.map((row) => `
@@ -671,6 +672,27 @@ function renderPhoneInvoiceCard(invoice) {
       <td><div class="phone-row-actions"><button class="mini-btn" onclick="startPhonePurchaseEdit(${row.id})">Edit</button>${canRemove ? `<button class="mini-btn danger" onclick="removePhonePurchaseFromInvoice(${row.id})">Remove</button>` : ""}</div></td>
     </tr>
   `).join("");
+  const pendingRows = purchases.map((row) => `
+    <article class="pending-phone-item">
+      <div class="pending-phone-main">
+        <strong>${escapeHtml(row.model)}</strong>
+        <div class="pending-phone-tags">
+          <span>${escapeHtml(phoneInvoiceItemCondition(row))}</span>
+          <span>${escapeHtml(row.carrier || "No carrier")}</span>
+          ${row.imei ? `<span>IMEI ${escapeHtml(row.imei)}</span>` : ""}
+        </div>
+        ${row.notes ? `<em>${escapeHtml(row.notes)}</em>` : ""}
+        ${row.photo_data_url ? `<button class="phone-photo-link" onclick="openPhonePhoto(${row.id})">View photo</button>` : ""}
+      </div>
+      <div class="pending-phone-money">
+        <span><small>Qty</small><b>${row.quantity}</b></span>
+        <span><small>Cost</small><b>${money(row.cost_each)}</b></span>
+        <span><small>Sell</small><b>${money(row.projected_sell_each)}</b></span>
+        <span class="${profitClass(row)}"><small>Profit</small><b>${money(profitTotal(row))}</b></span>
+      </div>
+      <div class="phone-row-actions"><button class="mini-btn" onclick="startPhonePurchaseEdit(${row.id})">Edit</button>${canRemove ? `<button class="mini-btn danger" onclick="removePhonePurchaseFromInvoice(${row.id})">Remove</button>` : ""}</div>
+    </article>
+  `).join("");
   const saleControls = `
     <div class="sale-box phone-sale-box">
       <div class="form-grid three">
@@ -687,23 +709,34 @@ function renderPhoneInvoiceCard(invoice) {
   return `
     <article class="invoice-card phone-invoice-card ${isPending ? "phone-invoice-compact" : ""}">
       <div class="invoice-top">
-        <div>
+        <div class="phone-invoice-title">
           <h3>${escapeHtml(invoice.label || `${invoice.buyer} Invoice`)}</h3>
           <p>#${invoice.id} - ${escapeHtml(invoice.buyer)} - ${new Date(invoice.created_at).toLocaleDateString()} - ${units} phone${units === 1 ? "" : "s"} total</p>
         </div>
+        ${isPending ? `
+          <div class="pending-invoice-metrics">
+            <span><small>Cost</small><b>${money(totalCost)}</b></span>
+            <span><small>Projected</small><b>${money(projected)}</b></span>
+            <span class="${projectedProfit >= 0 ? "profit-good" : "profit-bad"}"><small>Profit</small><b>${money(projectedProfit)}</b></span>
+          </div>
+        ` : ""}
         <span class="pill ${invoice.status?.toLowerCase()}">${escapeHtml(invoice.status)}</span>
       </div>
-      <div class="table-wrap">
-        <table class="phone-profit-table">
-          <thead><tr><th>Device</th><th>Carrier</th><th>Qty</th><th>Cost Each</th><th>Sell Each</th><th>Profit Each</th><th>Total Profit</th><th></th></tr></thead>
-          <tbody>${rows || `<tr><td colspan="8">No purchases added.</td></tr>`}</tbody>
-        </table>
-      </div>
-      <div class="sale-summary">
+      ${isPending ? `
+        <div class="pending-phone-list">${pendingRows || `<div class="empty">No purchases added.</div>`}</div>
+      ` : `
+        <div class="table-wrap">
+          <table class="phone-profit-table">
+            <thead><tr><th>Device</th><th>Carrier</th><th>Qty</th><th>Cost Each</th><th>Sell Each</th><th>Profit Each</th><th>Total Profit</th><th></th></tr></thead>
+            <tbody>${rows || `<tr><td colspan="8">No purchases added.</td></tr>`}</tbody>
+          </table>
+        </div>
+      `}
+      <div class="sale-summary ${isPending ? "pending-sale-summary" : ""}">
         <span>Cost ${money(totalCost)}</span>
         <span>Projected ${money(projected)}</span>
         ${salePrice === null ? `<span>Actual Sale Not Set</span>` : `<span>Actual Sale ${money(salePrice)}</span>`}
-        <strong>Profit ${money(projected - totalCost)}</strong>
+        <strong>Profit ${money(projectedProfit)}</strong>
         ${actualProfit === null ? "" : `<strong class="${actualProfit >= 0 ? "profit-good" : "profit-bad"}">Actual Profit ${money(actualProfit)}</strong>`}
       </div>
       ${isPending ? `<details class="phone-controls"><summary>Sale / Status Controls</summary>${saleControls}</details>` : saleControls}
