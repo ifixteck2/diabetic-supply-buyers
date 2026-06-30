@@ -82,7 +82,15 @@
                 <label>Phone Photo<input id="phonePhoto" type="file" accept="image/*"></label>
                 <label>Notes<input id="phoneNotes" placeholder="Damage notes, payment details"></label>
               </div>
-              <div class="deduction-box purchase-deduction-box">
+              <div id="atlasPurchaseDeductions" class="deduction-box purchase-deduction-box">
+                <strong>Atlas Deductions</strong>
+                <label><input id="atlasDeductCrackedBack" type="checkbox"> Cracked back</label>
+                <label><input id="atlasDeductCrackedLens" type="checkbox"> Cracked lens</label>
+                <label><input id="atlasDeductBattery" type="checkbox"> Battery message / degraded battery</label>
+                <label><input id="atlasDeductRepair" type="checkbox"> Repair message</label>
+                <label><input id="atlasDeductFaceId" type="checkbox"> Bad Face ID</label>
+              </div>
+              <div id="ktPurchaseDeductions" class="deduction-box purchase-deduction-box">
                 <strong>KT Deductions</strong>
                 <label><input id="ktDeductCrackedBack" type="checkbox"> Cracked back glass - apply KT model deduction</label>
               </div>

@@ -1420,15 +1420,44 @@ function findPhonePrice(purchase, priceRows, buyer) {
     if (storage && String(row.storage || "").toLowerCase() !== storage) return false;
     return normalizePhonePriceMatchText(row.base_model || row.model) === modelText;
   });
-  return ktAdjustedPhonePrice(purchase, looserCandidates[0], buyer);
+  return adjustedPhonePrice(purchase, looserCandidates[0], buyer);
 }
 
-function ktAdjustedPhonePrice(purchase, row, buyer) {
+function adjustedPhonePrice(purchase, row, buyer) {
   const basePrice = Number(row?.price || 0);
   if (!basePrice) return 0;
-  if (buyer !== "KT" || !/cracked?\s+back|back\s+crack|back\s+glass/i.test(purchase.notes || "")) return basePrice;
-  const deduction = ktCrackedBackDeduction(row.base_model || purchase.model);
-  return Math.max(0, basePrice - deduction);
+  const notes = String(purchase.notes || "");
+  if (buyer === "KT" && /cracked?\s+back|back\s+crack|back\s+glass/i.test(notes)) {
+    const deduction = ktCrackedBackDeduction(row.base_model || purchase.model);
+    return Math.max(0, basePrice - deduction);
+  }
+  if (buyer === "Atlas" && /atlas cracked back/i.test(notes)) {
+    const deduction = atlasCrackedBackDeduction(row.base_model || purchase.model);
+    return Math.max(0, basePrice - deduction);
+  }
+  return basePrice;
+}
+
+function atlasCrackedBackDeduction(model) {
+  const text = String(model || "").toLowerCase();
+  if (/15 pro max/.test(text)) return 90;
+  if (/14 pro max/.test(text)) return 80;
+  if (/14 pro/.test(text)) return 50;
+  if (/14 plus/.test(text)) return 50;
+  if (/\b14\b/.test(text)) return 70;
+  if (/16 pro max/.test(text)) return 120;
+  if (/16 plus/.test(text)) return 70;
+  if (/\b16e\b/.test(text)) return 100;
+  if (/\b16\b/.test(text)) return 60;
+  if (/17 pro max/.test(text)) return 160;
+  if (/17 pro/.test(text)) return 140;
+  if (/17 air/.test(text)) return 100;
+  if (/\b17\b/.test(text)) return 100;
+  if (/15 pro/.test(text)) return 60;
+  if (/15 plus/.test(text)) return 60;
+  if (/\b15\b/.test(text)) return 90;
+  if (/13 pro max/.test(text)) return 60;
+  return 0;
 }
 
 function ktCrackedBackDeduction(model) {
@@ -1513,9 +1542,6 @@ function startAtlasDailyRefreshJob() {
 }
 
 function phoneLookupGrade(purchase, buyer) {
-  if (buyer === "Atlas" && purchase.condition_type === "Used") {
-    return /parts/i.test(purchase.grade || "") ? "Parts" : "Grade A";
-  }
   return purchase.grade;
 }
 

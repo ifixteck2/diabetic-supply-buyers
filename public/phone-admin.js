@@ -28,7 +28,7 @@ function bindPhoneEvents() {
   $("savePhonePurchaseBtn").onclick = savePhonePurchase;
   $("clearPhonePurchaseBtn").onclick = resetPhonePurchase;
   $("refreshPriceCheckerBtn").onclick = refreshPhonePortal;
-  ["phoneBuyer", "deviceType", "phoneBrand", "conditionType", "packaging", "grade", "phoneModel", "phoneStorage", "phoneCarrier", "ktDeductCrackedBack"].forEach((id) => {
+  ["phoneBuyer", "deviceType", "phoneBrand", "conditionType", "packaging", "grade", "phoneModel", "phoneStorage", "phoneCarrier", "ktDeductCrackedBack", "atlasDeductCrackedBack", "atlasDeductCrackedLens", "atlasDeductBattery", "atlasDeductRepair", "atlasDeductFaceId"].forEach((id) => {
     $(id).addEventListener("change", handleFlowChange);
   });
   ["checkerDeviceType", "checkerBrand", "checkerConditionType", "checkerPackaging", "checkerGrade", "checkerModel", "checkerStorage", "checkerCarrier", "deductCrackedBack", "deductCrackedLens", "deductBattery", "deductRepair", "deductFaceId"].forEach((id) => {
@@ -136,6 +136,12 @@ function toggleConditionFields() {
   const isNew = $("conditionType").value === "New";
   $("packagingWrap").classList.toggle("hidden", !isNew);
   $("gradeWrap").classList.toggle("hidden", isNew);
+  togglePurchaseDeductionFields();
+}
+
+function togglePurchaseDeductionFields() {
+  $("atlasPurchaseDeductions").classList.toggle("hidden", $("phoneBuyer").value !== "Atlas");
+  $("ktPurchaseDeductions").classList.toggle("hidden", $("phoneBuyer").value !== "KT");
 }
 
 function matchingRows() {
@@ -195,11 +201,7 @@ function selectedCondition() {
 }
 
 function pricingCondition() {
-  const condition = selectedCondition();
-  if ($("phoneBuyer").value === "Atlas" && $("conditionType").value === "Used" && condition !== "Parts") {
-    return "Grade A";
-  }
-  return condition;
+  return selectedCondition();
 }
 
 function checkerRows() {
@@ -322,17 +324,38 @@ function storageSortValue(storage) {
 }
 
 function selectedAtlasDeduction(row) {
+  return atlasDeductionFromSelection(row, {
+    crackedBack: $("deductCrackedBack").checked,
+    crackedLens: $("deductCrackedLens").checked,
+    battery: $("deductBattery").checked,
+    repair: $("deductRepair").checked,
+    faceId: $("deductFaceId").checked,
+  });
+}
+
+function selectedAtlasPurchaseDeduction(row) {
+  return atlasDeductionFromSelection(row, {
+    crackedBack: $("atlasDeductCrackedBack").checked,
+    crackedLens: $("atlasDeductCrackedLens").checked,
+    battery: $("atlasDeductBattery").checked,
+    repair: $("atlasDeductRepair").checked,
+    faceId: $("atlasDeductFaceId").checked,
+  });
+}
+
+function atlasDeductionFromSelection(row, selection) {
   const notes = [];
   let amount = 0;
-  if ($("deductCrackedBack").checked) {
+  if (selection.crackedBack) {
     const deduction = atlasCrackedBackDeduction(row.base_model || row.model);
     if (deduction) amount += deduction;
-    else notes.push("Cracked back: ASK");
+    else notes.push("Atlas cracked back: ASK");
   }
-  if ($("deductCrackedLens").checked) notes.push(`Cracked lens: ${atlasCrackedLensText(row.base_model || row.model)}`);
-  if ($("deductBattery").checked) notes.push("Battery / degraded battery: ASK");
-  if ($("deductRepair").checked) notes.push("Repair message: ASK");
-  if ($("deductFaceId").checked) notes.push("Bad Face ID: price as Parts or ASK");
+  if (selection.crackedLens) notes.push(`Atlas cracked lens: ${atlasCrackedLensText(row.base_model || row.model)}`);
+  if (selection.battery) notes.push("Atlas battery / degraded battery: ASK");
+  if (selection.repair) notes.push("Atlas repair message: ASK");
+  if (selection.faceId) notes.push("Atlas bad Face ID: price as Parts or ASK");
+  if (amount) notes.unshift(`Atlas cracked back: -${money(amount)}`);
   return { amount, notes };
 }
 
@@ -429,7 +452,7 @@ function updateProjectedPrice() {
   const fallback = matchingRows().find((row) => checkerModelName(row) === selectedModel && (row.storage || "N/A") === selectedStorage && row.condition === condition);
   const row = exact || fallback;
   if (row?.price) {
-    const deduction = selectedKtDeduction(row, $("phoneBuyer").value === "KT" && $("ktDeductCrackedBack").checked);
+    const deduction = selectedPhonePurchaseDeduction(row);
     const finalPrice = Math.max(0, Number(row.price || 0) - Number(deduction.amount || 0));
     $("phoneProjected").value = finalPrice;
     $("phonePricePreview").classList.remove("hidden");
@@ -444,11 +467,27 @@ function phonePricingCondition() {
   return pricingCondition();
 }
 
+function selectedPhonePurchaseDeduction(row) {
+  if ($("phoneBuyer").value === "Atlas") return selectedAtlasPurchaseDeduction(row);
+  return selectedKtDeduction(row, $("phoneBuyer").value === "KT" && $("ktDeductCrackedBack").checked);
+}
+
 function selectedKtPurchaseDeductions() {
   if ($("phoneBuyer").value !== "KT") return [];
   const deductions = [];
   if ($("ktDeductCrackedBack")?.checked) deductions.push("KT cracked back glass");
   return deductions;
+}
+
+function selectedAtlasPurchaseDeductions() {
+  if ($("phoneBuyer").value !== "Atlas") return [];
+  const selectedModel = $("phoneModel").value;
+  const selectedStorage = $("phoneStorage").value;
+  const carrier = $("phoneCarrier").value;
+  const condition = phonePricingCondition();
+  const exact = matchingRows().find((row) => checkerModelName(row) === selectedModel && (row.storage || "N/A") === selectedStorage && row.carrier === carrier && row.condition === condition);
+  const fallback = matchingRows().find((row) => checkerModelName(row) === selectedModel && (row.storage || "N/A") === selectedStorage && row.condition === condition);
+  return selectedAtlasPurchaseDeduction(exact || fallback || { model: selectedModel }).notes;
 }
 
 function renderInvoiceSelect() {
@@ -487,9 +526,14 @@ async function savePhonePurchase() {
 }
 
 function phonePurchasePayload(photo) {
-  const ktDeductions = selectedKtPurchaseDeductions();
-  const cleanNotes = $("phoneNotes").value.trim().replace(/\s*\|\s*KT cracked back glass(?::[^|]*)?/gi, "").replace(/^KT cracked back glass(?::[^|]*)?\s*\|\s*/i, "").trim();
-  const notes = [cleanNotes, ...ktDeductions].filter(Boolean).join(" | ");
+  const purchaseDeductions = [...selectedKtPurchaseDeductions(), ...selectedAtlasPurchaseDeductions()];
+  const cleanNotes = $("phoneNotes").value.trim()
+    .replace(/\s*\|\s*KT cracked back glass(?::[^|]*)?/gi, "")
+    .replace(/^KT cracked back glass(?::[^|]*)?\s*\|\s*/i, "")
+    .replace(/\s*\|\s*Atlas (cracked back|cracked lens|battery \/ degraded battery|repair message|bad Face ID)(?::[^|]*)?/gi, "")
+    .replace(/^Atlas (cracked back|cracked lens|battery \/ degraded battery|repair message|bad Face ID)(?::[^|]*)?\s*\|\s*/i, "")
+    .trim();
+  const notes = [cleanNotes, ...purchaseDeductions].filter(Boolean).join(" | ");
   return {
     buyer: $("phoneBuyer").value,
     invoice_id: Number($("phoneInvoiceSelect").value || 0) || null,
@@ -525,6 +569,11 @@ function resetPhonePurchase(clearStatus = true) {
   $("phoneImei").value = "";
   $("phonePhoto").value = "";
   $("ktDeductCrackedBack").checked = false;
+  $("atlasDeductCrackedBack").checked = false;
+  $("atlasDeductCrackedLens").checked = false;
+  $("atlasDeductBattery").checked = false;
+  $("atlasDeductRepair").checked = false;
+  $("atlasDeductFaceId").checked = false;
   $("phonePurchaseDate").value = new Date().toISOString().slice(0, 10);
   $("phoneNotes").value = "";
   toggleConditionFields();
@@ -707,6 +756,11 @@ window.startPhonePurchaseEdit = (id) => {
   $("phonePhoto").value = "";
   $("phoneNotes").value = purchase.notes || "";
   $("ktDeductCrackedBack").checked = /cracked back/i.test(purchase.notes || "");
+  $("atlasDeductCrackedBack").checked = /atlas cracked back/i.test(purchase.notes || "");
+  $("atlasDeductCrackedLens").checked = /atlas cracked lens/i.test(purchase.notes || "");
+  $("atlasDeductBattery").checked = /atlas battery|degraded battery/i.test(purchase.notes || "");
+  $("atlasDeductRepair").checked = /atlas repair message/i.test(purchase.notes || "");
+  $("atlasDeductFaceId").checked = /atlas bad face id/i.test(purchase.notes || "");
   $("savePhonePurchaseBtn").textContent = "Save Changes";
   $("phoneEditNotice").classList.remove("hidden");
   $("phoneEditNotice").textContent = `Editing ${purchase.model} from invoice #${invoice.id}. Choose a new photo only if you want to replace the old one.`;
