@@ -673,25 +673,21 @@ function renderPhoneInvoiceCard(invoice) {
     </tr>
   `).join("");
   const pendingRows = purchases.map((row) => `
-    <article class="pending-phone-item">
-      <div class="pending-phone-main">
+    <tr class="pending-phone-row">
+      <td class="phone-device-cell">
         <strong>${escapeHtml(row.model)}</strong>
-        <div class="pending-phone-tags">
-          <span>${escapeHtml(phoneInvoiceItemCondition(row))}</span>
-          <span>${escapeHtml(row.carrier || "No carrier")}</span>
-          ${row.imei ? `<span>IMEI ${escapeHtml(row.imei)}</span>` : ""}
-        </div>
+        <span>${escapeHtml(phoneInvoiceItemCondition(row))}</span>
+        ${row.imei ? `<em>IMEI ${escapeHtml(row.imei)}</em>` : ""}
         ${row.notes ? `<em>${escapeHtml(row.notes)}</em>` : ""}
         ${row.photo_data_url ? `<button class="phone-photo-link" onclick="openPhonePhoto(${row.id})">View photo</button>` : ""}
-      </div>
-      <div class="pending-phone-money">
-        <span><small>Qty</small><b>${row.quantity}</b></span>
-        <span><small>Cost</small><b>${money(row.cost_each)}</b></span>
-        <span><small>Sell</small><b>${money(row.projected_sell_each)}</b></span>
-        <span class="${profitClass(row)}"><small>Profit</small><b>${money(profitTotal(row))}</b></span>
-      </div>
-      <div class="phone-row-actions"><button class="mini-btn" onclick="startPhonePurchaseEdit(${row.id})">Edit</button>${canRemove ? `<button class="mini-btn danger" onclick="removePhonePurchaseFromInvoice(${row.id})">Remove</button>` : ""}</div>
-    </article>
+      </td>
+      <td>${escapeHtml(row.carrier || "")}</td>
+      <td>${row.quantity}</td>
+      <td>${money(row.cost_each)}</td>
+      <td>${money(row.projected_sell_each)}</td>
+      <td class="${profitClass(row)}"><strong>${money(profitTotal(row))}</strong></td>
+      <td><div class="phone-row-actions"><button class="mini-btn" onclick="startPhonePurchaseEdit(${row.id})">Edit</button>${canRemove ? `<button class="mini-btn danger" onclick="removePhonePurchaseFromInvoice(${row.id})">Remove</button>` : ""}</div></td>
+    </tr>
   `).join("");
   const saleControls = `
     <div class="sale-box phone-sale-box">
@@ -723,7 +719,12 @@ function renderPhoneInvoiceCard(invoice) {
         <span class="pill ${invoice.status?.toLowerCase()}">${escapeHtml(invoice.status)}</span>
       </div>
       ${isPending ? `
-        <div class="pending-phone-list">${pendingRows || `<div class="empty">No purchases added.</div>`}</div>
+        <div class="table-wrap pending-table-wrap">
+          <table class="phone-profit-table pending-phone-table">
+            <thead><tr><th>Phone</th><th>Carrier</th><th>Qty</th><th>Cost</th><th>Sell</th><th>Profit</th><th></th></tr></thead>
+            <tbody>${pendingRows || `<tr><td colspan="7">No purchases added.</td></tr>`}</tbody>
+          </table>
+        </div>
       ` : `
         <div class="table-wrap">
           <table class="phone-profit-table">
