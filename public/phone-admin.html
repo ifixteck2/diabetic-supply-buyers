@@ -152,6 +152,15 @@
               <div id="phoneDashboardStats" class="stats phone-dashboard-stats"></div>
             </section>
             <section class="panel">
+              <div class="panel-head"><div><h2>Quick Fix</h2><p>Move the newest active phone purchases to the correct pending invoice.</p></div></div>
+              <div class="form-grid three">
+                <label>Latest phones<input id="moveLatestPhoneCount" type="number" min="1" max="25" value="5"></label>
+                <label>Move to buyer<select id="moveLatestPhoneBuyer"><option>KT</option><option>Atlas</option></select></label>
+                <label>Action<button class="btn phone-btn" id="moveLatestPhonesBtn">Move Latest Phones</button></label>
+              </div>
+              <div id="moveLatestPhonesStatus"></div>
+            </section>
+            <section class="panel">
               <div class="panel-head"><div><h2>Buyer Breakdown</h2><p>Costs, sales, and profits by buyer.</p></div></div>
               <div id="phoneBuyerBreakdown" class="table-wrap"></div>
             </section>

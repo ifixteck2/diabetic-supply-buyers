@@ -30,6 +30,7 @@ function bindPhoneEvents() {
   $("refreshPriceCheckerBtn").onclick = refreshPhonePortal;
   $("parseQuickPhoneBtn").onclick = () => parseQuickPhoneText(false);
   $("addQuickPhoneBtn").onclick = () => parseQuickPhoneText(true);
+  $("moveLatestPhonesBtn").onclick = moveLatestPhones;
   ["phoneBuyer", "deviceType", "phoneBrand", "conditionType", "packaging", "grade", "phoneModel", "phoneStorage", "phoneCarrier", "ktDeductCrackedBack", "atlasDeductCrackedBack", "atlasDeductCrackedLens", "atlasDeductBattery", "atlasDeductRepair", "atlasDeductFaceId"].forEach((id) => {
     $(id).addEventListener("change", handleFlowChange);
   });
@@ -595,6 +596,31 @@ async function addQuickPhoneLines(entries) {
   }
   resetPhonePurchase(false);
   return null;
+}
+
+async function moveLatestPhones() {
+  const count = Math.max(1, Math.min(25, Number($("moveLatestPhoneCount").value || 5)));
+  const buyer = $("moveLatestPhoneBuyer").value;
+  if (!confirm(`Move the latest ${count} active phone purchase${count === 1 ? "" : "s"} to the ${buyer} pending invoice?`)) return;
+  status("moveLatestPhonesStatus", "Moving phones...");
+  const result = await api("/api/phone-purchases/move-latest", {
+    method: "POST",
+    body: { count, buyer },
+  });
+  if (!result?.ok) {
+    status("moveLatestPhonesStatus", result?.error || "Could not move those phones.", "bad");
+    return;
+  }
+  const moved = result.moved?.length || 0;
+  status(
+    "moveLatestPhonesStatus",
+    moved
+      ? `Moved ${moved} phone${moved === 1 ? "" : "s"} to ${buyer} invoice #${result.invoice.id}.`
+      : `No active phones found outside the ${buyer} pending invoice.`,
+    moved ? "ok" : "bad"
+  );
+  await loadPhoneInvoices();
+  openPhoneTab(`${buyer.toLowerCase()}Pending`);
 }
 
 function parseQuickPhoneLine(value) {

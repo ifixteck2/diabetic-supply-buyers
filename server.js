@@ -254,6 +254,54 @@ app.post("/api/phone-purchases", requirePhoneAuth, async (req, res) => {
   }
 });
 
+app.post("/api/phone-purchases/move-latest", requirePhoneAuth, async (req, res) => {
+  const buyer = normalizeBuyer(req.body?.buyer || "KT");
+  const count = Math.max(1, Math.min(25, Number(req.body?.count || 5)));
+  if (!buyer) return res.status(400).json({ error: "Choose KT or Atlas." });
+
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    const targetInvoice = await getOrCreatePendingPhoneInvoice(client, buyer);
+    const latest = await client.query(
+      `select pp.*
+       from phone_purchases pp
+       join phone_invoices pi on pi.id = pp.invoice_id
+       where pp.invoice_removed_at is null
+         and pp.returned_at is null
+         and pi.status = 'Pending'
+         and pp.buyer <> $1
+       order by pp.created_at desc, pp.id desc
+       limit $2`,
+      [buyer, count]
+    );
+    const priceRows = buyer === "KT" ? await getKtPrices() : await getAtlasPrices();
+    const moved = [];
+    for (const row of latest.rows) {
+      const purchaseForBuyer = { ...row, buyer };
+      const projectedSellEach = findPhonePrice(purchaseForBuyer, priceRows, buyer) || Number(row.projected_sell_each || 0);
+      const updated = await client.query(
+        `update phone_purchases
+         set invoice_id = $1,
+           buyer = $2,
+           projected_sell_each = $3
+         where id = $4
+         returning *`,
+        [targetInvoice.id, buyer, projectedSellEach, row.id]
+      );
+      moved.push(updated.rows[0]);
+    }
+    await client.query("commit");
+    res.json({ ok: true, invoice: targetInvoice, moved });
+  } catch (error) {
+    await client.query("rollback");
+    console.error(error);
+    res.status(500).json({ error: "Could not move latest phone purchases." });
+  } finally {
+    client.release();
+  }
+});
+
 app.patch("/api/phone-purchases/:id", requirePhoneAuth, async (req, res) => {
   const id = Number(req.params.id);
   const input = req.body || {};
