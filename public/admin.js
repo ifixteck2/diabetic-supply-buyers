@@ -5,6 +5,7 @@ const formatPhone = (value) => cleanPhone(value).replace(/(\d{3})(\d{3})(\d{4})/
 const status = (id, message, type = "ok") => {
   $(id).innerHTML = message ? `<div class="status ${type}">${message}</div>` : "";
 };
+const HOLD_ITEM_REASON = "No buyer right now";
 
 let items = [];
 let photos = [];
@@ -62,6 +63,7 @@ function bindEvents() {
   $("leadSourceFilter").onchange = renderLeads;
   $("leadFollowupFilter").onchange = renderLeads;
   $("refreshFollowupsBtn").onclick = loadFollowups;
+  $("refreshHoldBtn").onclick = loadBatches;
   $("saveCustomerProfileBtn").onclick = saveCustomerProfile;
   $("clearCustomerProfileBtn").onclick = clearCustomerProfile;
   $("backToCustomersBtn").onclick = showCustomerList;
@@ -119,12 +121,13 @@ async function refreshAll() {
 }
 
 function openTab(name) {
-  const titles = { dashboard: "Dashboard", growth: "Growth CRM", leads: "Leads", followups: "Follow Ups", templates: "Templates", purchase: "New Purchase", invoices: "Active Invoices", history: "Invoice History", customers: "Customers" };
+  const titles = { dashboard: "Dashboard", growth: "Growth CRM", leads: "Leads", followups: "Follow Ups", templates: "Templates", purchase: "New Purchase", invoices: "Active Invoices", hold: "No Buyer Items", history: "Invoice History", customers: "Customers" };
   document.querySelectorAll(".tab").forEach((button) => button.classList.toggle("active", button.dataset.tab === name));
   document.querySelectorAll(".tab-panel").forEach((panel) => panel.classList.add("hidden"));
   $(`${name}Tab`).classList.remove("hidden");
   $("pageTitle").textContent = titles[name] || "Admin";
   if (name === "invoices") loadBatches();
+  if (name === "hold") loadBatches().then(renderHoldItems);
   if (name === "growth") renderGrowthCrm();
   if (name === "history") {
     loadBatches().then(renderInvoiceHistory);
@@ -382,6 +385,7 @@ async function loadBatches() {
   renderBatchOptions();
   renderBatches();
   renderInvoiceHistory();
+  renderHoldItems();
   renderDashboard();
 }
 
@@ -800,7 +804,53 @@ function renderPendingInvoiceItemRow(batch, item) {
       <td>${buyerEach === null ? "N/A" : money(buyerEach)}</td>
       <td class="${profitEach === null ? "" : profitEach >= 0 ? "profit-good" : "profit-bad"}">${profitEach === null ? "N/A" : money(profitEach)}</td>
       <td class="${totalProfit === null ? "" : totalProfit >= 0 ? "profit-good" : "profit-bad"}"><strong>${totalProfit === null ? "N/A" : money(totalProfit)}</strong></td>
-      <td><button class="mini-btn danger" onclick="removePendingInvoiceItem(${item.id})">Remove From Invoice</button></td>
+      <td><span class="pdf-item-actions"><button class="mini-btn warning" onclick="movePendingItemToHold(${item.id})">No Buyer Right Now</button><button class="mini-btn danger" onclick="removePendingInvoiceItem(${item.id})">Remove From Invoice</button></span></td>
+    </tr>
+  `;
+}
+
+function renderHoldItems() {
+  const container = $("holdItemList");
+  if (!container) return;
+  const heldItems = allBatchesCache.flatMap((batch) => (batch.purchases || []).flatMap((purchase) => (
+    (purchase.items || [])
+      .filter((item) => item.invoice_removed_at && item.invoice_removed_reason === HOLD_ITEM_REASON)
+      .map((item) => ({ ...item, batch, purchase }))
+  )));
+  if (!heldItems.length) {
+    container.innerHTML = `<div class="empty">No items are parked here right now.</div>`;
+    return;
+  }
+  container.innerHTML = `
+    <article class="invoice-card">
+      <div class="invoice-top">
+        <div>
+          <h3>No Buyer Right Now</h3>
+          <p>${heldItems.length} item line${heldItems.length === 1 ? "" : "s"} moved out of active invoices.</p>
+        </div>
+        <span class="pill active">Holding</span>
+      </div>
+      <div class="table-wrap pending-item-table">
+        <table>
+          <thead><tr><th>Qty</th><th>Item</th><th>Exp</th><th>Paid Each</th><th>Customer</th><th>Original Invoice</th><th></th></tr></thead>
+          <tbody>${heldItems.map(renderHoldItemRow).join("")}</tbody>
+        </table>
+      </div>
+    </article>
+  `;
+}
+
+function renderHoldItemRow(entry) {
+  const itemName = [entry.brand, entry.model].filter(Boolean).join(" ") || entry.category || "Item";
+  return `
+    <tr class="pending-item-row">
+      <td>${Number(entry.quantity || 0)}</td>
+      <td><strong>${escapeHtml(itemName)}</strong><span>${escapeHtml(entry.condition || "Sealed")}</span></td>
+      <td>${escapeHtml(formatExpirationForDisplay(entry.expiration))}</td>
+      <td>${money(entry.unit_cost)}</td>
+      <td>${escapeHtml(entry.purchase.customer_name || "Customer")}<span>${formatPhone(entry.purchase.customer_phone || "")}</span></td>
+      <td>${escapeHtml(formatInvoiceNumber(entry.batch))}</td>
+      <td><button class="mini-btn" onclick="restorePendingInvoiceItem(${entry.id})">Move Back To Invoice</button></td>
     </tr>
   `;
 }
@@ -859,6 +909,21 @@ window.removePendingInvoiceItem = async (id, reason = "Sold locally") => {
     return false;
   }
   await loadBatches();
+  return true;
+};
+
+window.movePendingItemToHold = async (id) => {
+  if (!confirm("Move this item out of Active invoices into No Buyer Items?")) return false;
+  const result = await api(`/api/purchase-items/${id}/invoice-removal`, {
+    method: "PATCH",
+    body: { remove: true, reason: HOLD_ITEM_REASON },
+  });
+  if (!result?.ok) {
+    alert(result?.error || "Could not move item.");
+    return false;
+  }
+  await loadBatches();
+  openTab("hold");
   return true;
 };
 

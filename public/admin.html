@@ -29,6 +29,7 @@
             <button class="tab" data-tab="templates">Templates</button>
             <button class="tab" data-tab="purchase">New Purchase</button>
             <button class="tab" data-tab="invoices">Active Invoices</button>
+            <button class="tab" data-tab="hold">No Buyer Items</button>
             <button class="tab" data-tab="history">Invoice History</button>
             <button class="tab" data-tab="customers">Customers</button>
           </nav>
@@ -261,6 +262,16 @@
                 <select id="invoiceFilter" class="compact-select"><option>Active</option><option>Sold</option><option>Shipped</option><option>All</option></select>
               </div>
               <div id="invoiceList" class="invoice-list"></div>
+            </section>
+          </section>
+
+          <section id="holdTab" class="tab-panel hidden">
+            <section class="panel">
+              <div class="panel-head">
+                <div><h2>No Buyer Items</h2><p>Inventory moved out of active invoices because nobody is buying it right now.</p></div>
+                <button class="btn secondary" id="refreshHoldBtn">Refresh</button>
+              </div>
+              <div id="holdItemList" class="invoice-list"></div>
             </section>
           </section>
 
