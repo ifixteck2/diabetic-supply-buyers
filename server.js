@@ -1385,16 +1385,9 @@ async function attachPhonePurchases(invoices) {
   );
   return invoices.map((invoice) => ({
     ...invoice,
-    purchases: sortPhonePurchasesByAddedAt(purchases.rows.filter((purchase) => purchase.invoice_id === invoice.id)),
+    purchases: sortPhonePurchases(purchases.rows.filter((purchase) => purchase.invoice_id === invoice.id)),
     returns: sortPhonePurchases(returns.rows.filter((purchase) => purchase.invoice_id === invoice.id)),
   }));
-}
-
-function sortPhonePurchasesByAddedAt(purchases) {
-  return [...purchases].sort((a, b) => {
-    const dateCompare = new Date(a.invoice_added_at || a.created_at || 0) - new Date(b.invoice_added_at || b.created_at || 0);
-    return dateCompare || Number(a.id || 0) - Number(b.id || 0);
-  });
 }
 
 function sortPhonePurchases(purchases) {
@@ -1403,16 +1396,16 @@ function sortPhonePurchases(purchases) {
     const bTablet = b.device_type === "Tablet" ? 1 : 0;
     if (aTablet !== bTablet) return aTablet - bTablet;
 
-    const aCondition = phoneConditionRank(a);
-    const bCondition = phoneConditionRank(b);
-    if (aCondition !== bCondition) return aCondition - bCondition;
-
     const modelCompare = phoneModelSortValue(b.model) - phoneModelSortValue(a.model)
       || String(a.model || "").localeCompare(String(b.model || ""), undefined, {
         numeric: true,
         sensitivity: "base",
       });
     if (modelCompare !== 0) return modelCompare;
+
+    const aCondition = phoneConditionRank(a);
+    const bCondition = phoneConditionRank(b);
+    if (aCondition !== bCondition) return aCondition - bCondition;
 
     return Number(a.id || 0) - Number(b.id || 0);
   });
