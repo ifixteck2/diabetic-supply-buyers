@@ -373,6 +373,28 @@ app.patch("/api/phone-purchases/:id/invoice-removal", requirePhoneAuth, async (r
   res.json({ ok: true, purchase: result.rows[0] });
 });
 
+app.patch("/api/phone-purchases/:id/return", requirePhoneAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  const reason = String(req.body?.reason || "").trim();
+  if (!id) return res.status(400).json({ error: "Purchase ID is required." });
+  if (!reason) return res.status(400).json({ error: "Enter the return reason." });
+  const result = await pool.query(
+    `update phone_purchases pp
+     set invoice_removed_at = now(),
+       invoice_removed_reason = 'Returned to KT',
+       returned_at = now(),
+       return_reason = $2
+     from phone_invoices pi
+     where pp.invoice_id = pi.id
+       and pp.id = $1
+       and pi.buyer = 'KT'
+     returning pp.*`,
+    [id, reason]
+  );
+  if (!result.rows[0]) return res.status(404).json({ error: "KT invoice item not found." });
+  res.json({ ok: true, purchase: result.rows[0] });
+});
+
 app.get("/api/phone-invoices/:id/html", requirePhoneAuth, async (req, res) => {
   const id = Number(req.params.id);
   if (!id) return res.status(400).send("Invoice ID is required.");
@@ -972,6 +994,8 @@ async function migrate() {
       notes text not null default '',
       invoice_removed_at timestamptz,
       invoice_removed_reason text not null default '',
+      returned_at timestamptz,
+      return_reason text not null default '',
       created_at timestamptz not null default now()
     );
   `);
@@ -1000,6 +1024,8 @@ async function migrate() {
     alter table phone_purchases add column if not exists imei text not null default '';
     alter table phone_purchases add column if not exists photo_file_name text not null default '';
     alter table phone_purchases add column if not exists photo_data_url text not null default '';
+    alter table phone_purchases add column if not exists returned_at timestamptz;
+    alter table phone_purchases add column if not exists return_reason text not null default '';
     alter table phone_invoices add column if not exists sale_price numeric(12,2);
     alter table phone_invoices add column if not exists sale_notes text not null default '';
     alter table phone_invoices add column if not exists shipped_at timestamptz;
@@ -1216,9 +1242,17 @@ async function attachPhonePurchases(invoices) {
      order by purchase_date desc, created_at desc`,
     [invoiceIds]
   );
+  const returns = await pool.query(
+    `select * from phone_purchases
+     where invoice_id = any($1::int[])
+       and returned_at is not null
+     order by returned_at desc, created_at desc`,
+    [invoiceIds]
+  );
   return invoices.map((invoice) => ({
     ...invoice,
     purchases: sortPhonePurchases(purchases.rows.filter((purchase) => purchase.invoice_id === invoice.id)),
+    returns: sortPhonePurchases(returns.rows.filter((purchase) => purchase.invoice_id === invoice.id)),
   }));
 }
 

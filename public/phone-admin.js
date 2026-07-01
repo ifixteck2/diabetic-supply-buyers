@@ -95,6 +95,7 @@ function openPhoneTab(name) {
     priceChecker: "Price Checker",
     atlasPending: "Atlas Pending",
     ktPending: "KT Pending",
+    ktReturns: "KT Returns",
     pastInvoices: "Past Invoices",
   };
   document.querySelectorAll("[data-phone-tab]").forEach((button) => button.classList.toggle("active", button.dataset.phoneTab === name));
@@ -1076,6 +1077,7 @@ function resetPhonePurchase(clearStatus = true) {
 function renderInvoiceLists() {
   renderInvoiceGroup("atlasPendingList", "Atlas", "Pending");
   renderInvoiceGroup("ktPendingList", "KT", "Pending");
+  renderKtReturns();
   renderPastInvoices();
 }
 
@@ -1092,6 +1094,51 @@ function renderPastInvoices() {
     .filter((invoice) => invoice.status !== "Pending")
     .sort((a, b) => new Date(b.status_updated_at || b.closed_at || b.created_at) - new Date(a.status_updated_at || a.closed_at || a.created_at));
   $("pastInvoicesList").innerHTML = list.map(renderPastInvoiceCard).join("") || `<div class="empty">No past invoices yet.</div>`;
+}
+
+function renderKtReturns() {
+  const list = phoneInvoices
+    .filter((invoice) => invoice.buyer === "KT" && (invoice.returns || []).length)
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  $("ktReturnsList").innerHTML = list.map(renderKtReturnCard).join("") || `<div class="empty">No KT returns yet.</div>`;
+}
+
+function renderKtReturnCard(invoice) {
+  const returns = invoice.returns || [];
+  const totalCost = returns.reduce((sum, row) => sum + Number(row.quantity || 0) * Number(row.cost_each || 0), 0);
+  const rows = returns.map((row) => `
+    <tr>
+      <td class="phone-device-cell">
+        <strong>${escapeHtml(row.model)}</strong>
+        <span>${escapeHtml(phoneInvoiceItemCondition(row))}</span>
+        ${row.imei ? `<em>IMEI ${escapeHtml(row.imei)}</em>` : ""}
+        ${row.notes ? `<em>${escapeHtml(row.notes)}</em>` : ""}
+      </td>
+      <td>${escapeHtml(row.carrier || "")}</td>
+      <td>${row.quantity}</td>
+      <td>${money(row.cost_each)}</td>
+      <td>${escapeHtml(row.return_reason || row.invoice_removed_reason || "Returned")}</td>
+      <td>${row.returned_at ? new Date(row.returned_at).toLocaleDateString() : ""}</td>
+    </tr>
+  `).join("");
+  return `
+    <article class="invoice-card phone-invoice-card return-invoice-card">
+      <div class="invoice-top">
+        <div class="phone-invoice-title">
+          <h3>${escapeHtml(invoice.label || "KT Invoice")}</h3>
+          <p>#${invoice.id} - ${new Date(invoice.created_at).toLocaleDateString()} - ${returns.length} returned item${returns.length === 1 ? "" : "s"}</p>
+        </div>
+        <span class="pill closed">Returns</span>
+      </div>
+      <div class="table-wrap">
+        <table class="phone-profit-table">
+          <thead><tr><th>Phone</th><th>Carrier</th><th>Qty</th><th>Cost Each</th><th>Reason</th><th>Returned</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      <div class="sale-summary"><span>Returned Cost ${money(totalCost)}</span></div>
+    </article>
+  `;
 }
 
 function invoiceTotals(invoice) {
@@ -1132,6 +1179,7 @@ function renderPhoneInvoiceCard(invoice) {
   const actualProfit = salePrice === null ? null : salePrice - totalCost;
   const projectedProfit = projected - totalCost;
   const canRemove = invoice.status === "Pending";
+  const canReturn = invoice.buyer === "KT";
   const isPending = invoice.status === "Pending";
   const rows = purchases.map((row) => `
     <tr class="phone-purchase-row">
@@ -1147,7 +1195,7 @@ function renderPhoneInvoiceCard(invoice) {
       <td>${money(row.projected_sell_each)}</td>
       <td class="${profitClass(row)}">${money(profitEach(row))}</td>
       <td class="${profitClass(row)}"><strong>${money(profitTotal(row))}</strong></td>
-      <td><div class="phone-row-actions"><button class="mini-btn" onclick="startPhonePurchaseEdit(${row.id})">Edit</button>${canRemove ? `<button class="mini-btn danger" onclick="removePhonePurchaseFromInvoice(${row.id})">Remove</button>` : ""}</div></td>
+      <td><div class="phone-row-actions"><button class="mini-btn" onclick="startPhonePurchaseEdit(${row.id})">Edit</button>${canReturn ? `<button class="mini-btn warning" onclick="returnPhonePurchaseToKt(${row.id})">Return</button>` : ""}${canRemove ? `<button class="mini-btn danger" onclick="removePhonePurchaseFromInvoice(${row.id})">Remove</button>` : ""}</div></td>
     </tr>
   `).join("");
   const pendingRows = purchases.map((row) => `
@@ -1164,7 +1212,7 @@ function renderPhoneInvoiceCard(invoice) {
       <td>${money(row.cost_each)}</td>
       <td>${money(row.projected_sell_each)}</td>
       <td class="${profitClass(row)}"><strong>${money(profitTotal(row))}</strong></td>
-      <td><div class="phone-row-actions"><button class="mini-btn" onclick="startPhonePurchaseEdit(${row.id})">Edit</button>${canRemove ? `<button class="mini-btn danger" onclick="removePhonePurchaseFromInvoice(${row.id})">Remove</button>` : ""}</div></td>
+      <td><div class="phone-row-actions"><button class="mini-btn" onclick="startPhonePurchaseEdit(${row.id})">Edit</button>${canReturn ? `<button class="mini-btn warning" onclick="returnPhonePurchaseToKt(${row.id})">Return</button>` : ""}${canRemove ? `<button class="mini-btn danger" onclick="removePhonePurchaseFromInvoice(${row.id})">Remove</button>` : ""}</div></td>
     </tr>
   `).join("");
   const saleControls = `
@@ -1436,6 +1484,25 @@ window.removePhonePurchaseFromInvoice = async (id) => {
     return alert(result?.error || "Could not remove this item from the invoice.");
   }
   await loadPhoneInvoices();
+  return true;
+};
+
+window.returnPhonePurchaseToKt = async (id) => {
+  const reason = prompt("Reason for KT return?");
+  if (reason === null) return false;
+  if (!reason.trim()) {
+    alert("Enter a return reason.");
+    return false;
+  }
+  const result = await api(`/api/phone-purchases/${id}/return`, {
+    method: "PATCH",
+    body: { reason: reason.trim() },
+  });
+  if (!result?.ok) {
+    return alert(result?.error || "Could not return this item.");
+  }
+  await loadPhoneInvoices();
+  openPhoneTab("ktReturns");
   return true;
 };
 
