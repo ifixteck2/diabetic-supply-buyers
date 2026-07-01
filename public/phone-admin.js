@@ -1297,7 +1297,7 @@ function renderPhoneInvoiceCard(invoice) {
       <div class="invoice-actions">
         <strong>${money(projected || totalCost)}</strong>
         <div>
-          <a class="mini-btn" href="/api/phone-invoices/${invoice.id}/html" target="_blank">Buyer Invoice PDF</a>
+          <button class="mini-btn" onclick="openPhoneBuyerPdf(${invoice.id})">Buyer Invoice PDF</button>
           ${invoice.status !== "Shipped" ? `<button class="mini-btn" onclick="setPhoneInvoiceStatus(${invoice.id}, 'Shipped')">Mark Shipped</button>` : ""}
           ${invoice.status !== "Sold" ? `<button class="mini-btn" onclick="setPhoneInvoiceStatus(${invoice.id}, 'Sold')">Mark Sold</button>` : ""}
           ${invoice.status !== "Pending" ? `<button class="mini-btn" onclick="setPhoneInvoiceStatus(${invoice.id}, 'Pending')">Reopen</button>` : ""}
@@ -1440,6 +1440,32 @@ window.movePhonePurchaseToInvoice = async (id) => {
   if (!result?.ok) return alert(result?.error || "Could not move this phone.");
   await loadPhoneInvoices();
   openPhoneTab(`${String(result.invoice.buyer || "").toLowerCase()}Pending`);
+  return true;
+};
+
+window.openPhoneBuyerPdf = (id) => {
+  const invoice = phoneInvoices.find((entry) => Number(entry.id) === Number(id));
+  if (!invoice) return alert("Could not find that invoice.");
+  const purchases = invoice.purchases || [];
+  if (!purchases.length) return window.open(`/api/phone-invoices/${id}/html`, "_blank");
+  const prices = {};
+  for (const row of purchases) {
+    const quantity = Math.max(1, Number(row.quantity || 1));
+    prices[row.id] = [];
+    for (let index = 0; index < quantity; index += 1) {
+      const label = quantity > 1 ? `${row.model} (${index + 1} of ${quantity})` : row.model;
+      const value = prompt(`Selling price for ${label}:`, Number(row.projected_sell_each || 0).toFixed(2));
+      if (value === null) return false;
+      const price = Number(String(value).replace(/[$,\s]/g, ""));
+      if (Number.isNaN(price) || price < 0) {
+        alert("Enter a valid price.");
+        return false;
+      }
+      prices[row.id].push(price);
+    }
+  }
+  const query = new URLSearchParams({ prices: JSON.stringify(prices) });
+  window.open(`/api/phone-invoices/${id}/html?${query.toString()}`, "_blank");
   return true;
 };
 

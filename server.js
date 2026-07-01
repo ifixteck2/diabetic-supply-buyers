@@ -497,7 +497,7 @@ app.get("/api/phone-invoices/:id/html", requirePhoneAuth, async (req, res) => {
   const invoice = invoices[0];
   if (!invoice) return res.status(404).send("Invoice not found.");
   res.setHeader("Content-Type", "text/html; charset=utf-8");
-  res.send(createPhoneInvoiceHtml(invoice));
+  res.send(createPhoneInvoiceHtml(invoice, parsePhoneInvoicePriceOverrides(req.query.prices)));
 });
 
 app.get("/api/customers/lookup", requireAuth, async (req, res) => {
@@ -2334,19 +2334,20 @@ function defaultPhoneInvoiceLabel(buyer) {
   return `${buyer} Phone Invoice ${stamp}`;
 }
 
-function createPhoneInvoiceHtml(invoice) {
+function createPhoneInvoiceHtml(invoice, priceOverrides = {}) {
   const purchases = invoice.purchases || [];
-  const totalSale = purchases.reduce((sum, row) => sum + Number(row.quantity || 0) * Number(row.projected_sell_each || 0), 0);
+  const invoiceLines = phoneInvoiceLinesWithPrices(purchases, priceOverrides);
+  const totalSale = invoiceLines.reduce((sum, row) => sum + Number(row.line_total || 0), 0);
   const buyerName = invoice.buyer === "KT" ? "KT CORP" : invoice.buyer === "Atlas" ? "Atlas" : invoice.buyer || "Buyer";
   const invoiceDate = invoice.created_at ? new Date(invoice.created_at).toLocaleDateString("en-US") : new Date().toLocaleDateString("en-US");
-  const rows = purchases.map((row) => `
+  const rows = invoiceLines.map((row) => `
     <tr>
       <td class="item">${escapeHtml(row.model)}</td>
       <td>${escapeHtml(row.carrier || "")}</td>
-      <td>${row.condition_type === "New" ? "NEW" : "USED"}</td>
+      <td>${escapeHtml(row.condition)}</td>
       <td>${Number(row.quantity || 0)}</td>
-      <td class="num">${moneyText(row.projected_sell_each)}</td>
-      <td class="num">${moneyText(Number(row.projected_sell_each || 0) * Number(row.quantity || 0))}</td>
+      <td class="num">${moneyText(row.unit_price)}</td>
+      <td class="num">${moneyText(row.line_total)}</td>
     </tr>
   `).join("");
   return `<!doctype html>
@@ -2363,6 +2364,49 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f5f7f8;color:#132126;mar
 <p class="note">Thank you for your business. Pricing is listed as the buyer sell price for this invoice.</p>
 </main>
 </body></html>`;
+}
+
+function parsePhoneInvoicePriceOverrides(raw) {
+  if (!raw) return {};
+  try {
+    const input = JSON.parse(String(raw));
+    return Object.fromEntries(Object.entries(input || {}).map(([id, value]) => {
+      const prices = Array.isArray(value) ? value : [value];
+      return [id, prices.map((price) => Number(price)).filter((price) => Number.isFinite(price) && price >= 0)];
+    }));
+  } catch {
+    return {};
+  }
+}
+
+function phoneInvoiceLinesWithPrices(purchases, priceOverrides) {
+  return purchases.flatMap((row) => {
+    const quantity = Math.max(1, Number(row.quantity || 1));
+    const overridePrices = Array.isArray(priceOverrides[row.id]) ? priceOverrides[row.id] : [];
+    const condition = row.condition_type === "New" ? "NEW" : "USED";
+    if (overridePrices.length > 1 || quantity > 1) {
+      return Array.from({ length: quantity }, (_, index) => {
+        const unitPrice = Number(overridePrices[index] ?? row.projected_sell_each ?? 0);
+        return {
+          model: quantity > 1 ? `${row.model} (${index + 1} of ${quantity})` : row.model,
+          carrier: row.carrier || "",
+          condition,
+          quantity: 1,
+          unit_price: unitPrice,
+          line_total: unitPrice,
+        };
+      });
+    }
+    const unitPrice = Number(overridePrices[0] ?? row.projected_sell_each ?? 0);
+    return [{
+      model: row.model,
+      carrier: row.carrier || "",
+      condition,
+      quantity,
+      unit_price: unitPrice,
+      line_total: unitPrice * quantity,
+    }];
+  });
 }
 
 function moneyText(value) {
