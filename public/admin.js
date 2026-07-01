@@ -435,6 +435,9 @@ function renderInvoiceHistoryCard(batch) {
   const sold = Number(batch.sale_price || 0);
   const profit = sold - paid;
   const mercuryTotal = calculateMercuryInvoiceTotal(batch);
+  const pdfPanelId = `buyerPdfSetup-history-${batch.id}`;
+  const pdfBuyerId = `pdfBuyer-history-${batch.id}`;
+  const pdfAmountId = `pdfAmount-history-${batch.id}`;
   const purchaseDetails = (batch.purchases || []).map((purchase) => {
     const items = (purchase.items || []).map((item) => {
       const itemPaid = Number(item.quantity || 0) * Number(item.unit_cost || 0);
@@ -496,10 +499,23 @@ function renderInvoiceHistoryCard(batch) {
       <div class="invoice-actions">
         <strong>${money(sold || paid)}</strong>
         <div>
-          <a class="mini-btn" href="/api/batches/${batch.id}/buyer-pdf" target="_blank">Buyer PDF</a>
-          <a class="mini-btn" href="/api/batches/${batch.id}/buyer-pdf?prices=0" target="_blank">PDF No Prices</a>
+          <button class="mini-btn" onclick="toggleBuyerPdfSetup('${pdfPanelId}')">Buyer PDF</button>
           <button class="mini-btn" onclick="reopenInvoice(${batch.id})">Reopen</button>
         </div>
+      </div>
+      <div id="${pdfPanelId}" class="buyer-pdf-setup hidden">
+        <div class="form-grid three">
+          <label>Buyer<select id="${pdfBuyerId}">
+            <option${batch.sold_to === "Mercury Medical Supplies" ? " selected" : ""}>Mercury Medical Supplies</option>
+            <option${batch.sold_to === "First Class Medical Supply" ? " selected" : ""}>First Class Medical Supply</option>
+          </select></label>
+          <label>Sold for<input id="${pdfAmountId}" type="number" min="0" step="0.01" value="${batch.sale_price || ""}" placeholder="0.00"></label>
+          <label>PDF Options<span class="pdf-action-row">
+            <button class="mini-btn" onclick="generateBuyerPdf(${batch.id}, 'history', true)">With Prices</button>
+            <button class="mini-btn" onclick="generateBuyerPdf(${batch.id}, 'history', false)">No Prices</button>
+          </span></label>
+        </div>
+        <div id="pdfStatus-history-${batch.id}"></div>
       </div>
       <section class="history">${purchaseDetails || `<div class="empty">No purchases inside this invoice.</div>`}</section>
     </article>
@@ -679,6 +695,9 @@ function renderTemplateGroups() {
 function renderBatchCard(batch, context = "active") {
   const profit = Number(batch.sale_price || 0) - Number(batch.total_paid || 0);
   const mercuryTotal = calculateMercuryInvoiceTotal(batch);
+  const pdfPanelId = `buyerPdfSetup-${context}-${batch.id}`;
+  const pdfBuyerId = `pdfBuyer-${context}-${batch.id}`;
+  const pdfAmountId = `pdfAmount-${context}-${batch.id}`;
   const purchasesHtml = (batch.purchases || []).map((purchase) => {
     const activeItems = activeInvoiceItems(purchase.items || []);
     const removedItems = (purchase.items || []).filter((item) => item.invoice_removed_at);
@@ -733,9 +752,22 @@ function renderBatchCard(batch, context = "active") {
           <button class="mini-btn" onclick="setBatchStatus(${batch.id}, 'Active')">Active</button>
           <button class="mini-btn" onclick="setBatchStatus(${batch.id}, 'Sold')">Sold</button>
           <button class="mini-btn" onclick="setBatchStatus(${batch.id}, 'Shipped')">Shipped</button>
-          <a class="mini-btn" href="/api/batches/${batch.id}/buyer-pdf" target="_blank">Buyer PDF</a>
-          <a class="mini-btn" href="/api/batches/${batch.id}/buyer-pdf?prices=0" target="_blank">PDF No Prices</a>
+          <button class="mini-btn" onclick="toggleBuyerPdfSetup('${pdfPanelId}')">Buyer PDF</button>
         </div>
+      </div>
+      <div id="${pdfPanelId}" class="buyer-pdf-setup hidden">
+        <div class="form-grid three">
+          <label>Buyer<select id="${pdfBuyerId}">
+            <option${batch.sold_to === "Mercury Medical Supplies" ? " selected" : ""}>Mercury Medical Supplies</option>
+            <option${batch.sold_to === "First Class Medical Supply" ? " selected" : ""}>First Class Medical Supply</option>
+          </select></label>
+          <label>Sold for<input id="${pdfAmountId}" type="number" min="0" step="0.01" value="${batch.sale_price || ""}" placeholder="0.00"></label>
+          <label>PDF Options<span class="pdf-action-row">
+            <button class="mini-btn" onclick="generateBuyerPdf(${batch.id}, '${context}', true)">With Prices</button>
+            <button class="mini-btn" onclick="generateBuyerPdf(${batch.id}, '${context}', false)">No Prices</button>
+          </span></label>
+        </div>
+        <div id="pdfStatus-${context}-${batch.id}"></div>
       </div>
     </article>
   `;
@@ -817,6 +849,43 @@ window.reopenInvoice = async (id) => {
   });
   if (result?.ok) await loadBatches();
   else alert(result?.error || "Could not reopen invoice.");
+};
+
+window.toggleBuyerPdfSetup = (panelId) => {
+  $(panelId)?.classList.toggle("hidden");
+};
+
+window.generateBuyerPdf = async (id, context, showPrices = true) => {
+  const buyer = $(`pdfBuyer-${context}-${id}`)?.value || "";
+  const amount = Number($(`pdfAmount-${context}-${id}`)?.value || 0);
+  const statusId = `pdfStatus-${context}-${id}`;
+  if (!buyer) return status(statusId, "Choose a buyer.", "bad");
+  if (!amount || amount <= 0) return status(statusId, "Enter the amount you are selling it for.", "bad");
+
+  const batch = [...batchesCache, ...allBatchesCache].find((entry) => Number(entry.id) === Number(id));
+  const pdfWindow = window.open("", "_blank");
+  const result = await api(`/api/batches/${id}/status`, {
+    method: "PATCH",
+    body: {
+      status: batch?.status || "Active",
+      sold_to: buyer,
+      sale_price: amount,
+    },
+  });
+  if (!result?.ok) {
+    if (pdfWindow) pdfWindow.close();
+    return status(statusId, result?.error || "Could not save buyer and sale amount.", "bad");
+  }
+
+  const soldToInput = $(`soldTo-${id}`);
+  const salePriceInput = $(`salePrice-${id}`);
+  if (soldToInput) soldToInput.value = buyer;
+  if (salePriceInput) salePriceInput.value = amount.toFixed(2);
+  const url = `/api/batches/${id}/buyer-pdf${showPrices ? "" : "?prices=0"}`;
+  if (pdfWindow) pdfWindow.location = url;
+  else window.open(url, "_blank");
+  status(statusId, "Buyer PDF is opening.");
+  await loadBatches();
 };
 
 window.applyBuyerPricing = (id, buyerName) => {
