@@ -608,7 +608,11 @@ app.get("/api/batches/:id/buyer-pdf", requireAuth, async (req, res) => {
   const fullBatch = batches[0];
   const mercuryPrices = await getMercuryPrices();
   const showPrices = String(req.query.prices || "1") !== "0";
-  const pdf = createBuyerInvoicePdf(fullBatch, mercuryPrices, { showPrices });
+  const overrideUnitPrice = req.query.unit_price === undefined || req.query.unit_price === "" ? null : Number(req.query.unit_price);
+  const pdf = createBuyerInvoicePdf(fullBatch, mercuryPrices, {
+    showPrices,
+    overrideUnitPrice: overrideUnitPrice !== null && !Number.isNaN(overrideUnitPrice) && overrideUnitPrice >= 0 ? overrideUnitPrice : null,
+  });
 
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader("Content-Disposition", `attachment; filename="buyer-invoice-${id}${showPrices ? "" : "-no-prices"}.pdf"`);
@@ -2308,6 +2312,7 @@ function normalizeMatchText(value) {
 
 function createBuyerInvoicePdf(batch, mercuryPrices = [], options = {}) {
   const showPrices = options.showPrices !== false;
+  const overrideUnitPrice = options.overrideUnitPrice === null || options.overrideUnitPrice === undefined ? null : Number(options.overrideUnitPrice);
   const groupedRows = new Map();
   const photos = [];
   let mercuryTotal = 0;
@@ -2317,7 +2322,7 @@ function createBuyerInvoicePdf(batch, mercuryPrices = [], options = {}) {
       const product = findMercuryProductForItem(item, mercuryPrices);
       const quote = product ? getMercuryPriceForItem(product, item.expiration, item.condition) : null;
       const savedPrice = Number(item.expected_sell_each || 0);
-      const unitPrice = quote?.price ?? (savedPrice > 0 ? savedPrice : null);
+      const unitPrice = overrideUnitPrice !== null ? overrideUnitPrice : quote?.price ?? (savedPrice > 0 ? savedPrice : null);
       const quantity = Number(item.quantity || 0);
       const lineTotal = unitPrice === null ? null : quantity * unitPrice;
       if (lineTotal !== null) mercuryTotal += lineTotal;

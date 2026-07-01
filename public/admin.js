@@ -438,6 +438,7 @@ function renderInvoiceHistoryCard(batch) {
   const pdfPanelId = `buyerPdfSetup-history-${batch.id}`;
   const pdfBuyerId = `pdfBuyer-history-${batch.id}`;
   const pdfAmountId = `pdfAmount-history-${batch.id}`;
+  const pdfUnitValue = buyerPdfUnitValue(batch);
   const purchaseDetails = (batch.purchases || []).map((purchase) => {
     const items = (purchase.items || []).map((item) => {
       const itemPaid = Number(item.quantity || 0) * Number(item.unit_cost || 0);
@@ -509,12 +510,13 @@ function renderInvoiceHistoryCard(batch) {
             <option${batch.sold_to === "Mercury Medical Supplies" ? " selected" : ""}>Mercury Medical Supplies</option>
             <option${batch.sold_to === "First Class Medical Supply" ? " selected" : ""}>First Class Medical Supply</option>
           </select></label>
-          <label>Sold for<input id="${pdfAmountId}" type="number" min="0" step="0.01" value="${batch.sale_price || ""}" placeholder="0.00"></label>
+          <label>Sell each<input id="${pdfAmountId}" type="number" min="0" step="0.01" value="${pdfUnitValue}" placeholder="0.00"></label>
           <label>PDF Options<span class="pdf-action-row">
             <button class="mini-btn" onclick="generateBuyerPdf(${batch.id}, 'history', true)">With Prices</button>
             <button class="mini-btn" onclick="generateBuyerPdf(${batch.id}, 'history', false)">No Prices</button>
           </span></label>
         </div>
+        <p class="mini">The amount above is per item. Invoice total is calculated from included quantities.</p>
         <div id="pdfStatus-history-${batch.id}"></div>
       </div>
       <section class="history">${purchaseDetails || `<div class="empty">No purchases inside this invoice.</div>`}</section>
@@ -698,6 +700,7 @@ function renderBatchCard(batch, context = "active") {
   const pdfPanelId = `buyerPdfSetup-${context}-${batch.id}`;
   const pdfBuyerId = `pdfBuyer-${context}-${batch.id}`;
   const pdfAmountId = `pdfAmount-${context}-${batch.id}`;
+  const pdfUnitValue = buyerPdfUnitValue(batch);
   const purchasesHtml = (batch.purchases || []).map((purchase) => {
     const activeItems = activeInvoiceItems(purchase.items || []);
     const removedItems = (purchase.items || []).filter((item) => item.invoice_removed_at);
@@ -761,13 +764,14 @@ function renderBatchCard(batch, context = "active") {
             <option${batch.sold_to === "Mercury Medical Supplies" ? " selected" : ""}>Mercury Medical Supplies</option>
             <option${batch.sold_to === "First Class Medical Supply" ? " selected" : ""}>First Class Medical Supply</option>
           </select></label>
-          <label>Sold for<input id="${pdfAmountId}" type="number" min="0" step="0.01" value="${batch.sale_price || ""}" placeholder="0.00"></label>
+          <label>Sell each<input id="${pdfAmountId}" type="number" min="0" step="0.01" value="${pdfUnitValue}" placeholder="0.00"></label>
           <label>PDF Options<span class="pdf-action-row">
             <button class="mini-btn" onclick="generateBuyerPdf(${batch.id}, '${context}', true)">With Prices</button>
             <button class="mini-btn" onclick="generateBuyerPdf(${batch.id}, '${context}', false)">No Prices</button>
           </span></label>
         </div>
         ${renderBuyerPdfItemControls(batch)}
+        <p class="mini">The amount above is per item. Invoice total is calculated from included quantities.</p>
         <div id="pdfStatus-${context}-${batch.id}"></div>
       </div>
     </article>
@@ -899,19 +903,21 @@ window.toggleBuyerPdfSetup = (panelId) => {
 
 window.generateBuyerPdf = async (id, context, showPrices = true) => {
   const buyer = $(`pdfBuyer-${context}-${id}`)?.value || "";
-  const amount = Number($(`pdfAmount-${context}-${id}`)?.value || 0);
+  const unitPrice = Number($(`pdfAmount-${context}-${id}`)?.value || 0);
   const statusId = `pdfStatus-${context}-${id}`;
   if (!buyer) return status(statusId, "Choose a buyer.", "bad");
-  if (!amount || amount <= 0) return status(statusId, "Enter the amount you are selling it for.", "bad");
+  if (!unitPrice || unitPrice <= 0) return status(statusId, "Enter the amount you are selling each item for.", "bad");
 
   const batch = [...batchesCache, ...allBatchesCache].find((entry) => Number(entry.id) === Number(id));
+  const quantity = includedInvoiceQuantity(batch);
+  const saleTotal = unitPrice * quantity;
   const pdfWindow = window.open("", "_blank");
   const result = await api(`/api/batches/${id}/status`, {
     method: "PATCH",
     body: {
       status: batch?.status || "Active",
       sold_to: buyer,
-      sale_price: amount,
+      sale_price: saleTotal,
     },
   });
   if (!result?.ok) {
@@ -922,13 +928,28 @@ window.generateBuyerPdf = async (id, context, showPrices = true) => {
   const soldToInput = $(`soldTo-${id}`);
   const salePriceInput = $(`salePrice-${id}`);
   if (soldToInput) soldToInput.value = buyer;
-  if (salePriceInput) salePriceInput.value = amount.toFixed(2);
-  const url = `/api/batches/${id}/buyer-pdf${showPrices ? "" : "?prices=0"}`;
+  if (salePriceInput) salePriceInput.value = saleTotal.toFixed(2);
+  const params = new URLSearchParams();
+  if (!showPrices) params.set("prices", "0");
+  params.set("unit_price", unitPrice.toFixed(2));
+  const url = `/api/batches/${id}/buyer-pdf?${params.toString()}`;
   if (pdfWindow) pdfWindow.location = url;
   else window.open(url, "_blank");
   status(statusId, "Buyer PDF is opening.");
   await loadBatches();
 };
+
+function includedInvoiceQuantity(batch) {
+  return (batch?.purchases || []).reduce((sum, purchase) => (
+    sum + activeInvoiceItems(purchase.items || []).reduce((itemSum, item) => itemSum + Number(item.quantity || 0), 0)
+  ), 0);
+}
+
+function buyerPdfUnitValue(batch) {
+  const total = Number(batch?.sale_price || 0);
+  const quantity = includedInvoiceQuantity(batch);
+  return total > 0 && quantity > 0 ? (total / quantity).toFixed(2) : "";
+}
 
 window.applyBuyerPricing = (id, buyerName) => {
   const soldTo = $(`soldTo-${id}`);
