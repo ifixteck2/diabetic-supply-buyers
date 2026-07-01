@@ -1221,7 +1221,7 @@ function renderPhoneInvoiceCard(invoice) {
       <td>${money(row.projected_sell_each)}</td>
       <td class="${profitClass(row)}">${money(profitEach(row))}</td>
       <td class="${profitClass(row)}"><strong>${money(profitTotal(row))}</strong></td>
-      <td><div class="phone-row-actions"><button class="mini-btn" onclick="startPhonePurchaseEdit(${row.id})">Edit</button>${canReturn ? `<button class="mini-btn warning" onclick="returnPhonePurchaseToKt(${row.id})">Return</button>` : ""}${canRemove ? `<button class="mini-btn danger" onclick="removePhonePurchaseFromInvoice(${row.id})">Remove</button>` : ""}</div></td>
+      <td><div class="phone-row-actions"><button class="mini-btn" onclick="startPhonePurchaseEdit(${row.id})">Edit</button>${canRemove ? `<button class="mini-btn" onclick="movePhonePurchaseToInvoice(${row.id})">Move</button>` : ""}${canReturn ? `<button class="mini-btn warning" onclick="returnPhonePurchaseToKt(${row.id})">Return</button>` : ""}${canRemove ? `<button class="mini-btn danger" onclick="removePhonePurchaseFromInvoice(${row.id})">Remove</button>` : ""}</div></td>
     </tr>
   `).join("");
   const pendingRows = purchases.map((row) => `
@@ -1238,7 +1238,8 @@ function renderPhoneInvoiceCard(invoice) {
       <td>${money(row.cost_each)}</td>
       <td>${money(row.projected_sell_each)}</td>
       <td class="${profitClass(row)}"><strong>${money(profitTotal(row))}</strong></td>
-      <td><div class="phone-row-actions"><button class="mini-btn" onclick="startPhonePurchaseEdit(${row.id})">Edit</button>${canReturn ? `<button class="mini-btn warning" onclick="returnPhonePurchaseToKt(${row.id})">Return</button>` : ""}${canRemove ? `<button class="mini-btn danger" onclick="removePhonePurchaseFromInvoice(${row.id})">Remove</button>` : ""}</div></td>
+      <td>${phoneAddedDate(row)}</td>
+      <td><div class="phone-row-actions"><button class="mini-btn" onclick="startPhonePurchaseEdit(${row.id})">Edit</button>${canRemove ? `<button class="mini-btn" onclick="movePhonePurchaseToInvoice(${row.id})">Move</button>` : ""}${canReturn ? `<button class="mini-btn warning" onclick="returnPhonePurchaseToKt(${row.id})">Return</button>` : ""}${canRemove ? `<button class="mini-btn danger" onclick="removePhonePurchaseFromInvoice(${row.id})">Remove</button>` : ""}</div></td>
     </tr>
   `).join("");
   const saleControls = `
@@ -1273,8 +1274,8 @@ function renderPhoneInvoiceCard(invoice) {
       ${isPending ? `
         <div class="table-wrap pending-table-wrap">
           <table class="phone-profit-table pending-phone-table">
-            <thead><tr><th>Phone</th><th>Carrier</th><th>Qty</th><th>Cost</th><th>Sell</th><th>Profit</th><th></th></tr></thead>
-            <tbody>${pendingRows || `<tr><td colspan="7">No purchases added.</td></tr>`}</tbody>
+            <thead><tr><th>Phone</th><th>Carrier</th><th>Qty</th><th>Cost</th><th>Sell</th><th>Profit</th><th>Added</th><th></th></tr></thead>
+            <tbody>${pendingRows || `<tr><td colspan="8">No purchases added.</td></tr>`}</tbody>
           </table>
         </div>
       ` : `
@@ -1409,6 +1410,38 @@ function profitTotal(row) {
 function profitClass(row) {
   return profitEach(row) >= 0 ? "profit-good" : "profit-bad";
 }
+
+function phoneAddedDate(row) {
+  const addedAt = row.invoice_added_at || row.created_at;
+  if (!addedAt) return "";
+  return new Date(addedAt).toLocaleDateString();
+}
+
+window.movePhonePurchaseToInvoice = async (id) => {
+  const currentInvoice = phoneInvoices.find((invoice) => (invoice.purchases || []).some((row) => Number(row.id) === Number(id)));
+  const purchase = currentInvoice?.purchases?.find((row) => Number(row.id) === Number(id));
+  if (!currentInvoice || !purchase) return alert("Could not find that phone purchase.");
+  const pendingInvoices = phoneInvoices
+    .filter((invoice) => invoice.status === "Pending" && Number(invoice.id) !== Number(currentInvoice.id))
+    .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+  if (!pendingInvoices.length) return alert("There are no other pending invoices to move this phone into.");
+  const choices = pendingInvoices.map((invoice) => `#${invoice.id} - ${invoice.buyer} - ${invoice.label || "Pending Invoice"}`).join("\n");
+  const invoiceId = prompt(`Move ${purchase.model} to which invoice?\n\n${choices}\n\nEnter invoice number:`);
+  if (invoiceId === null) return false;
+  const targetId = Number(String(invoiceId).replace(/[^0-9]/g, ""));
+  if (!targetId || !pendingInvoices.some((invoice) => Number(invoice.id) === targetId)) {
+    alert("Enter one of the pending invoice numbers shown.");
+    return false;
+  }
+  const result = await api(`/api/phone-purchases/${id}/move-invoice`, {
+    method: "PATCH",
+    body: { invoice_id: targetId },
+  });
+  if (!result?.ok) return alert(result?.error || "Could not move this phone.");
+  await loadPhoneInvoices();
+  openPhoneTab(`${String(result.invoice.buyer || "").toLowerCase()}Pending`);
+  return true;
+};
 
 function renderPhoneDashboard() {
   if (!$("phoneDashboardStats") || !$("phoneBuyerBreakdown")) return;

@@ -284,7 +284,8 @@ app.post("/api/phone-purchases/move-latest", requirePhoneAuth, async (req, res) 
         `update phone_purchases
          set invoice_id = $1,
            buyer = $2,
-           projected_sell_each = $3
+           projected_sell_each = $3,
+           invoice_added_at = now()
          where id = $4
          returning *`,
         [targetInvoice.id, buyer, projectedSellEach, row.id]
@@ -367,7 +368,8 @@ app.patch("/api/phone-purchases/:id", requirePhoneAuth, async (req, res) => {
          imei = $13,
          photo_file_name = $14,
          photo_data_url = $15,
-         notes = $16
+         notes = $16,
+         invoice_added_at = case when invoice_id <> $1 then now() else invoice_added_at end
        where id = $17
        returning *`,
       [
@@ -396,6 +398,50 @@ app.patch("/api/phone-purchases/:id", requirePhoneAuth, async (req, res) => {
     await client.query("rollback");
     console.error(error);
     res.status(500).json({ error: "Could not update phone purchase." });
+  } finally {
+    client.release();
+  }
+});
+
+app.patch("/api/phone-purchases/:id/move-invoice", requirePhoneAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  const invoiceId = Number(req.body?.invoice_id || 0);
+  if (!id) return res.status(400).json({ error: "Purchase ID is required." });
+  if (!invoiceId) return res.status(400).json({ error: "Choose the invoice to move this phone to." });
+
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    const purchaseResult = await client.query("select * from phone_purchases where id = $1 and invoice_removed_at is null", [id]);
+    const purchase = purchaseResult.rows[0];
+    if (!purchase) {
+      await client.query("rollback");
+      return res.status(404).json({ error: "Active phone purchase not found." });
+    }
+    const invoiceResult = await client.query("select * from phone_invoices where id = $1 and status = 'Pending'", [invoiceId]);
+    const invoice = invoiceResult.rows[0];
+    if (!invoice) {
+      await client.query("rollback");
+      return res.status(404).json({ error: "Pending invoice not found." });
+    }
+    const priceRows = invoice.buyer === "KT" ? await getKtPrices() : await getAtlasPrices();
+    const projectedSellEach = findPhonePrice({ ...purchase, buyer: invoice.buyer }, priceRows, invoice.buyer) || Number(purchase.projected_sell_each || 0);
+    const moved = await client.query(
+      `update phone_purchases
+       set invoice_id = $1,
+         buyer = $2,
+         projected_sell_each = $3,
+         invoice_added_at = now()
+       where id = $4
+       returning *`,
+      [invoice.id, invoice.buyer, projectedSellEach, id]
+    );
+    await client.query("commit");
+    res.json({ ok: true, invoice, purchase: moved.rows[0] });
+  } catch (error) {
+    await client.query("rollback");
+    console.error(error);
+    res.status(500).json({ error: "Could not move phone to that invoice." });
   } finally {
     client.release();
   }
@@ -1048,6 +1094,7 @@ async function migrate() {
       invoice_removed_reason text not null default '',
       returned_at timestamptz,
       return_reason text not null default '',
+      invoice_added_at timestamptz not null default now(),
       created_at timestamptz not null default now()
     );
   `);
@@ -1078,6 +1125,10 @@ async function migrate() {
     alter table phone_purchases add column if not exists photo_data_url text not null default '';
     alter table phone_purchases add column if not exists returned_at timestamptz;
     alter table phone_purchases add column if not exists return_reason text not null default '';
+    alter table phone_purchases add column if not exists invoice_added_at timestamptz;
+    update phone_purchases set invoice_added_at = created_at where invoice_added_at is null;
+    alter table phone_purchases alter column invoice_added_at set default now();
+    alter table phone_purchases alter column invoice_added_at set not null;
     alter table phone_invoices add column if not exists sale_price numeric(12,2);
     alter table phone_invoices add column if not exists sale_notes text not null default '';
     alter table phone_invoices add column if not exists shipped_at timestamptz;
@@ -1303,9 +1354,16 @@ async function attachPhonePurchases(invoices) {
   );
   return invoices.map((invoice) => ({
     ...invoice,
-    purchases: sortPhonePurchases(purchases.rows.filter((purchase) => purchase.invoice_id === invoice.id)),
+    purchases: sortPhonePurchasesByAddedAt(purchases.rows.filter((purchase) => purchase.invoice_id === invoice.id)),
     returns: sortPhonePurchases(returns.rows.filter((purchase) => purchase.invoice_id === invoice.id)),
   }));
+}
+
+function sortPhonePurchasesByAddedAt(purchases) {
+  return [...purchases].sort((a, b) => {
+    const dateCompare = new Date(a.invoice_added_at || a.created_at || 0) - new Date(b.invoice_added_at || b.created_at || 0);
+    return dateCompare || Number(a.id || 0) - Number(b.id || 0);
+  });
 }
 
 function sortPhonePurchases(purchases) {
