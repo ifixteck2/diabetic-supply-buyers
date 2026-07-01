@@ -753,9 +753,9 @@ function renderBatchCard(batch, context = "active") {
       <div class="invoice-actions">
         <strong>${money(batch.total_paid)}</strong>
         <div>
-          <button class="mini-btn" onclick="setBatchStatus(${batch.id}, 'Active')">Active</button>
-          <button class="mini-btn" onclick="setBatchStatus(${batch.id}, 'Sold')">Sold</button>
-          <button class="mini-btn" onclick="setBatchStatus(${batch.id}, 'Shipped')">Shipped</button>
+          <button class="mini-btn" onclick="setBatchStatus(${batch.id}, 'Active', '${context}')">Active</button>
+          <button class="mini-btn" onclick="setBatchStatus(${batch.id}, 'Sold', '${context}')">Sold</button>
+          <button class="mini-btn" onclick="setBatchStatus(${batch.id}, 'Shipped', '${context}')">Shipped</button>
           <button class="mini-btn" onclick="toggleBuyerPdfSetup('${pdfPanelId}')">Buyer PDF</button>
         </div>
       </div>
@@ -875,18 +875,44 @@ window.restorePendingInvoiceItem = async (id) => {
   return true;
 };
 
-window.setBatchStatus = async (id, nextStatus) => {
+window.setBatchStatus = async (id, nextStatus, context = "active") => {
+  const batch = [...batchesCache, ...allBatchesCache].find((entry) => Number(entry.id) === Number(id));
+  let soldTo = $(`soldTo-${id}`)?.value.trim() || "";
+  let salePrice = $(`salePrice-${id}`)?.value || "";
+  let itemPrices = null;
+  if (nextStatus === "Sold" || nextStatus === "Shipped") {
+    const pdfPanel = $(`buyerPdfSetup-${context}-${id}`);
+    if (pdfPanel?.classList.contains("hidden")) {
+      pdfPanel.classList.remove("hidden");
+      alert("Enter the buyer and sell price for each item before marking this invoice sold or shipped.");
+      return;
+    }
+    soldTo = soldTo || $(`pdfBuyer-${context}-${id}`)?.value || "";
+    const fillAllPrice = Number($(`pdfAmount-${context}-${id}`)?.value || 0);
+    applyBuyerPdfFillAllPrice(batch, context, fillAllPrice);
+    const collected = collectBuyerPdfItemPrices(batch, context);
+    if (!collected.ok) {
+      status(`pdfStatus-${context}-${id}`, collected.error, "bad");
+      return;
+    }
+    itemPrices = collected.prices;
+    salePrice = collected.total.toFixed(2);
+  }
   const result = await api(`/api/batches/${id}/status`, {
     method: "PATCH",
     body: {
       status: nextStatus,
-      sold_to: $(`soldTo-${id}`).value.trim(),
-      sale_price: $(`salePrice-${id}`).value,
-      sale_notes: $(`saleNotes-${id}`).value.trim(),
-      tracking_number: $(`trackingNumber-${id}`).value.trim(),
+      sold_to: soldTo,
+      sale_price: salePrice,
+      sale_notes: $(`saleNotes-${id}`)?.value.trim() || "",
+      tracking_number: $(`trackingNumber-${id}`)?.value.trim() || "",
+      item_prices: itemPrices,
     },
   });
-  if (result?.ok) await loadBatches();
+  if (result?.ok) {
+    await loadBatches();
+    if (nextStatus === "Shipped") openTab("history");
+  }
   else alert(result?.error || "Could not update invoice.");
 };
 
@@ -922,6 +948,7 @@ window.generateBuyerPdf = async (id, context, showPrices = true) => {
       status: batch?.status || "Active",
       sold_to: buyer,
       sale_price: saleTotal,
+      item_prices: itemPrices.prices,
     },
   });
   if (!result?.ok) {

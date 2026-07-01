@@ -648,6 +648,7 @@ app.patch("/api/batches/:id/status", requireAuth, async (req, res) => {
   const saleNotes = String(req.body?.sale_notes || "").trim();
   const trackingNumber = String(req.body?.tracking_number || "").trim();
   const salePrice = req.body?.sale_price === undefined || req.body?.sale_price === "" ? null : Number(req.body.sale_price);
+  const itemPrices = parseBuyerPdfItemPrices(req.body?.item_prices);
   const allowed = new Set(["Active", "Sold", "Shipped"]);
   if (!id) return res.status(400).json({ error: "Invoice ID is required." });
   if (!allowed.has(nextStatus)) return res.status(400).json({ error: "Choose Active, Sold, or Shipped." });
@@ -655,22 +656,50 @@ app.patch("/api/batches/:id/status", requireAuth, async (req, res) => {
     return res.status(400).json({ error: "Enter who bought it and what it sold for first." });
   }
 
-  const result = await pool.query(
-    `update invoice_batches
-     set status = $1,
-       sold_to = coalesce(nullif($3,''), sold_to),
-       sale_price = coalesce($4, sale_price),
-       sale_notes = coalesce(nullif($5,''), sale_notes),
-       tracking_number = coalesce(nullif($6,''), tracking_number),
-       sold_at = case when $1 in ('Sold','Shipped') and sold_at is null then now() else sold_at end,
-       status_updated_at = now(),
-       shipped_at = case when $1 = 'Shipped' then now() else shipped_at end
-     where id = $2
-     returning *`,
-    [nextStatus, id, soldTo, salePrice, saleNotes, trackingNumber]
-  );
-  if (!result.rows[0]) return res.status(404).json({ error: "Invoice not found." });
-  res.json({ ok: true, batch: result.rows[0] });
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    if ((nextStatus === "Sold" || nextStatus === "Shipped") && Object.keys(itemPrices).length) {
+      for (const [itemId, itemPrice] of Object.entries(itemPrices)) {
+        await client.query(
+          `update purchase_items pi
+           set expected_sell_each = $1
+           from invoices i
+           where pi.invoice_id = i.id
+             and i.batch_id = $2
+             and pi.id = $3
+             and pi.invoice_removed_at is null`,
+          [itemPrice, id, Number(itemId)]
+        );
+      }
+    }
+    const result = await client.query(
+      `update invoice_batches
+       set status = $1,
+         sold_to = coalesce(nullif($3,''), sold_to),
+         sale_price = coalesce($4, sale_price),
+         sale_notes = coalesce(nullif($5,''), sale_notes),
+         tracking_number = coalesce(nullif($6,''), tracking_number),
+         sold_at = case when $1 in ('Sold','Shipped') and sold_at is null then now() else sold_at end,
+         status_updated_at = now(),
+         shipped_at = case when $1 = 'Shipped' then now() else shipped_at end
+       where id = $2
+       returning *`,
+      [nextStatus, id, soldTo, salePrice, saleNotes, trackingNumber]
+    );
+    if (!result.rows[0]) {
+      await client.query("rollback");
+      return res.status(404).json({ error: "Invoice not found." });
+    }
+    await client.query("commit");
+    res.json({ ok: true, batch: result.rows[0] });
+  } catch (error) {
+    await client.query("rollback");
+    console.error(error);
+    res.status(500).json({ error: "Could not update invoice." });
+  } finally {
+    client.release();
+  }
 });
 
 app.patch("/api/purchase-items/:id/invoice-removal", requireAuth, async (req, res) => {
@@ -2465,7 +2494,7 @@ function normalizeMatchText(value) {
 function parseBuyerPdfItemPrices(raw) {
   if (!raw) return {};
   try {
-    const parsed = JSON.parse(String(raw));
+    const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
     return Object.fromEntries(Object.entries(parsed || {}).flatMap(([id, price]) => {
       const itemId = Number(id);
       const itemPrice = Number(price);
