@@ -767,6 +767,7 @@ function renderBatchCard(batch, context = "active") {
             <button class="mini-btn" onclick="generateBuyerPdf(${batch.id}, '${context}', false)">No Prices</button>
           </span></label>
         </div>
+        ${renderBuyerPdfItemControls(batch)}
         <div id="pdfStatus-${context}-${batch.id}"></div>
       </div>
     </article>
@@ -794,8 +795,36 @@ function renderPendingInvoiceItemRow(batch, item) {
       <td>${buyerEach === null ? "N/A" : money(buyerEach)}</td>
       <td class="${profitEach === null ? "" : profitEach >= 0 ? "profit-good" : "profit-bad"}">${profitEach === null ? "N/A" : money(profitEach)}</td>
       <td class="${totalProfit === null ? "" : totalProfit >= 0 ? "profit-good" : "profit-bad"}"><strong>${totalProfit === null ? "N/A" : money(totalProfit)}</strong></td>
-      <td><button class="mini-btn danger" onclick="removePendingInvoiceItem(${item.id})">Remove</button></td>
+      <td><button class="mini-btn danger" onclick="removePendingInvoiceItem(${item.id})">Remove From Invoice</button></td>
     </tr>
+  `;
+}
+
+function renderBuyerPdfItemControls(batch) {
+  const items = (batch.purchases || []).flatMap((purchase) => (purchase.items || []).map((item) => ({
+    ...item,
+    customer_name: purchase.customer_name,
+  })));
+  if (!items.length) return `<div class="empty">No items in this invoice.</div>`;
+  const activeItems = items.filter((item) => !item.invoice_removed_at);
+  const removedItems = items.filter((item) => item.invoice_removed_at);
+  const itemLine = (item, removed = false) => {
+    const itemName = [item.brand, item.model].filter(Boolean).join(" ") || item.category || "Item";
+    return `
+      <div class="buyer-pdf-item ${removed ? "removed" : ""}">
+        <span><b>${Number(item.quantity || 0)}x ${escapeHtml(itemName)}</b><small>${escapeHtml(item.customer_name || "Customer")} - Exp ${escapeHtml(formatExpirationForDisplay(item.expiration))}</small></span>
+        ${removed
+          ? `<button class="mini-btn" onclick="restorePendingInvoiceItem(${item.id})">Restore</button>`
+          : `<button class="mini-btn danger" onclick="removePendingInvoiceItem(${item.id}, 'Excluded from buyer PDF')">Remove From PDF</button>`}
+      </div>
+    `;
+  };
+  return `
+    <div class="buyer-pdf-items">
+      <h4>Items Included In Buyer PDF</h4>
+      ${activeItems.map((item) => itemLine(item)).join("") || `<div class="empty">No active items included.</div>`}
+      ${removedItems.length ? `<h4>Removed From Buyer PDF</h4>${removedItems.map((item) => itemLine(item, true)).join("")}` : ""}
+    </div>
   `;
 }
 
@@ -812,14 +841,27 @@ function getExpectedBuyerPrice(item) {
   return savedPrice > 0 ? savedPrice : null;
 }
 
-window.removePendingInvoiceItem = async (id) => {
+window.removePendingInvoiceItem = async (id, reason = "Sold locally") => {
   if (!confirm("Remove this item from the pending invoice? It will stay in the customer's purchase history.")) return false;
   const result = await api(`/api/purchase-items/${id}/invoice-removal`, {
     method: "PATCH",
-    body: { remove: true, reason: "Sold locally" },
+    body: { remove: true, reason },
   });
   if (!result?.ok) {
     alert(result?.error || "Could not remove item from invoice.");
+    return false;
+  }
+  await loadBatches();
+  return true;
+};
+
+window.restorePendingInvoiceItem = async (id) => {
+  const result = await api(`/api/purchase-items/${id}/invoice-removal`, {
+    method: "PATCH",
+    body: { remove: false },
+  });
+  if (!result?.ok) {
+    alert(result?.error || "Could not restore item to invoice.");
     return false;
   }
   await loadBatches();
