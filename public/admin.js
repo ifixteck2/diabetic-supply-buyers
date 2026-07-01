@@ -516,7 +516,8 @@ function renderInvoiceHistoryCard(batch) {
             <button class="mini-btn" onclick="generateBuyerPdf(${batch.id}, 'history', false)">No Prices</button>
           </span></label>
         </div>
-        <p class="mini">The amount above is per item. Invoice total is calculated from included quantities.</p>
+        ${renderBuyerPdfItemControls(batch, "history")}
+        <p class="mini">Enter the sell price for each item line. Use the box above only to fill all prices quickly.</p>
         <div id="pdfStatus-history-${batch.id}"></div>
       </div>
       <section class="history">${purchaseDetails || `<div class="empty">No purchases inside this invoice.</div>`}</section>
@@ -770,8 +771,8 @@ function renderBatchCard(batch, context = "active") {
             <button class="mini-btn" onclick="generateBuyerPdf(${batch.id}, '${context}', false)">No Prices</button>
           </span></label>
         </div>
-        ${renderBuyerPdfItemControls(batch)}
-        <p class="mini">The amount above is per item. Invoice total is calculated from included quantities.</p>
+        ${renderBuyerPdfItemControls(batch, context)}
+        <p class="mini">Enter the sell price for each item line. Use the box above only to fill all prices quickly.</p>
         <div id="pdfStatus-${context}-${batch.id}"></div>
       </div>
     </article>
@@ -804,7 +805,7 @@ function renderPendingInvoiceItemRow(batch, item) {
   `;
 }
 
-function renderBuyerPdfItemControls(batch) {
+function renderBuyerPdfItemControls(batch, context) {
   const items = (batch.purchases || []).flatMap((purchase) => (purchase.items || []).map((item) => ({
     ...item,
     customer_name: purchase.customer_name,
@@ -814,12 +815,14 @@ function renderBuyerPdfItemControls(batch) {
   const removedItems = items.filter((item) => item.invoice_removed_at);
   const itemLine = (item, removed = false) => {
     const itemName = [item.brand, item.model].filter(Boolean).join(" ") || item.category || "Item";
+    const priceValue = buyerPdfItemPriceValue(item);
+    const priceId = `pdfItemPrice-${context}-${batch.id}-${item.id}`;
     return `
       <div class="buyer-pdf-item ${removed ? "removed" : ""}">
         <span><b>${Number(item.quantity || 0)}x ${escapeHtml(itemName)}</b><small>${escapeHtml(item.customer_name || "Customer")} - Exp ${escapeHtml(formatExpirationForDisplay(item.expiration))}</small></span>
         ${removed
           ? `<button class="mini-btn" onclick="restorePendingInvoiceItem(${item.id})">Restore</button>`
-          : `<button class="mini-btn danger" onclick="removePendingInvoiceItem(${item.id}, 'Excluded from buyer PDF')">Remove From PDF</button>`}
+          : `<span class="pdf-item-actions"><input id="${priceId}" class="pdf-item-price" type="number" min="0" step="0.01" value="${priceValue}" placeholder="Sell each"><button class="mini-btn danger" onclick="removePendingInvoiceItem(${item.id}, 'Excluded from buyer PDF')">Remove From PDF</button></span>`}
       </div>
     `;
   };
@@ -903,14 +906,15 @@ window.toggleBuyerPdfSetup = (panelId) => {
 
 window.generateBuyerPdf = async (id, context, showPrices = true) => {
   const buyer = $(`pdfBuyer-${context}-${id}`)?.value || "";
-  const unitPrice = Number($(`pdfAmount-${context}-${id}`)?.value || 0);
+  const fillAllPrice = Number($(`pdfAmount-${context}-${id}`)?.value || 0);
   const statusId = `pdfStatus-${context}-${id}`;
   if (!buyer) return status(statusId, "Choose a buyer.", "bad");
-  if (!unitPrice || unitPrice <= 0) return status(statusId, "Enter the amount you are selling each item for.", "bad");
 
   const batch = [...batchesCache, ...allBatchesCache].find((entry) => Number(entry.id) === Number(id));
-  const quantity = includedInvoiceQuantity(batch);
-  const saleTotal = unitPrice * quantity;
+  applyBuyerPdfFillAllPrice(batch, context, fillAllPrice);
+  const itemPrices = collectBuyerPdfItemPrices(batch, context);
+  if (!itemPrices.ok) return status(statusId, itemPrices.error, "bad");
+  const saleTotal = itemPrices.total;
   const pdfWindow = window.open("", "_blank");
   const result = await api(`/api/batches/${id}/status`, {
     method: "PATCH",
@@ -931,7 +935,7 @@ window.generateBuyerPdf = async (id, context, showPrices = true) => {
   if (salePriceInput) salePriceInput.value = saleTotal.toFixed(2);
   const params = new URLSearchParams();
   if (!showPrices) params.set("prices", "0");
-  params.set("unit_price", unitPrice.toFixed(2));
+  params.set("item_prices", JSON.stringify(itemPrices.prices));
   const url = `/api/batches/${id}/buyer-pdf?${params.toString()}`;
   if (pdfWindow) pdfWindow.location = url;
   else window.open(url, "_blank");
@@ -949,6 +953,40 @@ function buyerPdfUnitValue(batch) {
   const total = Number(batch?.sale_price || 0);
   const quantity = includedInvoiceQuantity(batch);
   return total > 0 && quantity > 0 ? (total / quantity).toFixed(2) : "";
+}
+
+function buyerPdfItemPriceValue(item) {
+  const expected = getExpectedBuyerPrice(item);
+  return expected === null ? "" : Number(expected).toFixed(2);
+}
+
+function buyerPdfActiveItems(batch) {
+  return (batch?.purchases || []).flatMap((purchase) => activeInvoiceItems(purchase.items || []));
+}
+
+function applyBuyerPdfFillAllPrice(batch, context, fillAllPrice) {
+  if (!fillAllPrice || fillAllPrice <= 0) return;
+  for (const item of buyerPdfActiveItems(batch)) {
+    const input = $(`pdfItemPrice-${context}-${batch.id}-${item.id}`);
+    if (input) input.value = fillAllPrice.toFixed(2);
+  }
+}
+
+function collectBuyerPdfItemPrices(batch, context) {
+  if (!batch) return { ok: false, error: "Could not find this invoice." };
+  const prices = {};
+  let total = 0;
+  for (const item of buyerPdfActiveItems(batch)) {
+    const input = $(`pdfItemPrice-${context}-${batch.id}-${item.id}`);
+    const value = Number(String(input?.value || "").replace(/[$,\s]/g, ""));
+    if (!Number.isFinite(value) || value <= 0) {
+      const itemName = [item.brand, item.model].filter(Boolean).join(" ") || item.category || "Item";
+      return { ok: false, error: `Enter a selling price for ${itemName}.` };
+    }
+    prices[item.id] = value;
+    total += value * Number(item.quantity || 0);
+  }
+  return { ok: true, prices, total };
 }
 
 window.applyBuyerPricing = (id, buyerName) => {
