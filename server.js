@@ -475,17 +475,17 @@ app.patch("/api/phone-purchases/:id/return", requirePhoneAuth, async (req, res) 
   const result = await pool.query(
     `update phone_purchases pp
      set invoice_removed_at = now(),
-       invoice_removed_reason = 'Returned to KT',
+       invoice_removed_reason = 'Returned to ' || pi.buyer,
        returned_at = now(),
        return_reason = $2
      from phone_invoices pi
      where pp.invoice_id = pi.id
        and pp.id = $1
-       and pi.buyer = 'KT'
+       and pi.sale_price is null
      returning pp.*`,
     [id, reason]
   );
-  if (!result.rows[0]) return res.status(404).json({ error: "KT invoice item not found." });
+  if (!result.rows[0]) return res.status(404).json({ error: "Invoice item not found, or final sale amount is already entered." });
   res.json({ ok: true, purchase: result.rows[0] });
 });
 

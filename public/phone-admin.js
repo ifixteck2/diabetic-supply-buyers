@@ -96,7 +96,7 @@ function openPhoneTab(name) {
     priceChecker: "Price Checker",
     atlasPending: "Atlas Pending",
     ktPending: "KT Pending",
-    ktReturns: "KT Returns",
+    ktReturns: "Returns",
     pastInvoices: "Past Invoices",
   };
   document.querySelectorAll("[data-phone-tab]").forEach((button) => button.classList.toggle("active", button.dataset.phoneTab === name));
@@ -1124,9 +1124,9 @@ function renderPastInvoices() {
 
 function renderKtReturns() {
   const list = phoneInvoices
-    .filter((invoice) => invoice.buyer === "KT" && (invoice.returns || []).length)
+    .filter((invoice) => (invoice.returns || []).length)
     .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-  $("ktReturnsList").innerHTML = list.map(renderKtReturnCard).join("") || `<div class="empty">No KT returns yet.</div>`;
+  $("ktReturnsList").innerHTML = list.map(renderKtReturnCard).join("") || `<div class="empty">No returns yet.</div>`;
 }
 
 function renderKtReturnCard(invoice) {
@@ -1151,8 +1151,8 @@ function renderKtReturnCard(invoice) {
     <article class="invoice-card phone-invoice-card return-invoice-card">
       <div class="invoice-top">
         <div class="phone-invoice-title">
-          <h3>${escapeHtml(invoice.label || "KT Invoice")}</h3>
-          <p>#${invoice.id} - ${new Date(invoice.created_at).toLocaleDateString()} - ${returns.length} returned item${returns.length === 1 ? "" : "s"}</p>
+          <h3>${escapeHtml(invoice.label || `${invoice.buyer} Invoice`)}</h3>
+          <p>#${invoice.id} - ${escapeHtml(invoice.buyer)} - ${new Date(invoice.created_at).toLocaleDateString()} - ${returns.length} returned item${returns.length === 1 ? "" : "s"}</p>
         </div>
         <span class="pill closed">Returns</span>
       </div>
@@ -1205,7 +1205,7 @@ function renderPhoneInvoiceCard(invoice) {
   const actualProfit = salePrice === null ? null : salePrice - totalCost;
   const projectedProfit = projected - totalCost;
   const canRemove = invoice.status === "Pending";
-  const canReturn = invoice.buyer === "KT";
+  const canReturn = salePrice === null;
   const isPending = invoice.status === "Pending";
   const rows = purchases.map((row) => `
     <tr class="phone-purchase-row">
@@ -1573,7 +1573,7 @@ window.removePhonePurchaseFromInvoice = async (id) => {
 };
 
 window.returnPhonePurchaseToKt = async (id) => {
-  const reason = prompt("Reason for KT return?");
+  const reason = prompt("Reason for return?");
   if (reason === null) return false;
   if (!reason.trim()) {
     alert("Enter a return reason.");
