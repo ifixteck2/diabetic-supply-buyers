@@ -1446,26 +1446,7 @@ window.movePhonePurchaseToInvoice = async (id) => {
 window.openPhoneBuyerPdf = (id) => {
   const invoice = phoneInvoices.find((entry) => Number(entry.id) === Number(id));
   if (!invoice) return alert("Could not find that invoice.");
-  const purchases = invoice.purchases || [];
-  if (!purchases.length) return window.open(`/api/phone-invoices/${id}/html`, "_blank");
-  const prices = {};
-  for (const row of purchases) {
-    const quantity = Math.max(1, Number(row.quantity || 1));
-    prices[row.id] = [];
-    for (let index = 0; index < quantity; index += 1) {
-      const label = quantity > 1 ? `${row.model} (${index + 1} of ${quantity})` : row.model;
-      const value = prompt(`Selling price for ${label}:`, Number(row.projected_sell_each || 0).toFixed(2));
-      if (value === null) return false;
-      const price = Number(String(value).replace(/[$,\s]/g, ""));
-      if (Number.isNaN(price) || price < 0) {
-        alert("Enter a valid price.");
-        return false;
-      }
-      prices[row.id].push(price);
-    }
-  }
-  const query = new URLSearchParams({ prices: JSON.stringify(prices) });
-  window.open(`/api/phone-invoices/${id}/html?${query.toString()}`, "_blank");
+  window.open(`/api/phone-invoices/${id}/html`, "_blank");
   return true;
 };
 
