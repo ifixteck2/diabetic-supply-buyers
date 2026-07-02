@@ -1095,6 +1095,8 @@ function buyerPdfUnitValue(batch) {
 }
 
 function buyerPdfItemPriceValue(item, buyerName = "") {
+  const savedPrice = Number(item.expected_sell_each || 0);
+  if (savedPrice > 0) return savedPrice.toFixed(2);
   const expected = getExpectedBuyerPrice(item, buyerName);
   return expected === null ? "" : Number(expected).toFixed(2);
 }
@@ -1163,7 +1165,9 @@ function collectBuyerPdfItemPrices(batch, context) {
   let total = 0;
   for (const [index, group] of buyerPdfItemGroups(batch).entries()) {
     const input = $(buyerPdfGroupInputId(context, batch.id, index));
-    const value = Number(String(input?.value || "").replace(/[$,\s]/g, ""));
+    const rawValue = String(input?.value || "").replace(/[$,\s]/g, "");
+    const fallback = Number(group.items[0]?.expected_sell_each || 0);
+    const value = rawValue ? Number(rawValue) : fallback;
     if (!Number.isFinite(value) || value <= 0) {
       return { ok: false, error: `Enter a selling price for ${group.name} exp ${group.expiration}.` };
     }
