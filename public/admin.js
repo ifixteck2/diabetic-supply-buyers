@@ -514,8 +514,9 @@ function renderInvoiceHistoryCard(batch) {
             <option${batch.sold_to === "Mercury Medical Supplies" ? " selected" : ""}>Mercury Medical Supplies</option>
             <option${batch.sold_to === "First Class Medical Supply" ? " selected" : ""}>First Class Medical Supply</option>
           </select></label>
-          <label>Sell each<input id="${pdfAmountId}" type="number" min="0" step="0.01" value="${pdfUnitValue}" placeholder="0.00"></label>
+          <label>Fill all prices<input id="${pdfAmountId}" type="number" min="0" step="0.01" value="" placeholder="${pdfUnitValue || "0.00"}"></label>
           <label>PDF Options<span class="pdf-action-row">
+            <button class="mini-btn" onclick="fillBuyerPdfPrices(${batch.id}, 'history')">Fill All Prices</button>
             <button class="mini-btn" onclick="generateBuyerPdf(${batch.id}, 'history', true)">With Prices</button>
             <button class="mini-btn" onclick="generateBuyerPdf(${batch.id}, 'history', false)">No Prices</button>
           </span></label>
@@ -774,8 +775,9 @@ function renderBatchCard(batch, context = "active") {
             <option${batch.sold_to === "Mercury Medical Supplies" ? " selected" : ""}>Mercury Medical Supplies</option>
             <option${batch.sold_to === "First Class Medical Supply" ? " selected" : ""}>First Class Medical Supply</option>
           </select></label>
-          <label>Sell each<input id="${pdfAmountId}" type="number" min="0" step="0.01" value="${pdfUnitValue}" placeholder="0.00"></label>
+          <label>Fill all prices<input id="${pdfAmountId}" type="number" min="0" step="0.01" value="" placeholder="${pdfUnitValue || "0.00"}"></label>
           <label>PDF Options<span class="pdf-action-row">
+            <button class="mini-btn" onclick="fillBuyerPdfPrices(${batch.id}, '${context}')">Fill All Prices</button>
             <button class="mini-btn" onclick="generateBuyerPdf(${batch.id}, '${context}', true)">With Prices</button>
             <button class="mini-btn" onclick="generateBuyerPdf(${batch.id}, '${context}', false)">No Prices</button>
           </span></label>
@@ -958,8 +960,6 @@ window.setBatchStatus = async (id, nextStatus, context = "active") => {
       return;
     }
     soldTo = soldTo || $(`pdfBuyer-${context}-${id}`)?.value || "";
-    const fillAllPrice = Number($(`pdfAmount-${context}-${id}`)?.value || 0);
-    applyBuyerPdfFillAllPrice(batch, context, fillAllPrice);
     const collected = collectBuyerPdfItemPrices(batch, context);
     if (!collected.ok) {
       status(`pdfStatus-${context}-${id}`, collected.error, "bad");
@@ -1002,12 +1002,10 @@ window.toggleBuyerPdfSetup = (panelId) => {
 
 window.generateBuyerPdf = async (id, context, showPrices = true) => {
   const buyer = $(`pdfBuyer-${context}-${id}`)?.value || "";
-  const fillAllPrice = Number($(`pdfAmount-${context}-${id}`)?.value || 0);
   const statusId = `pdfStatus-${context}-${id}`;
   if (!buyer) return status(statusId, "Choose a buyer.", "bad");
 
   const batch = [...batchesCache, ...allBatchesCache].find((entry) => Number(entry.id) === Number(id));
-  applyBuyerPdfFillAllPrice(batch, context, fillAllPrice);
   const itemPrices = collectBuyerPdfItemPrices(batch, context);
   if (!itemPrices.ok) return status(statusId, itemPrices.error, "bad");
   const saleTotal = itemPrices.total;
@@ -1060,6 +1058,18 @@ function buyerPdfItemPriceValue(item) {
 function buyerPdfActiveItems(batch) {
   return (batch?.purchases || []).flatMap((purchase) => activeInvoiceItems(purchase.items || []));
 }
+
+window.fillBuyerPdfPrices = (id, context) => {
+  const batch = [...batchesCache, ...allBatchesCache].find((entry) => Number(entry.id) === Number(id));
+  const fillAllPrice = Number($(`pdfAmount-${context}-${id}`)?.value || 0);
+  if (!fillAllPrice || fillAllPrice <= 0) {
+    status(`pdfStatus-${context}-${id}`, "Enter a fill-all price first.", "bad");
+    return false;
+  }
+  applyBuyerPdfFillAllPrice(batch, context, fillAllPrice);
+  status(`pdfStatus-${context}-${id}`, "Filled every item price. Adjust any individual lines before exporting.");
+  return true;
+};
 
 function applyBuyerPdfFillAllPrice(batch, context, fillAllPrice) {
   if (!fillAllPrice || fillAllPrice <= 0) return;
