@@ -526,6 +526,8 @@ function renderInvoiceHistoryCard(batch) {
             <button class="mini-btn" onclick="fillBuyerPdfPrices(${batch.id}, 'history')">Fill All Prices</button>
             <button class="mini-btn" onclick="generateBuyerPdf(${batch.id}, 'history', true)">With Prices</button>
             <button class="mini-btn" onclick="generateBuyerPdf(${batch.id}, 'history', false)">No Prices</button>
+            <button class="mini-btn" onclick="setBatchStatus(${batch.id}, 'Sold', 'history')">Save & Mark Sold</button>
+            <button class="mini-btn" onclick="setBatchStatus(${batch.id}, 'Shipped', 'history')">Save & Ship</button>
           </span></label>
         </div>
         ${renderBuyerPdfItemControls(batch, "history")}
@@ -789,6 +791,8 @@ function renderBatchCard(batch, context = "active") {
             <button class="mini-btn" onclick="fillBuyerPdfPrices(${batch.id}, '${context}')">Fill All Prices</button>
             <button class="mini-btn" onclick="generateBuyerPdf(${batch.id}, '${context}', true)">With Prices</button>
             <button class="mini-btn" onclick="generateBuyerPdf(${batch.id}, '${context}', false)">No Prices</button>
+            <button class="mini-btn" onclick="setBatchStatus(${batch.id}, 'Sold', '${context}')">Save & Mark Sold</button>
+            <button class="mini-btn" onclick="setBatchStatus(${batch.id}, 'Shipped', '${context}')">Save & Ship</button>
           </span></label>
         </div>
         ${renderBuyerPdfItemControls(batch, context)}
@@ -995,7 +999,8 @@ window.setBatchStatus = async (id, nextStatus, context = "active") => {
     const pdfPanel = $(`buyerPdfSetup-${context}-${id}`);
     if (pdfPanel?.classList.contains("hidden")) {
       pdfPanel.classList.remove("hidden");
-      alert("Enter the buyer and sell price for each item before marking this invoice sold or shipped.");
+      status(`pdfStatus-${context}-${id}`, `Enter the buyer and item prices, then click ${nextStatus === "Shipped" ? "Save & Ship" : "Save & Mark Sold"}.`);
+      pdfPanel.scrollIntoView({ behavior: "smooth", block: "center" });
       return;
     }
     soldTo = soldTo || $(`pdfBuyer-${context}-${id}`)?.value || "";
