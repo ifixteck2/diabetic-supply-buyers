@@ -711,7 +711,7 @@ app.patch("/api/purchase-items/:id/invoice-removal", requireAuth, async (req, re
   const result = await pool.query(
     `update purchase_items
      set invoice_removed_at = case when $2 then now() else null end,
-       invoice_removed_reason = case when $2 then coalesce(nullif($3,''), 'Sold locally') else '' end
+       invoice_removed_reason = case when $2 then coalesce(nullif($3,''), 'Removed from invoice') else '' end
      where id = $1
      returning *`,
     [id, remove, reason]

@@ -898,8 +898,8 @@ function getExpectedBuyerPrice(item) {
   return savedPrice > 0 ? savedPrice : null;
 }
 
-window.removePendingInvoiceItem = async (id, reason = "Sold locally") => {
-  if (!confirm("Remove this item from the pending invoice? It will stay in the customer's purchase history.")) return false;
+window.removePendingInvoiceItem = async (id, reason = "Removed from invoice") => {
+  if (!confirm("Remove this item from the active invoice? It will stay in the customer's purchase history and will not be marked sold locally.")) return false;
   const result = await api(`/api/purchase-items/${id}/invoice-removal`, {
     method: "PATCH",
     body: { remove: true, reason },
