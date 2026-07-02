@@ -879,23 +879,34 @@ function renderBuyerPdfItemControls(batch, context) {
   if (!items.length) return `<div class="empty">No items in this invoice.</div>`;
   const activeItems = items.filter((item) => !item.invoice_removed_at);
   const removedItems = items.filter((item) => item.invoice_removed_at);
+  const activeGroups = buyerPdfItemGroups({ purchases: [{ items: activeItems }] });
+  const groupLine = (group, index) => {
+    const itemName = group.name;
+    const priceValue = buyerPdfItemPriceValue(group.items[0], batch.sold_to);
+    const priceId = buyerPdfGroupInputId(context, batch.id, index);
+    const itemIds = group.items.map((item) => item.id).join(",");
+    return `
+      <div class="buyer-pdf-item">
+        <span><b>${group.quantity}x ${escapeHtml(itemName)}</b><small>${group.items.length} line${group.items.length === 1 ? "" : "s"} grouped - Exp ${escapeHtml(group.expiration)}</small></span>
+        <span class="pdf-item-actions"><input id="${priceId}" data-item-ids="${escapeAttr(itemIds)}" class="pdf-item-price" type="number" min="0" step="0.01" value="${priceValue}" placeholder="Sell each"><button class="mini-btn danger" onclick="removeBuyerPdfGroup('${itemIds}')">Remove From PDF</button></span>
+      </div>
+    `;
+  };
   const itemLine = (item, removed = false) => {
     const itemName = [item.brand, item.model].filter(Boolean).join(" ") || item.category || "Item";
-    const priceValue = buyerPdfItemPriceValue(item, batch.sold_to);
-    const priceId = `pdfItemPrice-${context}-${batch.id}-${item.id}`;
     return `
       <div class="buyer-pdf-item ${removed ? "removed" : ""}">
         <span><b>${Number(item.quantity || 0)}x ${escapeHtml(itemName)}</b><small>${escapeHtml(item.customer_name || "Customer")} - Exp ${escapeHtml(formatExpirationForDisplay(item.expiration))}</small></span>
         ${removed
           ? `<button class="mini-btn" onclick="restorePendingInvoiceItem(${item.id})">Restore</button>`
-          : `<span class="pdf-item-actions"><input id="${priceId}" class="pdf-item-price" type="number" min="0" step="0.01" value="${priceValue}" placeholder="Sell each"><button class="mini-btn danger" onclick="removePendingInvoiceItem(${item.id}, 'Excluded from buyer PDF')">Remove From PDF</button></span>`}
+          : ""}
       </div>
     `;
   };
   return `
     <div class="buyer-pdf-items">
       <h4>Items Included In Buyer PDF</h4>
-      ${activeItems.map((item) => itemLine(item)).join("") || `<div class="empty">No active items included.</div>`}
+      ${activeGroups.map((group, index) => groupLine(group, index)).join("") || `<div class="empty">No active items included.</div>`}
       ${removedItems.length ? `<h4>Removed From Buyer PDF</h4>${removedItems.map((item) => itemLine(item, true)).join("")}` : ""}
     </div>
   `;
@@ -941,6 +952,24 @@ window.moveItemToNoBuyer = async (id) => {
   }
   await loadBatches();
   openTab("hold");
+  return true;
+};
+
+window.removeBuyerPdfGroup = async (ids) => {
+  const itemIds = String(ids || "").split(",").map((id) => Number(id)).filter(Boolean);
+  if (!itemIds.length) return false;
+  if (!confirm("Remove this grouped item from the Buyer PDF? It will stay in customer history.")) return false;
+  for (const id of itemIds) {
+    const result = await api(`/api/purchase-items/${id}/invoice-removal`, {
+      method: "PATCH",
+      body: { remove: true, reason: "Excluded from buyer PDF" },
+    });
+    if (!result?.ok) {
+      alert(result?.error || "Could not remove grouped item.");
+      return false;
+    }
+  }
+  await loadBatches();
   return true;
 };
 
@@ -1069,6 +1098,27 @@ function buyerPdfActiveItems(batch) {
   return (batch?.purchases || []).flatMap((purchase) => activeInvoiceItems(purchase.items || []));
 }
 
+function buyerPdfItemGroups(batch) {
+  const groups = new Map();
+  for (const item of buyerPdfActiveItems(batch)) {
+    const name = [item.brand, item.model].filter(Boolean).join(" ") || item.category || "Item";
+    const expiration = formatExpirationForDisplay(item.expiration);
+    const condition = item.condition || "Sealed";
+    const key = [normalizeMatchText(name), expiration, condition.toLowerCase()].join("|");
+    if (!groups.has(key)) {
+      groups.set(key, { key, name, expiration, condition, quantity: 0, items: [] });
+    }
+    const group = groups.get(key);
+    group.quantity += Number(item.quantity || 0);
+    group.items.push(item);
+  }
+  return Array.from(groups.values());
+}
+
+function buyerPdfGroupInputId(context, batchId, index) {
+  return `pdfItemPrice-${context}-${batchId}-group-${index}`;
+}
+
 window.fillBuyerPdfPrices = (id, context) => {
   const batch = [...batchesCache, ...allBatchesCache].find((entry) => Number(entry.id) === Number(id));
   const fillAllPrice = Number($(`pdfAmount-${context}-${id}`)?.value || 0);
@@ -1085,9 +1135,9 @@ window.fillBuyerPdfBuyerPrices = (id, context) => {
   const batch = [...batchesCache, ...allBatchesCache].find((entry) => Number(entry.id) === Number(id));
   const buyerName = $(`pdfBuyer-${context}-${id}`)?.value || "";
   if (!batch) return false;
-  for (const item of buyerPdfActiveItems(batch)) {
-    const input = $(`pdfItemPrice-${context}-${batch.id}-${item.id}`);
-    const expected = getExpectedBuyerPrice(item, buyerName);
+  for (const [index, group] of buyerPdfItemGroups(batch).entries()) {
+    const input = $(buyerPdfGroupInputId(context, batch.id, index));
+    const expected = getExpectedBuyerPrice(group.items[0], buyerName);
     if (input) input.value = expected === null ? "" : Number(expected).toFixed(2);
   }
   status(`pdfStatus-${context}-${id}`, `Loaded ${buyerName || "buyer"} prices where matches were found.`);
@@ -1096,8 +1146,8 @@ window.fillBuyerPdfBuyerPrices = (id, context) => {
 
 function applyBuyerPdfFillAllPrice(batch, context, fillAllPrice) {
   if (!fillAllPrice || fillAllPrice <= 0) return;
-  for (const item of buyerPdfActiveItems(batch)) {
-    const input = $(`pdfItemPrice-${context}-${batch.id}-${item.id}`);
+  for (const [index] of buyerPdfItemGroups(batch).entries()) {
+    const input = $(buyerPdfGroupInputId(context, batch.id, index));
     if (input) input.value = fillAllPrice.toFixed(2);
   }
 }
@@ -1106,15 +1156,16 @@ function collectBuyerPdfItemPrices(batch, context) {
   if (!batch) return { ok: false, error: "Could not find this invoice." };
   const prices = {};
   let total = 0;
-  for (const item of buyerPdfActiveItems(batch)) {
-    const input = $(`pdfItemPrice-${context}-${batch.id}-${item.id}`);
+  for (const [index, group] of buyerPdfItemGroups(batch).entries()) {
+    const input = $(buyerPdfGroupInputId(context, batch.id, index));
     const value = Number(String(input?.value || "").replace(/[$,\s]/g, ""));
     if (!Number.isFinite(value) || value <= 0) {
-      const itemName = [item.brand, item.model].filter(Boolean).join(" ") || item.category || "Item";
-      return { ok: false, error: `Enter a selling price for ${itemName}.` };
+      return { ok: false, error: `Enter a selling price for ${group.name} exp ${group.expiration}.` };
     }
-    prices[item.id] = value;
-    total += value * Number(item.quantity || 0);
+    for (const item of group.items) {
+      prices[item.id] = value;
+      total += value * Number(item.quantity || 0);
+    }
   }
   return { ok: true, prices, total };
 }
