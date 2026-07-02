@@ -20,6 +20,7 @@ let editingCustomerPhone = "";
 let editItemsByPurchase = {};
 let editEditorByPurchase = {};
 let mercuryPrices = [];
+let firstClassPrices = [];
 let loginFollowupNoticeShown = false;
 
 init();
@@ -282,8 +283,12 @@ function renderItems() {
 }
 
 async function loadBuyerPrices() {
-  const result = await api("/api/buyer-prices/mercury", { silent: true });
-  mercuryPrices = result.rows || [];
+  const [mercuryResult, firstClassResult] = await Promise.all([
+    api("/api/buyer-prices/mercury", { silent: true }),
+    api("/api/buyer-prices/first-class", { silent: true }),
+  ]);
+  mercuryPrices = mercuryResult.rows || [];
+  firstClassPrices = firstClassResult.rows || [];
   renderPriceProductOptions();
 }
 
@@ -438,7 +443,8 @@ function renderInvoiceHistoryCard(batch) {
   const paid = Number(batch.total_paid || 0);
   const sold = Number(batch.sale_price || 0);
   const profit = sold - paid;
-  const mercuryTotal = calculateMercuryInvoiceTotal(batch);
+  const mercuryTotal = calculateBuyerInvoiceTotal(batch, mercuryPrices);
+  const firstClassTotal = calculateBuyerInvoiceTotal(batch, firstClassPrices);
   const pdfPanelId = `buyerPdfSetup-history-${batch.id}`;
   const pdfBuyerId = `pdfBuyer-history-${batch.id}`;
   const pdfAmountId = `pdfAmount-history-${batch.id}`;
@@ -501,6 +507,7 @@ function renderInvoiceHistoryCard(batch) {
       </p>
       ${batch.sale_notes ? `<p class="mini"><b>Sale notes:</b> ${escapeHtml(batch.sale_notes)}</p>` : ""}
       ${mercuryTotal ? `<p class="mini"><b>Mercury sheet estimate:</b> ${money(mercuryTotal)}</p>` : ""}
+      ${firstClassTotal ? `<p class="mini"><b>First Class estimate:</b> ${money(firstClassTotal)}</p>` : ""}
       <div class="invoice-actions">
         <strong>${money(sold || paid)}</strong>
         <div>
@@ -510,7 +517,7 @@ function renderInvoiceHistoryCard(batch) {
       </div>
       <div id="${pdfPanelId}" class="buyer-pdf-setup hidden">
         <div class="form-grid three">
-          <label>Buyer<select id="${pdfBuyerId}">
+          <label>Buyer<select id="${pdfBuyerId}" onchange="fillBuyerPdfBuyerPrices(${batch.id}, 'history')">
             <option${batch.sold_to === "Mercury Medical Supplies" ? " selected" : ""}>Mercury Medical Supplies</option>
             <option${batch.sold_to === "First Class Medical Supply" ? " selected" : ""}>First Class Medical Supply</option>
           </select></label>
@@ -702,7 +709,8 @@ function renderTemplateGroups() {
 
 function renderBatchCard(batch, context = "active") {
   const profit = Number(batch.sale_price || 0) - Number(batch.total_paid || 0);
-  const mercuryTotal = calculateMercuryInvoiceTotal(batch);
+  const mercuryTotal = calculateBuyerInvoiceTotal(batch, mercuryPrices);
+  const firstClassTotal = calculateBuyerInvoiceTotal(batch, firstClassPrices);
   const pdfPanelId = `buyerPdfSetup-${context}-${batch.id}`;
   const pdfBuyerId = `pdfBuyer-${context}-${batch.id}`;
   const pdfAmountId = `pdfAmount-${context}-${batch.id}`;
@@ -756,8 +764,9 @@ function renderBatchCard(batch, context = "active") {
         <div class="form-grid">
           <label>Sale notes<input id="saleNotes-${batch.id}" value="${escapeAttr(batch.sale_notes || "")}" placeholder="Marketplace, payment notes, buyer notes"></label>
         </div>
-        <div class="sale-summary"><span>Paid: ${money(batch.total_paid)}</span><span>Sold: ${money(batch.sale_price)}</span><strong>Profit: ${money(profit)}</strong>${mercuryTotal ? `<span>Mercury sheet: ${money(mercuryTotal)}</span>` : ""}</div>
+        <div class="sale-summary"><span>Paid: ${money(batch.total_paid)}</span><span>Sold: ${money(batch.sale_price)}</span><strong>Profit: ${money(profit)}</strong>${mercuryTotal ? `<span>Mercury sheet: ${money(mercuryTotal)}</span>` : ""}${firstClassTotal ? `<span>First Class: ${money(firstClassTotal)}</span>` : ""}</div>
         ${mercuryTotal ? `<button class="mini-btn" onclick="applyBuyerPricing(${batch.id}, 'Mercury')">Use Mercury Prices</button>` : ""}
+        ${firstClassTotal ? `<button class="mini-btn" onclick="applyBuyerPricing(${batch.id}, 'First Class Medical Supply')">Use First Class Prices</button>` : ""}
         ${batch.tracking_number ? `<p class="mini"><b>Tracking:</b> ${escapeHtml(batch.tracking_number)}</p>` : ""}
       </div>
       <div class="invoice-actions">
@@ -771,7 +780,7 @@ function renderBatchCard(batch, context = "active") {
       </div>
       <div id="${pdfPanelId}" class="buyer-pdf-setup hidden">
         <div class="form-grid three">
-          <label>Buyer<select id="${pdfBuyerId}">
+          <label>Buyer<select id="${pdfBuyerId}" onchange="fillBuyerPdfBuyerPrices(${batch.id}, '${context}')">
             <option${batch.sold_to === "Mercury Medical Supplies" ? " selected" : ""}>Mercury Medical Supplies</option>
             <option${batch.sold_to === "First Class Medical Supply" ? " selected" : ""}>First Class Medical Supply</option>
           </select></label>
@@ -872,7 +881,7 @@ function renderBuyerPdfItemControls(batch, context) {
   const removedItems = items.filter((item) => item.invoice_removed_at);
   const itemLine = (item, removed = false) => {
     const itemName = [item.brand, item.model].filter(Boolean).join(" ") || item.category || "Item";
-    const priceValue = buyerPdfItemPriceValue(item);
+    const priceValue = buyerPdfItemPriceValue(item, batch.sold_to);
     const priceId = `pdfItemPrice-${context}-${batch.id}-${item.id}`;
     return `
       <div class="buyer-pdf-item ${removed ? "removed" : ""}">
@@ -896,11 +905,12 @@ function activeInvoiceItems(itemsList) {
   return (itemsList || []).filter((item) => !item.invoice_removed_at);
 }
 
-function getExpectedBuyerPrice(item) {
-  const product = findMercuryProductForItem(item);
+function getExpectedBuyerPrice(item, buyerName = "") {
+  const priceRows = pricesForBuyer(buyerName);
+  const product = findPriceProductForItem(item, priceRows);
   const quote = product ? getMercuryPriceForItem(product, item.expiration, item.condition) : null;
-  const mercuryPrice = quote?.price === undefined || quote?.price === null ? null : Number(quote.price);
-  if (mercuryPrice !== null && !Number.isNaN(mercuryPrice)) return mercuryPrice;
+  const buyerPrice = quote?.price === undefined || quote?.price === null ? null : Number(quote.price);
+  if (buyerPrice !== null && !Number.isNaN(buyerPrice)) return buyerPrice;
   const savedPrice = Number(item.expected_sell_each || 0);
   return savedPrice > 0 ? savedPrice : null;
 }
@@ -1050,8 +1060,8 @@ function buyerPdfUnitValue(batch) {
   return total > 0 && quantity > 0 ? (total / quantity).toFixed(2) : "";
 }
 
-function buyerPdfItemPriceValue(item) {
-  const expected = getExpectedBuyerPrice(item);
+function buyerPdfItemPriceValue(item, buyerName = "") {
+  const expected = getExpectedBuyerPrice(item, buyerName);
   return expected === null ? "" : Number(expected).toFixed(2);
 }
 
@@ -1068,6 +1078,19 @@ window.fillBuyerPdfPrices = (id, context) => {
   }
   applyBuyerPdfFillAllPrice(batch, context, fillAllPrice);
   status(`pdfStatus-${context}-${id}`, "Filled every item price. Adjust any individual lines before exporting.");
+  return true;
+};
+
+window.fillBuyerPdfBuyerPrices = (id, context) => {
+  const batch = [...batchesCache, ...allBatchesCache].find((entry) => Number(entry.id) === Number(id));
+  const buyerName = $(`pdfBuyer-${context}-${id}`)?.value || "";
+  if (!batch) return false;
+  for (const item of buyerPdfActiveItems(batch)) {
+    const input = $(`pdfItemPrice-${context}-${batch.id}-${item.id}`);
+    const expected = getExpectedBuyerPrice(item, buyerName);
+    if (input) input.value = expected === null ? "" : Number(expected).toFixed(2);
+  }
+  status(`pdfStatus-${context}-${id}`, `Loaded ${buyerName || "buyer"} prices where matches were found.`);
   return true;
 };
 
@@ -1101,10 +1124,10 @@ window.applyBuyerPricing = (id, buyerName) => {
   const salePrice = $(`salePrice-${id}`);
   const batch = [...batchesCache, ...allBatchesCache].find((entry) => Number(entry.id) === Number(id));
   const buyer = buyerName === "input" ? soldTo.value : buyerName;
-  if (!batch || !/mercury/i.test(buyer || "")) return;
-  const total = calculateMercuryInvoiceTotal(batch);
+  if (!batch) return;
+  const total = calculateBuyerInvoiceTotal(batch, pricesForBuyer(buyer));
   if (!total) return;
-  soldTo.value = "Mercury";
+  soldTo.value = /first\s*class/i.test(buyer || "") ? "First Class Medical Supply" : "Mercury Medical Supplies";
   salePrice.value = total.toFixed(2);
 };
 
@@ -1889,10 +1912,14 @@ function compressImage(file) {
 }
 
 function calculateMercuryInvoiceTotal(batch) {
-  if (!mercuryPrices.length) return 0;
+  return calculateBuyerInvoiceTotal(batch, mercuryPrices);
+}
+
+function calculateBuyerInvoiceTotal(batch, priceRows) {
+  if (!priceRows.length) return 0;
   return (batch.purchases || []).reduce((sum, purchase) => (
     sum + activeInvoiceItems(purchase.items || []).reduce((itemSum, item) => {
-      const product = findMercuryProductForItem(item);
+      const product = findPriceProductForItem(item, priceRows);
       if (!product) return itemSum;
       const quote = getMercuryPriceForItem(product, item.expiration, item.condition);
       return itemSum + Number(item.quantity || 0) * Number(quote?.price || 0);
@@ -1901,11 +1928,24 @@ function calculateMercuryInvoiceTotal(batch) {
 }
 
 function findMercuryProductForItem(item) {
+  return findPriceProductForItem(item, mercuryPrices);
+}
+
+function pricesForBuyer(buyerName = "") {
+  return /first\s*class/i.test(buyerName || "") ? firstClassPrices : mercuryPrices;
+}
+
+function findPriceProductForItem(item, priceRows) {
   const itemText = normalizeMatchText(`${item.brand || ""} ${item.model || ""}`);
   if (!itemText) return null;
-  return mercuryPrices.find((product) => normalizeMatchText(product.product) === itemText)
-    || mercuryPrices.find((product) => itemText.includes(normalizeMatchText(product.product)))
-    || mercuryPrices.find((product) => normalizeMatchText(product.product).includes(itemText));
+  const itemSku = skuFromText(`${item.brand || ""} ${item.model || ""}`);
+  if (itemSku) {
+    const skuMatch = priceRows.find((product) => skuFromText(product.product) === itemSku);
+    if (skuMatch) return skuMatch;
+  }
+  return priceRows.find((product) => normalizeMatchText(product.product) === itemText)
+    || priceRows.find((product) => itemText.includes(normalizeMatchText(product.product)))
+    || priceRows.find((product) => normalizeMatchText(product.product).includes(itemText));
 }
 
 function getMercuryPriceForItem(product, expiration, condition) {
@@ -1932,6 +1972,11 @@ function monthsFromTier(label) {
 
 function normalizeMatchText(value) {
   return cleanMercuryProductName(value).toLowerCase().replace(/\[[^\]]*]/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function skuFromText(value) {
+  const match = String(value || "").toUpperCase().match(/\b(?:STP|STE|STS|GS)-[A-Z]{2}-\d{3}\b|\b\d{5}-\d{4}-\d{2}\b|\b\d{3}\b(?=\))/);
+  return match ? match[0] : "";
 }
 
 function cleanMercuryProductName(value) {

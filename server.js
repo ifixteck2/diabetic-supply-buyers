@@ -10,10 +10,14 @@ const isProduction = process.env.NODE_ENV === "production";
 const mercuryPriceSheetCsvUrl =
   process.env.MERCURY_PRICE_SHEET_CSV_URL ||
   "https://docs.google.com/spreadsheets/d/1mZAIHlWJcicbfResT2X9kyf7iUcXo_1q35jwjSyMk2o/export?format=csv&gid=2027163115";
+const firstClassPriceSheetCsvUrl =
+  process.env.FIRST_CLASS_PRICE_SHEET_CSV_URL ||
+  "https://docs.google.com/spreadsheets/d/1Y6J9TVs5n8CtmLr5CckOpjkJgQTCkRLS/export?format=csv&gid=732569512";
 const atlasUsedSheetId = process.env.ATLAS_USED_SHEET_ID || "1pu4Adxq4MGB6Qour0k__4gBdgnggWRoSVYnJUKgxzEw";
 const atlasNewSheetId = process.env.ATLAS_NEW_SHEET_ID || "1f3b0rW1d5xTonDtkoPmLIAOjKc-CUF6clMBalPWyS80";
 const followupDaysAfterFirstPurchase = 28;
 let mercuryPriceCache = { fetchedAt: 0, rows: [] };
+let firstClassPriceCache = { fetchedAt: 0, rows: [] };
 let atlasPriceCache = { fetchedAt: 0, rows: [] };
 let ktPriceCache = { rows: [] };
 
@@ -641,6 +645,16 @@ app.get("/api/buyer-prices/mercury", requireAuth, async (req, res) => {
   }
 });
 
+app.get("/api/buyer-prices/first-class", requireAuth, async (req, res) => {
+  try {
+    const rows = await getFirstClassPrices();
+    res.json({ buyer: "First Class Medical Supply", updated_at: firstClassPriceCache.fetchedAt, rows });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Could not load First Class price sheet." });
+  }
+});
+
 app.patch("/api/batches/:id/status", requireAuth, async (req, res) => {
   const id = Number(req.params.id);
   const nextStatus = String(req.body?.status || "").trim();
@@ -729,11 +743,13 @@ app.get("/api/batches/:id/buyer-pdf", requireAuth, async (req, res) => {
 
   const batches = await attachPurchases([batch]);
   const fullBatch = batches[0];
-  const mercuryPrices = await getMercuryPrices();
+  const buyerPrices = /first\s*class/i.test(fullBatch.sold_to || "")
+    ? await getFirstClassPrices()
+    : await getMercuryPrices();
   const showPrices = String(req.query.prices || "1") !== "0";
   const overrideUnitPrice = req.query.unit_price === undefined || req.query.unit_price === "" ? null : Number(req.query.unit_price);
   const itemPrices = parseBuyerPdfItemPrices(req.query.item_prices);
-  const pdf = createBuyerInvoicePdf(fullBatch, mercuryPrices, {
+  const pdf = createBuyerInvoicePdf(fullBatch, buyerPrices, {
     showPrices,
     overrideUnitPrice: overrideUnitPrice !== null && !Number.isNaN(overrideUnitPrice) && overrideUnitPrice >= 0 ? overrideUnitPrice : null,
     itemPrices,
@@ -1857,6 +1873,19 @@ async function getMercuryPrices() {
   return rows;
 }
 
+async function getFirstClassPrices() {
+  const cacheMs = 1000 * 60 * 10;
+  if (firstClassPriceCache.rows.length && Date.now() - firstClassPriceCache.fetchedAt < cacheMs) {
+    return firstClassPriceCache.rows;
+  }
+  const response = await fetch(firstClassPriceSheetCsvUrl);
+  if (!response.ok) throw new Error(`First Class price sheet returned ${response.status}`);
+  const csv = await response.text();
+  const rows = parseFirstClassPriceCsv(csv);
+  firstClassPriceCache = { fetchedAt: Date.now(), rows };
+  return rows;
+}
+
 function parseMercuryPriceCsv(csv) {
   const table = parseCsv(csv);
   let currentTiers = [];
@@ -1892,6 +1921,49 @@ function parseMercuryPriceCsv(csv) {
     products.push({
       id: makePriceKey(productName),
       buyer: "Mercury",
+      product: productName,
+      category: inferCategory(productName),
+      prices,
+    });
+  }
+  return products;
+}
+
+function parseFirstClassPriceCsv(csv) {
+  const table = parseCsv(csv);
+  let currentTiers = [];
+  const products = [];
+  for (const row of table) {
+    const productName = cleanMercuryProductName(row[0]);
+    const priceCells = row.slice(1, 6);
+    const hasPrices = priceCells.some((cell) => parseMoney(cell) !== null || /^(ASK|STOP|N\/A|No EXP|-|Buying)/i.test(String(cell || "").trim()));
+    const headerCells = priceCells.map((cell) => String(cell || "").trim()).filter(Boolean);
+
+    if (headerCells.some((cell) => /\d+\s*mo|\d+\/\d+|DINGS?|DAMAGED|Less Than/i.test(cell)) && !priceCells.some((cell) => parseMoney(cell) !== null)) {
+      currentTiers = priceCells.map((cell, index) => ({
+        column: index + 1,
+        label: String(cell || "").trim() || `Tier ${index + 1}`,
+        damaged: /DINGS?|DAMAGED/i.test(String(cell || "")),
+      }));
+      continue;
+    }
+
+    if (!productName || !hasPrices || isMercuryInfoRow(productName)) continue;
+    const prices = priceCells.map((cell, index) => {
+      const tier = currentTiers[index] || { column: index + 1, label: `Tier ${index + 1}`, damaged: false };
+      const raw = String(cell || "").trim();
+      return {
+        label: tier.label,
+        damaged: tier.damaged,
+        raw,
+        price: parseMoney(raw),
+      };
+    }).filter((entry) => entry.raw);
+
+    if (!prices.length) continue;
+    products.push({
+      id: makePriceKey(`first-class-${productName}`),
+      buyer: "First Class Medical Supply",
       product: productName,
       category: inferCategory(productName),
       prices,
@@ -2449,6 +2521,11 @@ function escapeHtml(value) {
 function findMercuryProductForItem(item, mercuryPrices) {
   const itemText = normalizeMatchText(`${item.brand || ""} ${item.model || ""}`);
   if (!itemText) return null;
+  const itemSku = skuFromText(`${item.brand || ""} ${item.model || ""}`);
+  if (itemSku) {
+    const skuMatch = mercuryPrices.find((product) => skuFromText(product.product) === itemSku);
+    if (skuMatch) return skuMatch;
+  }
   return mercuryPrices.find((product) => normalizeMatchText(product.product) === itemText)
     || mercuryPrices.find((product) => itemText.includes(normalizeMatchText(product.product)))
     || mercuryPrices.find((product) => normalizeMatchText(product.product).includes(itemText))
@@ -2482,6 +2559,12 @@ function normalizeMatchText(value) {
     .replace(/\[[^\]]*]/g, " ")
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
+}
+
+function skuFromText(value) {
+  const text = String(value || "").toUpperCase();
+  const match = text.match(/\b(?:STP|STE|STS|GS)-[A-Z]{2}-\d{3}\b|\b\d{5}-\d{4}-\d{2}\b|\b\d{3}\b(?=\))/);
+  return match ? match[0] : "";
 }
 
 function parseBuyerPdfItemPrices(raw) {
