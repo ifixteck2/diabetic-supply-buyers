@@ -711,7 +711,12 @@ function renderBatchCard(batch, context = "active") {
     const removedItems = (purchase.items || []).filter((item) => item.invoice_removed_at);
     const itemsHtml = activeItems.map((item) => renderPendingInvoiceItemRow(batch, item)).join("");
     const removedHtml = removedItems.map((item) => (
-      `<div class="removed-item">${Number(item.quantity || 0)}x ${escapeHtml([item.brand, item.model].filter(Boolean).join(" ") || item.category || "Item")} removed${item.invoice_removed_reason ? ` - ${escapeHtml(item.invoice_removed_reason)}` : ""}</div>`
+      `<div class="removed-item">
+        <span>${Number(item.quantity || 0)}x ${escapeHtml([item.brand, item.model].filter(Boolean).join(" ") || item.category || "Item")} removed${item.invoice_removed_reason ? ` - ${escapeHtml(item.invoice_removed_reason)}` : ""}</span>
+        ${item.invoice_removed_reason === HOLD_ITEM_REASON
+          ? `<button class="mini-btn" onclick="restorePendingInvoiceItem(${item.id})">Move Back To Invoice</button>`
+          : `<button class="mini-btn warning" onclick="moveItemToNoBuyer(${item.id})">Move To No Buyer</button>`}
+      </div>`
     )).join("");
     return `<div class="purchase-block">
       <p><b>${escapeHtml(purchase.customer_name || "Customer")}</b> - ${formatPhone(purchase.customer_phone)} - ${new Date(purchase.purchase_date).toLocaleDateString()} - ${money(purchase.total_paid)}</p>
@@ -804,7 +809,7 @@ function renderPendingInvoiceItemRow(batch, item) {
       <td>${buyerEach === null ? "N/A" : money(buyerEach)}</td>
       <td class="${profitEach === null ? "" : profitEach >= 0 ? "profit-good" : "profit-bad"}">${profitEach === null ? "N/A" : money(profitEach)}</td>
       <td class="${totalProfit === null ? "" : totalProfit >= 0 ? "profit-good" : "profit-bad"}"><strong>${totalProfit === null ? "N/A" : money(totalProfit)}</strong></td>
-      <td><span class="pdf-item-actions"><button class="mini-btn warning" onclick="movePendingItemToHold(${item.id})">No Buyer Right Now</button><button class="mini-btn danger" onclick="removePendingInvoiceItem(${item.id})">Remove From Invoice</button></span></td>
+      <td><span class="pdf-item-actions"><button class="mini-btn warning" onclick="moveItemToNoBuyer(${item.id})">No Buyer Right Now</button><button class="mini-btn danger" onclick="removePendingInvoiceItem(${item.id})">Remove From Invoice</button></span></td>
     </tr>
   `;
 }
@@ -912,8 +917,8 @@ window.removePendingInvoiceItem = async (id, reason = "Removed from invoice") =>
   return true;
 };
 
-window.movePendingItemToHold = async (id) => {
-  if (!confirm("Move this item out of Active invoices into No Buyer Items?")) return false;
+window.moveItemToNoBuyer = async (id) => {
+  if (!confirm("Move this item into No Buyer Items?")) return false;
   const result = await api(`/api/purchase-items/${id}/invoice-removal`, {
     method: "PATCH",
     body: { remove: true, reason: HOLD_ITEM_REASON },
