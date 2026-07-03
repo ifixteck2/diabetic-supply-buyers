@@ -196,7 +196,7 @@ app.patch("/api/phone-invoices/:id/sale", requirePhoneAuth, async (req, res) => 
     res.json({ ok: true, invoice: result.rows[0] });
   } catch (error) {
     console.error("Could not save phone invoice sale amount.", error);
-    res.status(500).json({ error: "Could not save phone invoice sale amount." });
+    res.status(500).json({ error: `Could not save phone invoice sale amount: ${error.message}` });
   }
 });
 
@@ -1191,8 +1191,10 @@ async function migrate() {
     alter table phone_purchases alter column invoice_added_at set not null;
     alter table phone_invoices add column if not exists sale_price numeric(12,2);
     alter table phone_invoices add column if not exists sale_notes text not null default '';
+    alter table phone_invoices add column if not exists status_updated_at timestamptz not null default now();
     alter table phone_invoices add column if not exists shipped_at timestamptz;
     alter table phone_invoices add column if not exists sold_at timestamptz;
+    alter table phone_invoices add column if not exists closed_at timestamptz;
     update invoices set status = 'Active' where status is null or status = '';
   `);
 
