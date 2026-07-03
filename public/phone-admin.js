@@ -470,12 +470,10 @@ function updateProjectedPrice() {
     const deduction = selectedPhonePurchaseDeduction(row);
     const finalPrice = Math.max(0, Number(row.price || 0) - Number(deduction.amount || 0));
     $("phoneProjected").value = finalPrice;
-    $("phonePricePreview").classList.remove("hidden");
-    const deductionText = deduction.notes.length ? ` - ${escapeHtml(deduction.notes.join(", "))}` : "";
-    $("phonePricePreview").innerHTML = `<span>${escapeHtml($("phoneBuyer").value)} projected sell price</span><strong>${money(finalPrice)}</strong><em>${escapeHtml(row.source_sheet || row.source || "Price sheet")} - ${escapeHtml(row.condition)} - ${escapeHtml(row.carrier || "Unlocked")}${deductionText}</em>`;
   } else {
-    $("phonePricePreview").classList.add("hidden");
+    $("phoneProjected").value = "";
   }
+  $("phonePricePreview").classList.add("hidden");
 }
 
 function phonePricingCondition() {
@@ -1170,11 +1168,10 @@ function renderKtReturnCard(invoice) {
 function invoiceTotals(invoice) {
   const purchases = invoice.purchases || [];
   const totalCost = purchases.reduce((sum, row) => sum + Number(row.quantity || 0) * Number(row.cost_each || 0), 0);
-  const projected = purchases.reduce((sum, row) => sum + Number(row.quantity || 0) * Number(row.projected_sell_each || 0), 0);
   const units = purchases.reduce((sum, row) => sum + Number(row.quantity || 0), 0);
   const salePrice = invoice.sale_price === null || invoice.sale_price === undefined || invoice.sale_price === "" ? null : Number(invoice.sale_price);
-  const profit = salePrice === null ? projected - totalCost : salePrice - totalCost;
-  return { totalCost, projected, units, salePrice, profit };
+  const profit = salePrice === null ? null : salePrice - totalCost;
+  return { totalCost, units, salePrice, profit };
 }
 
 function renderPastInvoiceCard(invoice) {
@@ -1188,8 +1185,8 @@ function renderPastInvoiceCard(invoice) {
         <span><small>Status</small>${escapeHtml(invoice.status)}</span>
         <span><small>Units</small>${totals.units}</span>
         <span><small>Cost</small>${money(totals.totalCost)}</span>
-        <span><small>${totals.salePrice === null ? "Projected" : "Sold For"}</small>${money(totals.salePrice ?? totals.projected)}</span>
-        <span class="${totals.profit >= 0 ? "profit-good" : "profit-bad"}"><small>Profit</small>${money(totals.profit)}</span>
+        <span><small>Sold For</small>${totals.salePrice === null ? "Not Set" : money(totals.salePrice)}</span>
+        <span class="${totals.profit === null || totals.profit >= 0 ? "profit-good" : "profit-bad"}"><small>Profit</small>${totals.profit === null ? "Not Set" : money(totals.profit)}</span>
         <strong>Open</strong>
       </button>
       <div id="pastInvoiceDetail${invoice.id}" class="past-invoice-detail hidden">
@@ -1201,9 +1198,8 @@ function renderPastInvoiceCard(invoice) {
 
 function renderPhoneInvoiceCard(invoice) {
   const purchases = invoice.purchases || [];
-  const { totalCost, projected, units, salePrice } = invoiceTotals(invoice);
+  const { totalCost, units, salePrice } = invoiceTotals(invoice);
   const actualProfit = salePrice === null ? null : salePrice - totalCost;
-  const projectedProfit = projected - totalCost;
   const canRemove = invoice.status === "Pending";
   const canReturn = salePrice === null;
   const isPending = invoice.status === "Pending";
@@ -1218,9 +1214,6 @@ function renderPhoneInvoiceCard(invoice) {
       <td>${escapeHtml(row.carrier || "")}</td>
       <td>${row.quantity}</td>
       <td>${money(row.cost_each)}</td>
-      <td>${money(row.projected_sell_each)}</td>
-      <td class="${profitClass(row)}">${money(profitEach(row))}</td>
-      <td class="${profitClass(row)}"><strong>${money(profitTotal(row))}</strong></td>
       <td><div class="phone-row-actions"><button class="mini-btn" onclick="startPhonePurchaseEdit(${row.id})">Edit</button>${canRemove ? `<button class="mini-btn" onclick="movePhonePurchaseToInvoice(${row.id})">Move</button>` : ""}${canReturn ? `<button class="mini-btn warning" onclick="returnPhonePurchaseToKt(${row.id})">Return</button>` : ""}${canRemove ? `<button class="mini-btn danger" onclick="removePhonePurchaseFromInvoice(${row.id})">Remove</button>` : ""}</div></td>
     </tr>
   `).join("");
@@ -1236,8 +1229,6 @@ function renderPhoneInvoiceCard(invoice) {
       <td>${escapeHtml(row.carrier || "")}</td>
       <td>${row.quantity}</td>
       <td>${money(row.cost_each)}</td>
-      <td>${money(row.projected_sell_each)}</td>
-      <td class="${profitClass(row)}"><strong>${money(profitTotal(row))}</strong></td>
       <td>${phoneAddedDate(row)}</td>
       <td><div class="phone-row-actions"><button class="mini-btn" onclick="startPhonePurchaseEdit(${row.id})">Edit</button>${canRemove ? `<button class="mini-btn" onclick="movePhonePurchaseToInvoice(${row.id})">Move</button>` : ""}${canReturn ? `<button class="mini-btn warning" onclick="returnPhonePurchaseToKt(${row.id})">Return</button>` : ""}${canRemove ? `<button class="mini-btn danger" onclick="removePhonePurchaseFromInvoice(${row.id})">Remove</button>` : ""}</div></td>
     </tr>
@@ -1265,8 +1256,7 @@ function renderPhoneInvoiceCard(invoice) {
         ${isPending ? `
           <div class="pending-invoice-metrics">
             <span><small>Cost</small><b>${money(totalCost)}</b></span>
-            <span><small>Projected</small><b>${money(projected)}</b></span>
-            <span class="${projectedProfit >= 0 ? "profit-good" : "profit-bad"}"><small>Profit</small><b>${money(projectedProfit)}</b></span>
+            <span><small>Phones</small><b>${units}</b></span>
           </div>
         ` : ""}
         <span class="pill ${invoice.status?.toLowerCase()}">${escapeHtml(invoice.status)}</span>
@@ -1274,28 +1264,26 @@ function renderPhoneInvoiceCard(invoice) {
       ${isPending ? `
         <div class="table-wrap pending-table-wrap">
           <table class="phone-profit-table pending-phone-table">
-            <thead><tr><th>Phone</th><th>Carrier</th><th>Qty</th><th>Cost</th><th>Sell</th><th>Profit</th><th>Added</th><th></th></tr></thead>
-            <tbody>${pendingRows || `<tr><td colspan="8">No purchases added.</td></tr>`}</tbody>
+            <thead><tr><th>Phone</th><th>Carrier</th><th>Qty</th><th>Cost</th><th>Added</th><th></th></tr></thead>
+            <tbody>${pendingRows || `<tr><td colspan="6">No purchases added.</td></tr>`}</tbody>
           </table>
         </div>
       ` : `
         <div class="table-wrap">
           <table class="phone-profit-table">
-            <thead><tr><th>Device</th><th>Carrier</th><th>Qty</th><th>Cost Each</th><th>Sell Each</th><th>Profit Each</th><th>Total Profit</th><th></th></tr></thead>
-            <tbody>${rows || `<tr><td colspan="8">No purchases added.</td></tr>`}</tbody>
+            <thead><tr><th>Device</th><th>Carrier</th><th>Qty</th><th>Cost Each</th><th></th></tr></thead>
+            <tbody>${rows || `<tr><td colspan="5">No purchases added.</td></tr>`}</tbody>
           </table>
         </div>
       `}
       <div class="sale-summary ${isPending ? "pending-sale-summary" : ""}">
         <span>Cost ${money(totalCost)}</span>
-        <span>Projected ${money(projected)}</span>
         ${salePrice === null ? `<span>Actual Sale Not Set</span>` : `<span>Actual Sale ${money(salePrice)}</span>`}
-        <strong>Profit ${money(projectedProfit)}</strong>
         ${actualProfit === null ? "" : `<strong class="${actualProfit >= 0 ? "profit-good" : "profit-bad"}">Actual Profit ${money(actualProfit)}</strong>`}
       </div>
       ${isPending ? `<details class="phone-controls"><summary>Sale / Status Controls</summary>${saleControls}</details>` : saleControls}
       <div class="invoice-actions">
-        <strong>${money(projected || totalCost)}</strong>
+        <strong>${salePrice === null ? money(totalCost) : money(salePrice)}</strong>
         <div>
           <button class="mini-btn" onclick="openPhoneBuyerPdf(${invoice.id})">Buyer Invoice PDF</button>
           ${invoice.status !== "Shipped" ? `<button class="mini-btn" onclick="setPhoneInvoiceStatus(${invoice.id}, 'Shipped')">Mark Shipped</button>` : ""}
@@ -1399,18 +1387,6 @@ function phoneInvoiceItemCondition(row) {
   return row.grade || "USED";
 }
 
-function profitEach(row) {
-  return Number(row.projected_sell_each || 0) - Number(row.cost_each || 0);
-}
-
-function profitTotal(row) {
-  return profitEach(row) * Number(row.quantity || 0);
-}
-
-function profitClass(row) {
-  return profitEach(row) >= 0 ? "profit-good" : "profit-bad";
-}
-
 function phoneAddedDate(row) {
   const addedAt = row.invoice_added_at || row.created_at;
   if (!addedAt) return "";
@@ -1458,27 +1434,23 @@ function renderPhoneDashboard() {
     .reduce((acc, invoice) => addInvoiceStats(acc, invoice), emptyPhoneStats(buyer)));
   $("phoneDashboardStats").innerHTML = `
     <div class="stat"><span>Total Cost</span><strong>${money(totals.cost)}</strong></div>
-    <div class="stat"><span>Projected Sale</span><strong>${money(totals.projected)}</strong></div>
-    <div class="stat"><span>Projected Profit</span><strong>${money(totals.projectedProfit)}</strong></div>
     <div class="stat"><span>Actual Sales</span><strong>${money(totals.actualSale)}</strong></div>
     <div class="stat"><span>Actual Profit</span><strong class="${totals.actualProfit >= 0 ? "profit-good" : "profit-bad"}">${money(totals.actualProfit)}</strong></div>
     <div class="stat"><span>Units</span><strong>${totals.units}</strong></div>
     <div class="stat"><span>Pending Cost</span><strong>${money(totals.pendingCost)}</strong></div>
     <div class="stat"><span>Shipped Cost</span><strong>${money(totals.shippedCost)}</strong></div>
     <div class="stat"><span>Needs Sale Amount</span><strong>${totals.needsSaleAmount}</strong></div>
-    <div class="stat"><span>Avg Profit / Unit</span><strong>${money(totals.units ? totals.projectedProfit / totals.units : 0)}</strong></div>
+    <div class="stat"><span>Actual Profit / Unit</span><strong>${money(totals.units ? totals.actualProfit / totals.units : 0)}</strong></div>
   `;
   $("phoneBuyerBreakdown").innerHTML = `
     <table class="phone-breakdown-table">
-      <thead><tr><th>Buyer</th><th>Invoices</th><th>Units</th><th>Cost</th><th>Projected Sale</th><th>Projected Profit</th><th>Actual Sales</th><th>Actual Profit</th><th>Needs Sale Amount</th></tr></thead>
+      <thead><tr><th>Buyer</th><th>Invoices</th><th>Units</th><th>Cost</th><th>Actual Sales</th><th>Actual Profit</th><th>Needs Sale Amount</th></tr></thead>
       <tbody>${buyerStats.map((row) => `
         <tr>
           <td><strong>${row.buyer}</strong></td>
           <td>${row.invoices}</td>
           <td>${row.units}</td>
           <td>${money(row.cost)}</td>
-          <td>${money(row.projected)}</td>
-          <td class="${row.projectedProfit >= 0 ? "profit-good" : "profit-bad"}">${money(row.projectedProfit)}</td>
           <td>${money(row.actualSale)}</td>
           <td class="${row.actualProfit >= 0 ? "profit-good" : "profit-bad"}">${money(row.actualProfit)}</td>
           <td>${row.needsSaleAmount}</td>
@@ -1489,20 +1461,17 @@ function renderPhoneDashboard() {
 }
 
 function emptyPhoneStats(buyer = "All") {
-  return { buyer, invoices: 0, units: 0, cost: 0, projected: 0, projectedProfit: 0, actualSale: 0, actualProfit: 0, pendingCost: 0, shippedCost: 0, needsSaleAmount: 0 };
+  return { buyer, invoices: 0, units: 0, cost: 0, actualSale: 0, actualProfit: 0, pendingCost: 0, shippedCost: 0, needsSaleAmount: 0 };
 }
 
 function addInvoiceStats(acc, invoice) {
   const purchases = invoice.purchases || [];
   const cost = purchases.reduce((sum, row) => sum + Number(row.quantity || 0) * Number(row.cost_each || 0), 0);
-  const projected = purchases.reduce((sum, row) => sum + Number(row.quantity || 0) * Number(row.projected_sell_each || 0), 0);
   const units = purchases.reduce((sum, row) => sum + Number(row.quantity || 0), 0);
   const salePrice = invoice.sale_price === null || invoice.sale_price === undefined || invoice.sale_price === "" ? null : Number(invoice.sale_price);
   acc.invoices += 1;
   acc.units += units;
   acc.cost += cost;
-  acc.projected += projected;
-  acc.projectedProfit += projected - cost;
   if (invoice.status === "Pending") acc.pendingCost += cost;
   if (invoice.status === "Shipped") acc.shippedCost += cost;
   if (invoice.status !== "Pending" && salePrice === null) acc.needsSaleAmount += 1;
@@ -1544,8 +1513,7 @@ async function ensurePhoneSaleAmountBeforeSold(id) {
   const existingSale = invoice.sale_price === null || invoice.sale_price === undefined || invoice.sale_price === "" ? "" : String(invoice.sale_price);
   let salePrice = currentInput || existingSale;
   if (!salePrice) {
-    const projected = invoiceTotals(invoice).projected;
-    salePrice = prompt(`Amount sold for ${invoice.label || `${invoice.buyer} Invoice`}?`, projected ? Number(projected).toFixed(2) : "");
+    salePrice = prompt(`Amount sold for ${invoice.label || `${invoice.buyer} Invoice`}?`, "");
     if (salePrice === null) return false;
   }
   const cleanPrice = Number(String(salePrice).replace(/[$,\s]/g, ""));
