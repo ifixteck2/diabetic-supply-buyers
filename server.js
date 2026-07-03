@@ -184,9 +184,9 @@ app.patch("/api/phone-invoices/:id/sale", requirePhoneAuth, async (req, res) => 
   try {
     const result = await pool.query(
       `update phone_invoices
-       set sale_price = $1,
+       set sale_price = $1::numeric,
          sale_notes = $2,
-         sold_at = case when $1 is not null and sold_at is null then now() else sold_at end,
+         sold_at = case when $1::numeric is not null and sold_at is null then now() else sold_at end,
          status_updated_at = now()
        where id = $3
        returning *`,
