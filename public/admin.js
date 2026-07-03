@@ -494,7 +494,7 @@ function renderInvoiceHistoryCard(batch) {
         </div>
         <span class="pill ${batch.status?.toLowerCase()}">${escapeHtml(batch.status || "Active")}</span>
       </div>
-      <div class="history-detail-grid">
+      <div class="history-detail-grid compact-history-grid">
         <article class="stat"><span>Paid Out</span><strong>${money(paid)}</strong></article>
         <article class="stat"><span>Sold For</span><strong>${money(sold)}</strong></article>
         <article class="stat"><span>Profit</span><strong>${money(profit)}</strong></article>
@@ -520,6 +520,7 @@ function renderInvoiceHistoryCard(batch) {
         <div>
           <button class="mini-btn" onclick="generateBuyerPdf(${batch.id}, 'history', true)">View Saved Buyer PDF</button>
           <button class="mini-btn" onclick="toggleBuyerPdfSetup('${pdfPanelId}')">Buyer PDF</button>
+          <button class="mini-btn" onclick="toggleInvoiceHistoryDetail(${batch.id})">View Details</button>
           <button class="mini-btn" onclick="reopenInvoice(${batch.id})">Reopen</button>
         </div>
       </div>
@@ -542,7 +543,7 @@ function renderInvoiceHistoryCard(batch) {
         <p class="mini">Enter the sell price for each item line. Use the box above only to fill all prices quickly.</p>
         <div id="pdfStatus-history-${batch.id}"></div>
       </div>
-      <section class="history">${purchaseDetails || `<div class="empty">No purchases inside this invoice.</div>`}</section>
+      <section id="historyDetail-${batch.id}" class="history invoice-history-detail hidden">${purchaseDetails || `<div class="empty">No purchases inside this invoice.</div>`}</section>
     </article>
   `;
 }
@@ -1065,6 +1066,10 @@ window.saveBatchTracking = async (id) => {
   if (!result?.ok) return status(`trackingStatus-history-${id}`, result?.error || "Could not save tracking.", "bad");
   status(`trackingStatus-history-${id}`, "Tracking number saved.");
   await loadBatches();
+};
+
+window.toggleInvoiceHistoryDetail = (id) => {
+  $(`historyDetail-${id}`)?.classList.toggle("hidden");
 };
 
 window.toggleBuyerPdfSetup = (panelId) => {
