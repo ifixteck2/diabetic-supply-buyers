@@ -503,7 +503,7 @@ function renderInvoiceHistoryCard(batch) {
       <p class="mini">
         ${batch.sold_at ? `<b>Sold:</b> ${formatDateTime(batch.sold_at)} ` : ""}
         ${batch.shipped_at ? `<b>Shipped:</b> ${formatDateTime(batch.shipped_at)} ` : ""}
-        ${batch.tracking_number ? `<b>Tracking:</b> ${escapeHtml(batch.tracking_number)} ` : ""}
+        ${batch.tracking_number ? `<b>Tracking:</b> ${renderTrackingLink(batch.tracking_number)} ` : ""}
       </p>
       ${batch.sale_notes ? `<p class="mini"><b>Sale notes:</b> ${escapeHtml(batch.sale_notes)}</p>` : ""}
       ${mercuryTotal ? `<p class="mini"><b>Mercury sheet estimate:</b> ${money(mercuryTotal)}</p>` : ""}
@@ -777,7 +777,7 @@ function renderBatchCard(batch, context = "active") {
         <div class="sale-summary"><span>Paid: ${money(batch.total_paid)}</span><span>Sold: ${money(batch.sale_price)}</span><strong>Profit: ${money(profit)}</strong>${mercuryTotal ? `<span>Mercury sheet: ${money(mercuryTotal)}</span>` : ""}${firstClassTotal ? `<span>First Class: ${money(firstClassTotal)}</span>` : ""}</div>
         ${mercuryTotal ? `<button class="mini-btn" onclick="applyBuyerPricing(${batch.id}, 'Mercury')">Use Mercury Prices</button>` : ""}
         ${firstClassTotal ? `<button class="mini-btn" onclick="applyBuyerPricing(${batch.id}, 'First Class Medical Supply')">Use First Class Prices</button>` : ""}
-        ${batch.tracking_number ? `<p class="mini"><b>Tracking:</b> ${escapeHtml(batch.tracking_number)}</p>` : ""}
+        ${batch.tracking_number ? `<p class="mini"><b>Tracking:</b> ${renderTrackingLink(batch.tracking_number)}</p>` : ""}
       </div>
       <div class="invoice-actions">
         <strong>${money(batch.total_paid)}</strong>
@@ -2108,6 +2108,14 @@ function escapeHtml(value) {
 
 function escapeAttr(value) {
   return escapeHtml(value).replace(/`/g, "&#096;");
+}
+
+function renderTrackingLink(value) {
+  const text = String(value || "").trim();
+  if (/^https?:\/\//i.test(text)) {
+    return `<a href="${escapeAttr(text)}" target="_blank" rel="noopener">${escapeHtml(text)}</a>`;
+  }
+  return escapeHtml(text);
 }
 
 function normalizeSource(value) {
