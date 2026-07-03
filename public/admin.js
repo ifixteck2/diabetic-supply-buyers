@@ -508,9 +508,17 @@ function renderInvoiceHistoryCard(batch) {
       ${batch.sale_notes ? `<p class="mini"><b>Sale notes:</b> ${escapeHtml(batch.sale_notes)}</p>` : ""}
       ${mercuryTotal ? `<p class="mini"><b>Mercury sheet estimate:</b> ${money(mercuryTotal)}</p>` : ""}
       ${firstClassTotal ? `<p class="mini"><b>First Class estimate:</b> ${money(firstClassTotal)}</p>` : ""}
+      <div class="sale-box">
+        <div class="form-grid two">
+          <label>Tracking number<input id="trackingNumberHistory-${batch.id}" value="${escapeAttr(batch.tracking_number || "")}" placeholder="UPS / FedEx / USPS tracking"></label>
+          <label>Tracking actions<span class="pdf-action-row"><button class="mini-btn" onclick="saveBatchTracking(${batch.id})">Save Tracking</button></span></label>
+        </div>
+        <div id="trackingStatus-history-${batch.id}"></div>
+      </div>
       <div class="invoice-actions">
         <strong>${money(sold || paid)}</strong>
         <div>
+          <button class="mini-btn" onclick="generateBuyerPdf(${batch.id}, 'history', true)">View Saved Buyer PDF</button>
           <button class="mini-btn" onclick="toggleBuyerPdfSetup('${pdfPanelId}')">Buyer PDF</button>
           <button class="mini-btn" onclick="reopenInvoice(${batch.id})">Reopen</button>
         </div>
@@ -1038,6 +1046,25 @@ window.reopenInvoice = async (id) => {
   });
   if (result?.ok) await loadBatches();
   else alert(result?.error || "Could not reopen invoice.");
+};
+
+window.saveBatchTracking = async (id) => {
+  const batch = [...batchesCache, ...allBatchesCache].find((entry) => Number(entry.id) === Number(id));
+  if (!batch) return status(`trackingStatus-history-${id}`, "Could not find that invoice.", "bad");
+  const trackingNumber = $(`trackingNumberHistory-${id}`)?.value.trim() || "";
+  const result = await api(`/api/batches/${id}/status`, {
+    method: "PATCH",
+    body: {
+      status: batch.status || "Shipped",
+      sold_to: batch.sold_to || "Buyer",
+      sale_price: batch.sale_price || 0,
+      sale_notes: batch.sale_notes || "",
+      tracking_number: trackingNumber,
+    },
+  });
+  if (!result?.ok) return status(`trackingStatus-history-${id}`, result?.error || "Could not save tracking.", "bad");
+  status(`trackingStatus-history-${id}`, "Tracking number saved.");
+  await loadBatches();
 };
 
 window.toggleBuyerPdfSetup = (panelId) => {
