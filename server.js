@@ -174,24 +174,30 @@ app.patch("/api/phone-invoices/:id/status", requirePhoneAuth, async (req, res) =
 
 app.patch("/api/phone-invoices/:id/sale", requirePhoneAuth, async (req, res) => {
   const id = Number(req.params.id);
-  const salePrice = req.body?.sale_price === undefined || req.body?.sale_price === "" ? null : Number(req.body.sale_price);
+  const rawSalePrice = req.body?.sale_price;
+  const salePrice = rawSalePrice === undefined || rawSalePrice === "" ? null : Number(String(rawSalePrice).replace(/[$,\s]/g, ""));
   const saleNotes = String(req.body?.sale_notes || "").trim();
   if (!id) return res.status(400).json({ error: "Invoice ID is required." });
   if (salePrice !== null && (Number.isNaN(salePrice) || salePrice < 0)) {
     return res.status(400).json({ error: "Sale amount must be a valid number." });
   }
-  const result = await pool.query(
-    `update phone_invoices
-     set sale_price = $1,
-       sale_notes = $2,
-       sold_at = case when $1 is not null and sold_at is null then now() else sold_at end,
-       status_updated_at = now()
-     where id = $3
-     returning *`,
-    [salePrice, saleNotes, id]
-  );
-  if (!result.rows[0]) return res.status(404).json({ error: "Invoice not found." });
-  res.json({ ok: true, invoice: result.rows[0] });
+  try {
+    const result = await pool.query(
+      `update phone_invoices
+       set sale_price = $1,
+         sale_notes = $2,
+         sold_at = case when $1 is not null and sold_at is null then now() else sold_at end,
+         status_updated_at = now()
+       where id = $3
+       returning *`,
+      [salePrice, saleNotes, id]
+    );
+    if (!result.rows[0]) return res.status(404).json({ error: "Invoice not found." });
+    res.json({ ok: true, invoice: result.rows[0] });
+  } catch (error) {
+    console.error("Could not save phone invoice sale amount.", error);
+    res.status(500).json({ error: "Could not save phone invoice sale amount." });
+  }
 });
 
 app.post("/api/phone-purchases", requirePhoneAuth, async (req, res) => {

@@ -1614,11 +1614,17 @@ async function api(url, options = {}) {
   if (options.body) fetchOptions.body = JSON.stringify(options.body);
   try {
     const response = await fetch(url, fetchOptions);
-    const data = await response.json();
+    const text = await response.text();
+    let data = {};
+    try {
+      data = text ? JSON.parse(text) : {};
+    } catch {
+      data = { error: text || `Request failed with status ${response.status}` };
+    }
     if (!response.ok && !options.silent) return data;
     return data;
   } catch (error) {
-    if (!options.silent) alert("Network error. Try again.");
+    if (!options.silent) alert(`Network error. Try again. ${error?.message || ""}`.trim());
     return null;
   }
 }
