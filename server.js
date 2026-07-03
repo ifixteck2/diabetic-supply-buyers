@@ -150,6 +150,13 @@ app.patch("/api/phone-invoices/:id/status", requirePhoneAuth, async (req, res) =
   const allowed = new Set(["Pending", "Sold", "Shipped", "Closed"]);
   if (!id) return res.status(400).json({ error: "Invoice ID is required." });
   if (!allowed.has(status)) return res.status(400).json({ error: "Choose Pending, Sold, Shipped, or Closed." });
+  if (status === "Sold") {
+    const existing = await pool.query("select sale_price from phone_invoices where id = $1", [id]);
+    if (!existing.rows[0]) return res.status(404).json({ error: "Invoice not found." });
+    if (existing.rows[0].sale_price === null || existing.rows[0].sale_price === undefined) {
+      return res.status(400).json({ error: "Enter the amount sold before marking this invoice Sold." });
+    }
+  }
   const result = await pool.query(
     `update phone_invoices
      set status = $1,

@@ -1514,12 +1514,17 @@ function addInvoiceStats(acc, invoice) {
 }
 
 window.setPhoneInvoiceStatus = async (id, nextStatus) => {
+  if (nextStatus === "Sold") {
+    const saved = await ensurePhoneSaleAmountBeforeSold(id);
+    if (!saved) return false;
+  }
   const result = await api(`/api/phone-invoices/${id}/status`, {
     method: "PATCH",
     body: { status: nextStatus },
   });
   if (!result?.ok) return alert(result?.error || "Could not update invoice.");
   await loadPhoneInvoices();
+  return true;
 };
 
 window.setPhoneInvoiceStatusFromSelect = async (id) => {
@@ -1527,16 +1532,45 @@ window.setPhoneInvoiceStatusFromSelect = async (id) => {
 };
 
 window.savePhoneInvoiceSale = async (id) => {
-  const result = await api(`/api/phone-invoices/${id}/sale`, {
-    method: "PATCH",
-    body: {
-      sale_price: $(`phoneSalePrice${id}`).value,
-      sale_notes: $(`phoneSaleNotes${id}`).value,
-    },
-  });
+  const result = await savePhoneInvoiceSaleValue(id, $(`phoneSalePrice${id}`).value, $(`phoneSaleNotes${id}`).value);
   if (!result?.ok) return alert(result?.error || "Could not save sale amount.");
   await loadPhoneInvoices();
 };
+
+async function ensurePhoneSaleAmountBeforeSold(id) {
+  const invoice = phoneInvoices.find((entry) => Number(entry.id) === Number(id));
+  if (!invoice) return true;
+  const currentInput = $(`phoneSalePrice${id}`)?.value?.trim() || "";
+  const existingSale = invoice.sale_price === null || invoice.sale_price === undefined || invoice.sale_price === "" ? "" : String(invoice.sale_price);
+  let salePrice = currentInput || existingSale;
+  if (!salePrice) {
+    const projected = invoiceTotals(invoice).projected;
+    salePrice = prompt(`Amount sold for ${invoice.label || `${invoice.buyer} Invoice`}?`, projected ? Number(projected).toFixed(2) : "");
+    if (salePrice === null) return false;
+  }
+  const cleanPrice = Number(String(salePrice).replace(/[$,\s]/g, ""));
+  if (Number.isNaN(cleanPrice) || cleanPrice <= 0) {
+    alert("Enter a valid sold amount before marking the invoice Sold.");
+    return false;
+  }
+  const saleNotes = $(`phoneSaleNotes${id}`)?.value || invoice.sale_notes || "";
+  const result = await savePhoneInvoiceSaleValue(id, cleanPrice, saleNotes);
+  if (!result?.ok) {
+    alert(result?.error || "Could not save sale amount.");
+    return false;
+  }
+  return true;
+}
+
+async function savePhoneInvoiceSaleValue(id, salePrice, saleNotes = "") {
+  return api(`/api/phone-invoices/${id}/sale`, {
+    method: "PATCH",
+    body: {
+      sale_price: salePrice,
+      sale_notes: saleNotes,
+    },
+  });
+}
 
 window.removePhonePurchaseFromInvoice = async (id) => {
   if (!confirm("Remove this item from the pending invoice? It will stay saved as sold locally.")) {
