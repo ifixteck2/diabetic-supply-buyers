@@ -126,10 +126,12 @@ async function refreshAll() {
 }
 
 function openTab(name) {
-  const titles = { dashboard: "Dashboard", growth: "Growth CRM", leads: "Leads", followups: "Follow Ups", templates: "Templates", purchase: "New Purchase", invoices: "Active Invoices", hold: "No Buyer Items", history: "Invoice History", buyers: "Buyers", customers: "Customers" };
+  const titles = { dashboard: "Dashboard", growth: "Growth CRM", leads: "Leads", followups: "Follow Ups", purchase: "New Purchase", invoices: "Active Invoices", hold: "No Buyer Items", history: "Invoice History", buyers: "Buyers", customers: "Customers" };
+  const panel = $(`${name}Tab`);
+  if (!panel) return;
   document.querySelectorAll(".tab").forEach((button) => button.classList.toggle("active", button.dataset.tab === name));
   document.querySelectorAll(".tab-panel").forEach((panel) => panel.classList.add("hidden"));
-  $(`${name}Tab`).classList.remove("hidden");
+  panel.classList.remove("hidden");
   $("pageTitle").textContent = titles[name] || "Admin";
   if (name === "invoices") loadBatches();
   if (name === "hold") loadBatches().then(renderHoldItems);
@@ -144,7 +146,6 @@ function openTab(name) {
   if (name === "buyers") loadBuyers();
   if (name === "followups") loadFollowups();
   if (name === "leads") loadCustomers();
-  if (name === "templates") renderTemplateGroups();
 }
 
 async function lookupCustomer() {
