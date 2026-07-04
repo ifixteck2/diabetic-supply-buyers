@@ -161,7 +161,7 @@ function modelKey(row) {
 
 function renderModelOptions() {
   const previous = $("phoneModel").value;
-  const models = [...new Set(matchingRows().map(checkerModelName).filter(Boolean))]
+  const models = [...new Set([...matchingRows().map(checkerModelName).filter(Boolean), ...fallbackPhoneModels($("deviceType").value, $("phoneBrand").value)])]
     .sort((a, b) => modelSortValue(b) - modelSortValue(a) || a.localeCompare(b));
   $("phoneModel").innerHTML = models.map((model) => `<option value="${escapeAttr(model)}">${escapeHtml(model)}</option>`).join("")
     || `<option value="">No Atlas models loaded</option>`;
@@ -171,7 +171,7 @@ function renderModelOptions() {
 function renderPhoneStorageOptions() {
   const selectedModel = $("phoneModel").value;
   const rows = matchingRows().filter((row) => checkerModelName(row) === selectedModel);
-  const storageOptions = [...new Set(rows.map((row) => row.storage || "N/A").filter(Boolean))]
+  const storageOptions = [...new Set([...rows.map((row) => row.storage || "N/A").filter(Boolean), ...fallbackPhoneStorage($("deviceType").value, $("phoneBrand").value, selectedModel)])]
     .sort((a, b) => storageSortValue(a) - storageSortValue(b) || a.localeCompare(b));
   const previous = $("phoneStorage").value;
   $("phoneStorage").innerHTML = storageOptions.map((storage) => `<option value="${escapeAttr(storage)}">${escapeHtml(storage)}</option>`).join("")
@@ -184,7 +184,7 @@ function renderCarrierOptions() {
   const selectedStorage = $("phoneStorage").value;
   const rows = matchingRows().filter((row) => checkerModelName(row) === selectedModel && (row.storage || "N/A") === selectedStorage);
   const allowed = new Set(["Unlocked", "Carrier Locked", "AT&T (Clean)", "Parts"]);
-  const carriers = [...new Set(rows.map((row) => normalizeCheckerCarrier(row.carrier || "Unlocked")).filter((carrier) => allowed.has(carrier)))].sort((a, b) => {
+  const carriers = [...new Set([...rows.map((row) => normalizeCheckerCarrier(row.carrier || "Unlocked")).filter((carrier) => allowed.has(carrier)), ...fallbackPhoneCarriers($("deviceType").value, $("phoneBrand").value)])].sort((a, b) => {
     if (a === "Unlocked") return -1;
     if (b === "Unlocked") return 1;
     if (a === "Carrier Locked") return -1;
@@ -237,7 +237,7 @@ function toggleCheckerConditionFields() {
 
 function renderPriceCheckerModels() {
   const previous = $("checkerModel").value;
-  const models = [...new Set(checkerRows().map(checkerModelName).filter(Boolean))]
+  const models = [...new Set([...checkerRows().map(checkerModelName).filter(Boolean), ...fallbackPhoneModels($("checkerDeviceType").value, $("checkerBrand").value)])]
     .sort((a, b) => modelSortValue(b) - modelSortValue(a) || a.localeCompare(b));
   $("checkerModel").innerHTML = models.map((model) => `<option value="${escapeAttr(model)}">${escapeHtml(model)}</option>`).join("")
     || `<option value="">No models loaded</option>`;
@@ -247,7 +247,7 @@ function renderPriceCheckerModels() {
 function renderPriceCheckerStorage() {
   const selectedModel = $("checkerModel").value;
   const rows = checkerRows().filter((row) => checkerModelName(row) === selectedModel);
-  const storageOptions = [...new Set(rows.map((row) => row.storage || "N/A").filter(Boolean))]
+  const storageOptions = [...new Set([...rows.map((row) => row.storage || "N/A").filter(Boolean), ...fallbackPhoneStorage($("checkerDeviceType").value, $("checkerBrand").value, selectedModel)])]
     .sort((a, b) => storageSortValue(a) - storageSortValue(b) || a.localeCompare(b));
   const previous = $("checkerStorage").value;
   $("checkerStorage").innerHTML = storageOptions.map((storage) => `<option value="${escapeAttr(storage)}">${escapeHtml(storage)}</option>`).join("")
@@ -260,7 +260,7 @@ function renderPriceCheckerCarriers() {
   const selectedStorage = $("checkerStorage").value;
   const rows = checkerRows().filter((row) => checkerModelName(row) === selectedModel && (row.storage || "N/A") === selectedStorage);
   const allowed = new Set(["Unlocked", "Carrier Locked", "AT&T (Clean)"]);
-  const carriers = [...new Set(rows.map((row) => normalizeCheckerCarrier(row.carrier || "Unlocked")).filter((carrier) => allowed.has(carrier)))].sort((a, b) => {
+  const carriers = [...new Set([...rows.map((row) => normalizeCheckerCarrier(row.carrier || "Unlocked")).filter((carrier) => allowed.has(carrier)), ...fallbackPhoneCarriers($("checkerDeviceType").value, $("checkerBrand").value)])].sort((a, b) => {
     if (a === "Unlocked") return -1;
     if (b === "Unlocked") return 1;
     if (a === "Carrier Locked") return -1;
@@ -312,6 +312,46 @@ function rowBrand(row) {
   if (/pixel|google/.test(text)) return "Google";
   if (/samsung|galaxy|\bs\d{2}/.test(text)) return "Samsung";
   return "Apple";
+}
+
+const APPLE_FALLBACK_MODELS = [
+  "iPhone 17 Pro Max",
+  "iPhone 17 Pro",
+  "iPhone 17 Air",
+  "iPhone 17",
+  "iPhone 16 Pro Max",
+  "iPhone 16 Pro",
+  "iPhone 16 Plus",
+  "iPhone 16e",
+  "iPhone 16",
+  "iPhone 15 Pro Max",
+  "iPhone 15 Pro",
+  "iPhone 15 Plus",
+  "iPhone 15",
+  "iPhone 14 Pro Max",
+  "iPhone 14 Pro",
+  "iPhone 14 Plus",
+  "iPhone 14",
+  "iPhone 13 Pro Max",
+  "iPhone 13 Pro",
+  "iPhone 13",
+];
+
+function fallbackPhoneModels(deviceType, brand) {
+  if (deviceType !== "Phone" || brand !== "Apple") return [];
+  return APPLE_FALLBACK_MODELS;
+}
+
+function fallbackPhoneStorage(deviceType, brand, model) {
+  if (deviceType !== "Phone" || brand !== "Apple" || !model) return [];
+  if (/17 Pro Max|17 Pro|16 Pro Max|16 Pro|15 Pro Max|15 Pro/i.test(model)) return ["128GB", "256GB", "512GB", "1TB"];
+  if (/17|16 Plus|16e|16|15 Plus|15|14 Plus|14|13/i.test(model)) return ["128GB", "256GB", "512GB"];
+  return ["128GB", "256GB", "512GB"];
+}
+
+function fallbackPhoneCarriers(deviceType, brand) {
+  if (deviceType !== "Phone" || brand !== "Apple") return [];
+  return ["Unlocked", "Carrier Locked", "AT&T (Clean)"];
 }
 
 function normalizeCheckerCarrier(carrier) {
