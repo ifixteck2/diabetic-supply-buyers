@@ -207,11 +207,11 @@
               <h2>Add Supply Item</h2>
               <div class="form-grid three">
                 <label>Search product<input id="priceProductSearch" placeholder="Type g7, 013, omnipod, 7312..."></label>
-                <label>Price sheet product<select id="priceProductSelect"><option value="">Manual item / choose Mercury product</option></select></label>
+                <label>Price sheet product<select id="priceProductSelect"><option value="">Choose a price sheet product</option></select></label>
                 <label>Buyer price preview<input id="buyerPricePreview" disabled placeholder="Choose a product and expiration"></label>
               </div>
-              <div class="form-grid three">
-                <label>Category<select id="category"><option>Diabetic Pods</option><option>CGM Supplies</option><option>Test Strips</option><option>Glucose Meter</option><option>Lancets</option><option>Supply Kit</option><option>Other</option></select></label>
+              <input id="category" type="hidden" value="Diabetic Pods">
+              <div class="form-grid two">
                 <label>Brand / item<input id="brand" placeholder="Omnipod, Dexcom, OneTouch"></label>
                 <label>Model / description<input id="model" placeholder="G7 sensor, Verio 50ct"></label>
               </div>
@@ -242,7 +242,7 @@
                 <div><h2>Current Purchase</h2><p>Saving adds this purchase into the selected invoice.</p></div>
                 <strong id="invoiceTotal" class="big-total">$0.00</strong>
               </div>
-              <div class="table"><table><thead><tr><th>Category</th><th>Brand</th><th>Model</th><th>Qty</th><th>Exp</th><th>Condition</th><th>Paid Each</th><th>Total</th><th></th></tr></thead><tbody id="itemsBody"></tbody></table></div>
+              <div class="table"><table><thead><tr><th>Brand</th><th>Model</th><th>Qty</th><th>Exp</th><th>Condition</th><th>Paid Each</th><th>Total</th><th></th></tr></thead><tbody id="itemsBody"></tbody></table></div>
               <div class="actions"><button class="btn" id="savePurchaseBtn">Add Purchase To Invoice</button><button class="btn danger" id="clearInvoiceBtn">Clear Purchase</button></div>
               <div id="saveStatus"></div>
             </section>

@@ -219,8 +219,9 @@ window.selectPhoneCustomer = async (phone) => {
 
 function addItem() {
   const selectedProduct = getSelectedPriceProduct();
+  const nameForCategory = [selectedProduct?.product, $("brand").value, $("model").value].filter(Boolean).join(" ");
   const item = {
-    category: $("category").value,
+    category: selectedProduct?.category || inferSupplyCategory(nameForCategory),
     brand: $("brand").value.trim() || selectedProduct?.product || "",
     model: $("model").value.trim(),
     quantity: Number($("quantity").value || 0),
@@ -276,7 +277,6 @@ function resetPurchaseForm() {
 function renderItems() {
   $("itemsBody").innerHTML = items.map((item, index) => `
     <tr>
-      <td>${escapeHtml(item.category)}</td>
       <td>${escapeHtml(item.brand)}</td>
       <td>${escapeHtml(item.model)}</td>
       <td>${item.quantity}</td>
@@ -286,7 +286,7 @@ function renderItems() {
       <td>${money(item.quantity * item.unit_cost)}</td>
       <td><button class="mini-btn" onclick="removeItem(${index})">Remove</button></td>
     </tr>
-  `).join("") || `<tr><td colspan="9">No items added yet.</td></tr>`;
+  `).join("") || `<tr><td colspan="8">No items added yet.</td></tr>`;
   $("invoiceTotal").textContent = money(items.reduce((sum, item) => sum + item.quantity * item.unit_cost, 0));
 }
 
@@ -303,21 +303,23 @@ async function loadBuyerPrices() {
 function renderPriceProductOptions(query = "") {
   const select = $("priceProductSelect");
   if (!select) return;
+  const search = normalizeProductSearchQuery(query);
   const selected = select.value;
-  const results = filterPriceProducts(query);
+  const results = filterPriceProducts(search);
   const options = results.map((item) => (
-    `<option value="${escapeAttr(item.id)}">${escapeHtml(cleanMercuryProductName(item.product))}</option>`
+    `<option value="${escapeAttr(item.id)}">${escapeHtml(`${item.buyer || "Buyer"} - ${cleanMercuryProductName(item.product)}`)}</option>`
   )).join("");
-  const emptyLabel = query ? `No Mercury products match "${query}"` : "Manual item / choose Mercury product";
+  const emptyLabel = search ? `No price sheet products match "${search}"` : "Choose a price sheet product";
   select.innerHTML = `<option value="">${escapeHtml(emptyLabel)}</option>` + options;
   if (selected && results.some((item) => item.id === selected)) select.value = selected;
 }
 
 function filterPriceProducts(query = "") {
   const term = normalizeMatchText(query);
-  if (!term) return mercuryPrices;
+  const priceRows = allSupplyPriceProducts();
+  if (!term) return priceRows;
   const querySkus = skuCandidatesFromText(query);
-  return mercuryPrices
+  return priceRows
     .map((product) => {
       const productText = normalizeMatchText(product.product);
       const alias = productAliasKey(product.product);
@@ -334,7 +336,7 @@ function filterPriceProducts(query = "") {
 
 function getSelectedPriceProduct() {
   const id = $("priceProductSelect")?.value || "";
-  return mercuryPrices.find((item) => item.id === id) || null;
+  return allSupplyPriceProducts().find((item) => item.id === id) || null;
 }
 
 function applySelectedPriceProduct() {
@@ -361,8 +363,26 @@ function updateBuyerPricePreview() {
     $("expectedSell").value = quote.price;
     $("buyerPricePreview").value = `${money(quote.price)} - ${quote.label}`;
   } else {
-    $("buyerPricePreview").value = quote?.raw ? `${quote.raw} - ${quote.label}` : "No matching Mercury price";
+    $("buyerPricePreview").value = quote?.raw ? `${quote.raw} - ${quote.label}` : "No matching buyer price";
   }
+}
+
+function allSupplyPriceProducts() {
+  return [...mercuryPrices, ...firstClassPrices];
+}
+
+function normalizeProductSearchQuery(query) {
+  return typeof query === "string" ? query.trim() : "";
+}
+
+function inferSupplyCategory(productName) {
+  const text = String(productName || "").toLowerCase();
+  if (text.includes("omnipod") || /\bpod\b/.test(text)) return "Diabetic Pods";
+  if (text.includes("dexcom") || text.includes("libre") || text.includes("sensor") || text.includes("transmitter")) return "CGM Supplies";
+  if (text.includes("strip")) return "Test Strips";
+  if (text.includes("reader") || text.includes("receiver") || text.includes("meter")) return "Glucose Meter";
+  if (text.includes("lancet")) return "Lancets";
+  return "Other";
 }
 
 window.removeItem = (index) => {
