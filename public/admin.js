@@ -22,6 +22,7 @@ let editItemsByPurchase = {};
 let editEditorByPurchase = {};
 let mercuryPrices = [];
 let firstClassPrices = [];
+let stripflipsPrices = [];
 let loginFollowupNoticeShown = false;
 
 init();
@@ -291,12 +292,14 @@ function renderItems() {
 }
 
 async function loadBuyerPrices() {
-  const [mercuryResult, firstClassResult] = await Promise.all([
+  const [mercuryResult, firstClassResult, stripflipsResult] = await Promise.all([
     api("/api/buyer-prices/mercury", { silent: true }),
     api("/api/buyer-prices/first-class", { silent: true }),
+    api("/api/buyer-prices/stripflips", { silent: true }),
   ]);
   mercuryPrices = mercuryResult.rows || [];
   firstClassPrices = firstClassResult.rows || [];
+  stripflipsPrices = stripflipsResult.rows || [];
   renderPriceProductOptions();
 }
 
@@ -368,7 +371,7 @@ function updateBuyerPricePreview() {
 }
 
 function allSupplyPriceProducts() {
-  return [...mercuryPrices, ...firstClassPrices];
+  return [...mercuryPrices, ...firstClassPrices, ...stripflipsPrices];
 }
 
 function normalizeProductSearchQuery(query) {
@@ -498,6 +501,7 @@ function renderInvoiceHistoryCard(batch) {
   const profit = sold - paid;
   const mercuryTotal = calculateBuyerInvoiceTotal(batch, mercuryPrices);
   const firstClassTotal = calculateBuyerInvoiceTotal(batch, firstClassPrices);
+  const stripflipsTotal = calculateBuyerInvoiceTotal(batch, stripflipsPrices);
   const pdfPanelId = `buyerPdfSetup-history-${batch.id}`;
   const pdfBuyerId = `pdfBuyer-history-${batch.id}`;
   const pdfAmountId = `pdfAmount-history-${batch.id}`;
@@ -561,6 +565,7 @@ function renderInvoiceHistoryCard(batch) {
       ${batch.sale_notes ? `<p class="mini"><b>Sale notes:</b> ${escapeHtml(batch.sale_notes)}</p>` : ""}
       ${mercuryTotal ? `<p class="mini"><b>Mercury sheet estimate:</b> ${money(mercuryTotal)}</p>` : ""}
       ${firstClassTotal ? `<p class="mini"><b>First Class estimate:</b> ${money(firstClassTotal)}</p>` : ""}
+      ${stripflipsTotal ? `<p class="mini"><b>Stripflips estimate:</b> ${money(stripflipsTotal)}</p>` : ""}
       <div class="sale-box">
         <div class="form-grid two">
           <label>Tracking number<input id="trackingNumberHistory-${batch.id}" value="${escapeAttr(batch.tracking_number || "")}" placeholder="UPS / FedEx / USPS tracking"></label>
@@ -582,6 +587,7 @@ function renderInvoiceHistoryCard(batch) {
           <label>Buyer<select id="${pdfBuyerId}" onchange="fillBuyerPdfBuyerPrices(${batch.id}, 'history')">
             <option${batch.sold_to === "Mercury Medical Supplies" ? " selected" : ""}>Mercury Medical Supplies</option>
             <option${batch.sold_to === "First Class Medical Supply" ? " selected" : ""}>First Class Medical Supply</option>
+            <option${/strip\s*flips|stripflips/i.test(batch.sold_to || "") ? " selected" : ""}>Stripflips</option>
           </select></label>
           <label>Fill all prices<input id="${pdfAmountId}" type="number" min="0" step="0.01" value="" placeholder="${pdfUnitValue || "0.00"}"></label>
           <label>PDF Options<span class="pdf-action-row">
@@ -775,6 +781,7 @@ function renderBatchCard(batch, context = "active") {
   const profit = Number(batch.sale_price || 0) - Number(batch.total_paid || 0);
   const mercuryTotal = calculateBuyerInvoiceTotal(batch, mercuryPrices);
   const firstClassTotal = calculateBuyerInvoiceTotal(batch, firstClassPrices);
+  const stripflipsTotal = calculateBuyerInvoiceTotal(batch, stripflipsPrices);
   const pdfPanelId = `buyerPdfSetup-${context}-${batch.id}`;
   const pdfBuyerId = `pdfBuyer-${context}-${batch.id}`;
   const pdfAmountId = `pdfAmount-${context}-${batch.id}`;
@@ -828,9 +835,10 @@ function renderBatchCard(batch, context = "active") {
         <div class="form-grid">
           <label>Sale notes<input id="saleNotes-${batch.id}" value="${escapeAttr(batch.sale_notes || "")}" placeholder="Marketplace, payment notes, buyer notes"></label>
         </div>
-        <div class="sale-summary"><span>Paid: ${money(batch.total_paid)}</span><span>Sold: ${money(batch.sale_price)}</span><strong>Profit: ${money(profit)}</strong>${mercuryTotal ? `<span>Mercury sheet: ${money(mercuryTotal)}</span>` : ""}${firstClassTotal ? `<span>First Class: ${money(firstClassTotal)}</span>` : ""}</div>
+        <div class="sale-summary"><span>Paid: ${money(batch.total_paid)}</span><span>Sold: ${money(batch.sale_price)}</span><strong>Profit: ${money(profit)}</strong>${mercuryTotal ? `<span>Mercury sheet: ${money(mercuryTotal)}</span>` : ""}${firstClassTotal ? `<span>First Class: ${money(firstClassTotal)}</span>` : ""}${stripflipsTotal ? `<span>Stripflips: ${money(stripflipsTotal)}</span>` : ""}</div>
         ${mercuryTotal ? `<button class="mini-btn" onclick="applyBuyerPricing(${batch.id}, 'Mercury')">Use Mercury Prices</button>` : ""}
         ${firstClassTotal ? `<button class="mini-btn" onclick="applyBuyerPricing(${batch.id}, 'First Class Medical Supply')">Use First Class Prices</button>` : ""}
+        ${stripflipsTotal ? `<button class="mini-btn" onclick="applyBuyerPricing(${batch.id}, 'Stripflips')">Use Stripflips Prices</button>` : ""}
         ${batch.tracking_number ? `<p class="mini"><b>Tracking:</b> ${renderTrackingLink(batch.tracking_number)}</p>` : ""}
       </div>
       <div class="invoice-actions">
@@ -847,6 +855,7 @@ function renderBatchCard(batch, context = "active") {
           <label>Buyer<select id="${pdfBuyerId}" onchange="fillBuyerPdfBuyerPrices(${batch.id}, '${context}')">
             <option${batch.sold_to === "Mercury Medical Supplies" ? " selected" : ""}>Mercury Medical Supplies</option>
             <option${batch.sold_to === "First Class Medical Supply" ? " selected" : ""}>First Class Medical Supply</option>
+            <option${/strip\s*flips|stripflips/i.test(batch.sold_to || "") ? " selected" : ""}>Stripflips</option>
           </select></label>
           <label>Fill all prices<input id="${pdfAmountId}" type="number" min="0" step="0.01" value="" placeholder="${pdfUnitValue || "0.00"}"></label>
           <label>PDF Options<span class="pdf-action-row">
@@ -917,6 +926,7 @@ function renderHoldItems() {
           <label>Offer buyer<select id="holdPdfBuyer" onchange="fillHoldBuyerPrices()">
             <option>Mercury Medical Supplies</option>
             <option>First Class Medical Supply</option>
+            <option>Stripflips</option>
           </select></label>
           <label>Fill all prices<input id="holdPdfFillAll" type="number" min="0" step="0.01" placeholder="0.00"></label>
           <label>Offer PDF<span class="pdf-action-row">
@@ -1361,7 +1371,11 @@ window.applyBuyerPricing = (id, buyerName) => {
   if (!batch) return;
   const total = calculateBuyerInvoiceTotal(batch, pricesForBuyer(buyer));
   if (!total) return;
-  soldTo.value = /first\s*class/i.test(buyer || "") ? "First Class Medical Supply" : "Mercury Medical Supplies";
+  soldTo.value = /strip\s*flips|stripflips/i.test(buyer || "")
+    ? "Stripflips"
+    : /first\s*class/i.test(buyer || "")
+      ? "First Class Medical Supply"
+      : "Mercury Medical Supplies";
   salePrice.value = total.toFixed(2);
 };
 
@@ -2293,6 +2307,7 @@ function findMercuryProductForItem(item) {
 }
 
 function pricesForBuyer(buyerName = "") {
+  if (/strip\s*flips|stripflips/i.test(buyerName || "")) return stripflipsPrices;
   return /first\s*class/i.test(buyerName || "") ? firstClassPrices : mercuryPrices;
 }
 

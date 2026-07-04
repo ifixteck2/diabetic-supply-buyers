@@ -18,6 +18,7 @@ const atlasNewSheetId = process.env.ATLAS_NEW_SHEET_ID || "1f3b0rW1d5xTonDtkoPmL
 const followupDaysAfterFirstPurchase = 28;
 let mercuryPriceCache = { fetchedAt: 0, rows: [] };
 let firstClassPriceCache = { fetchedAt: 0, rows: [] };
+let stripflipsPriceCache = { fetchedAt: 0, rows: [] };
 let atlasPriceCache = { fetchedAt: 0, rows: [] };
 let ktPriceCache = { rows: [] };
 
@@ -742,6 +743,16 @@ app.get("/api/buyer-prices/first-class", requireAuth, async (req, res) => {
   }
 });
 
+app.get("/api/buyer-prices/stripflips", requireAuth, async (req, res) => {
+  try {
+    const { buyer, rows } = await getStripflipsPrices();
+    res.json({ buyer, updated_at: stripflipsPriceCache.fetchedAt, rows });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Could not load Stripflips price sheet." });
+  }
+});
+
 app.patch("/api/batches/:id/status", requireAuth, async (req, res) => {
   const id = Number(req.params.id);
   const nextStatus = String(req.body?.status || "").trim();
@@ -830,9 +841,7 @@ app.get("/api/batches/:id/buyer-pdf", requireAuth, async (req, res) => {
 
   const batches = await attachPurchases([batch]);
   const fullBatch = batches[0];
-  const buyerPrices = /first\s*class/i.test(fullBatch.sold_to || "")
-    ? await getFirstClassPrices()
-    : await getMercuryPrices();
+  const buyerPrices = await getSupplyPricesForBuyer(fullBatch.sold_to || "");
   const showPrices = String(req.query.prices || "1") !== "0";
   const overrideUnitPrice = req.query.unit_price === undefined || req.query.unit_price === "" ? null : Number(req.query.unit_price);
   const itemPrices = parseBuyerPdfItemPrices(req.query.item_prices);
@@ -887,7 +896,7 @@ app.get("/api/hold-items/buyer-pdf", requireAuth, async (req, res) => {
       items: items.rows.map((item) => ({ ...item, invoice_removed_at: null })),
     }],
   };
-  const buyerPrices = /first\s*class/i.test(buyer) ? await getFirstClassPrices() : await getMercuryPrices();
+  const buyerPrices = await getSupplyPricesForBuyer(buyer);
   const pdf = createBuyerInvoicePdf(batch, buyerPrices, {
     showPrices: String(req.query.prices || "1") !== "0",
     itemPrices,
@@ -2057,7 +2066,38 @@ async function getFirstClassPrices() {
   return rows;
 }
 
-function parseMercuryPriceCsv(csv) {
+async function getStripflipsPrices() {
+  const cacheMs = 1000 * 60 * 10;
+  if (stripflipsPriceCache.rows.length && Date.now() - stripflipsPriceCache.fetchedAt < cacheMs) {
+    return stripflipsPriceCache;
+  }
+  const buyer = await getBuyerNumberOne();
+  const buyerName = buyer?.company_name || "Stripflips";
+  const csvUrl = toGoogleCsvUrl(process.env.STRIPFLIPS_PRICE_SHEET_CSV_URL || buyer?.price_list_url || "");
+  if (!csvUrl) {
+    stripflipsPriceCache = { fetchedAt: Date.now(), buyer: buyerName, rows: [] };
+    return stripflipsPriceCache;
+  }
+  const response = await fetch(csvUrl);
+  if (!response.ok) throw new Error(`Stripflips price sheet returned ${response.status}`);
+  const csv = await response.text();
+  const rows = parseStripflipsPriceCsv(csv, buyerName);
+  stripflipsPriceCache = { fetchedAt: Date.now(), buyer: buyerName, rows };
+  return stripflipsPriceCache;
+}
+
+async function getBuyerNumberOne() {
+  const result = await pool.query("select * from buyer_contacts where buyer_number = 1 limit 1");
+  return result.rows[0] || null;
+}
+
+async function getSupplyPricesForBuyer(buyerName = "") {
+  if (/strip\s*flips|stripflips/i.test(buyerName || "")) return (await getStripflipsPrices()).rows;
+  if (/first\s*class/i.test(buyerName || "")) return getFirstClassPrices();
+  return getMercuryPrices();
+}
+
+function parseMercuryPriceCsv(csv, buyerName = "Mercury", idPrefix = "") {
   const table = parseCsv(csv);
   let currentTiers = [];
   const products = [];
@@ -2090,8 +2130,8 @@ function parseMercuryPriceCsv(csv) {
 
     if (!prices.length) continue;
     products.push({
-      id: makePriceKey(productName),
-      buyer: "Mercury",
+      id: makePriceKey(`${idPrefix ? `${idPrefix}-` : ""}${productName}`),
+      buyer: buyerName,
       product: productName,
       category: inferCategory(productName),
       prices,
@@ -2100,7 +2140,13 @@ function parseMercuryPriceCsv(csv) {
   return products;
 }
 
-function parseFirstClassPriceCsv(csv) {
+function parseStripflipsPriceCsv(csv, buyerName = "Stripflips") {
+  const firstColumnRows = parseFirstClassPriceCsv(csv, buyerName, "stripflips");
+  if (firstColumnRows.length) return firstColumnRows;
+  return parseMercuryPriceCsv(csv, buyerName, "stripflips");
+}
+
+function parseFirstClassPriceCsv(csv, buyerName = "First Class Medical Supply", idPrefix = "first-class") {
   const table = parseCsv(csv);
   let currentTiers = [];
   const products = [];
@@ -2133,8 +2179,8 @@ function parseFirstClassPriceCsv(csv) {
 
     if (!prices.length) continue;
     products.push({
-      id: makePriceKey(`first-class-${productName}`),
-      buyer: "First Class Medical Supply",
+      id: makePriceKey(`${idPrefix}-${productName}`),
+      buyer: buyerName,
       product: productName,
       category: inferCategory(productName),
       prices,
@@ -2251,6 +2297,16 @@ function parseAtlasPriceCsv(csv, source) {
     }
   }
   return rows;
+}
+
+function toGoogleCsvUrl(url) {
+  const value = String(url || "").trim();
+  if (!value) return "";
+  if (/\/export\?/.test(value) || /format=csv/i.test(value) || /\.csv($|\?)/i.test(value)) return value;
+  const sheetMatch = value.match(/\/spreadsheets\/d\/([^/]+)/i);
+  if (!sheetMatch) return value;
+  const gid = value.match(/[?&#]gid=(\d+)/i)?.[1] || "0";
+  return `https://docs.google.com/spreadsheets/d/${sheetMatch[1]}/export?format=csv&gid=${gid}`;
 }
 
 function parseAtlasSamsungCsv(csv, source) {
