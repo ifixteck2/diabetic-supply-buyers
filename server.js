@@ -2698,12 +2698,14 @@ function escapeHtml(value) {
 function findMercuryProductForItem(item, mercuryPrices) {
   const itemText = normalizeMatchText(`${item.brand || ""} ${item.model || ""}`);
   if (!itemText) return null;
-  const itemSku = skuFromText(`${item.brand || ""} ${item.model || ""}`);
-  if (itemSku) {
-    const skuMatch = mercuryPrices.find((product) => skuFromText(product.product) === itemSku);
+  const itemSkus = skuCandidatesFromText(`${item.brand || ""} ${item.model || ""}`);
+  if (itemSkus.size) {
+    const skuMatch = mercuryPrices.find((product) => hasSharedSku(itemSkus, skuCandidatesFromText(product.product)));
     if (skuMatch) return skuMatch;
   }
-  return mercuryPrices.find((product) => normalizeMatchText(product.product) === itemText)
+  const itemAlias = productAliasKey(`${item.brand || ""} ${item.model || ""}`);
+  return mercuryPrices.find((product) => productAliasKey(product.product) === itemAlias)
+    || mercuryPrices.find((product) => normalizeMatchText(product.product) === itemText)
     || mercuryPrices.find((product) => itemText.includes(normalizeMatchText(product.product)))
     || mercuryPrices.find((product) => normalizeMatchText(product.product).includes(itemText))
     || null;
@@ -2738,10 +2740,71 @@ function normalizeMatchText(value) {
     .trim();
 }
 
-function skuFromText(value) {
-  const text = String(value || "").toUpperCase();
-  const match = text.match(/\b(?:STP|STE|STS|GS)-[A-Z]{2}-\d{3}\b|\b\d{5}-\d{4}-\d{2}\b|\b\d{3}\b(?=\))/);
-  return match ? match[0] : "";
+function skuCandidatesFromText(value) {
+  const raw = String(value || "").toUpperCase();
+  const normalized = normalizeMatchText(value);
+  const candidates = new Set();
+  addMatches(candidates, raw, /\b[A-Z]{2,4}-[A-Z]{2}-\d{3}\b/g);
+  addMatches(candidates, raw, /\b\d{5}-\d{4}-\d{2}\b/g);
+  addMatches(candidates, raw, /\b(?:MMT|NRC)[-:\s]*(\d{3,4}[A-Z]?)\b/g, (match) => match[1]);
+  addMatches(candidates, raw, /\b\d{7}\b/g);
+  addMatches(candidates, raw, /\b(?:7\d{3}|10\d{5}|11\d{5})\b/g);
+  if (/\bG7\b/.test(raw)) {
+    addMatches(candidates, raw, /\b(?:STP|STE|STK)-FT-(\d{3})\b/g, (match) => `G7-15-${match[1]}`);
+    addMatches(candidates, raw, /\b(?:STP|STE|STK)-AT-(\d{3})\b/g, (match) => `G7-${match[1]}`);
+    addMatches(candidates, raw, /\((\d{3})\)/g, (match) => normalized.includes("15 day") ? `G7-15-${match[1]}` : `G7-${match[1]}`);
+  }
+  if (/\bG6\b/.test(raw)) {
+    addMatches(candidates, raw, /\bSTS-[A-Z]{2}-(\d{3})\b/g, (match) => `G6-SENSOR-${match[1]}`);
+    addMatches(candidates, raw, /\bSTT-[A-Z]{2}-(\d{3})\b/g, (match) => `G6-TRANSMITTER-${match[1]}`);
+  }
+  if (/OMNI\s*POD|OMNIPOD|\bPOD\b/.test(raw)) {
+    if (/0042|08508-3000-42/.test(raw)) candidates.add("OMNIPOD-5-LIBRE-5PK");
+    else if (/0075|08508-3000-75/.test(raw)) candidates.add("OMNIPOD-5-DME-5PK");
+    else if (/0021|08508-3000-21|PURPLE\s*&?\s*WHITE|PURPLE AND WHITE/.test(raw)) candidates.add("OMNIPOD-5-RETAIL-5PK");
+    if (/DASH/.test(raw) && /10/.test(raw)) candidates.add("OMNIPOD-DASH-10PK");
+    if (/DASH/.test(raw) && /5/.test(raw)) candidates.add("OMNIPOD-DASH-5PK");
+  }
+  if (/CONTOUR/.test(raw)) {
+    addMatches(candidates, raw, /\b(70(?:80|90)G|7(?:277|278|308|309|311|312))\b/g, (match) => match[1].replace(/G$/, ""));
+  }
+  return candidates;
+}
+
+function addMatches(candidates, text, pattern, mapper = (match) => match[0]) {
+  for (const match of text.matchAll(pattern)) {
+    const value = String(mapper(match) || "").toUpperCase().replace(/[^A-Z0-9-]+/g, "");
+    if (value) candidates.add(value);
+  }
+}
+
+function hasSharedSku(left, right) {
+  for (const value of left) {
+    if (right.has(value)) return true;
+  }
+  return false;
+}
+
+function productAliasKey(value) {
+  let text = normalizeMatchText(value)
+    .replace(/\bfsl\b/g, "freestyle libre")
+    .replace(/\bfs\b/g, "freestyle")
+    .replace(/\bpk\b/g, "pack")
+    .replace(/\bct\b/g, "count")
+    .replace(/\bcts\b/g, "count")
+    .replace(/\bone touch\b/g, "onetouch")
+    .replace(/\bomni pod\b/g, "omnipod")
+    .replace(/\bg6 g7\b/g, "g6g7")
+    .replace(/\bg7 g6\b/g, "g6g7")
+    .replace(/\bretail\b/g, " ")
+    .replace(/\bdme\b/g, " ")
+    .replace(/\bnfr\b/g, " ")
+    .replace(/\bmail order\b/g, " ")
+    .replace(/\bmo\b/g, " ")
+    .replace(/\botc\b/g, " ")
+    .replace(/\bsealed\b/g, " ");
+  text = text.replace(/\b(\d+)\s*(?:count|pack|pk)\b/g, "$1");
+  return text.replace(/\s+/g, " ").trim();
 }
 
 function parseBuyerPdfItemPrices(raw) {
