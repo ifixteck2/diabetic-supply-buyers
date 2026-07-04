@@ -745,8 +745,8 @@ app.get("/api/buyer-prices/first-class", requireAuth, async (req, res) => {
 
 app.get("/api/buyer-prices/stripflips", requireAuth, async (req, res) => {
   try {
-    const { buyer, rows } = await getStripflipsPrices();
-    res.json({ buyer, updated_at: stripflipsPriceCache.fetchedAt, rows });
+    const { buyer, rows, source_url: sourceUrl, message } = await getStripflipsPrices();
+    res.json({ buyer, updated_at: stripflipsPriceCache.fetchedAt, rows, source_url: sourceUrl || "", message: message || "" });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: "Could not load Stripflips price sheet." });
@@ -2075,14 +2075,20 @@ async function getStripflipsPrices() {
   const buyerName = buyer?.company_name || "Stripflips";
   const csvUrl = toGoogleCsvUrl(process.env.STRIPFLIPS_PRICE_SHEET_CSV_URL || buyer?.price_list_url || "");
   if (!csvUrl) {
-    stripflipsPriceCache = { fetchedAt: Date.now(), buyer: buyerName, rows: [] };
+    stripflipsPriceCache = { fetchedAt: Date.now(), buyer: buyerName, source_url: "", rows: [], message: "Buyer #1 has no price list link saved." };
     return stripflipsPriceCache;
   }
   const response = await fetch(csvUrl);
   if (!response.ok) throw new Error(`Stripflips price sheet returned ${response.status}`);
   const csv = await response.text();
   const rows = parseStripflipsPriceCsv(csv, buyerName);
-  stripflipsPriceCache = { fetchedAt: Date.now(), buyer: buyerName, rows };
+  stripflipsPriceCache = {
+    fetchedAt: Date.now(),
+    buyer: buyerName,
+    source_url: csvUrl,
+    rows,
+    message: rows.length ? "" : "No products were found in Buyer #1 price list.",
+  };
   return stripflipsPriceCache;
 }
 

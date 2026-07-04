@@ -23,6 +23,7 @@ let editEditorByPurchase = {};
 let mercuryPrices = [];
 let firstClassPrices = [];
 let stripflipsPrices = [];
+let priceSourceInfo = {};
 let loginFollowupNoticeShown = false;
 
 init();
@@ -300,7 +301,13 @@ async function loadBuyerPrices() {
   mercuryPrices = mercuryResult.rows || [];
   firstClassPrices = firstClassResult.rows || [];
   stripflipsPrices = stripflipsResult.rows || [];
+  priceSourceInfo = {
+    mercury: { label: "Mercury", count: mercuryPrices.length, error: mercuryResult.error || "" },
+    firstClass: { label: "First Class", count: firstClassPrices.length, error: firstClassResult.error || "" },
+    stripflips: { label: stripflipsResult.buyer || "Stripflips", count: stripflipsPrices.length, error: stripflipsResult.error || "", message: stripflipsResult.message || "" },
+  };
   renderPriceProductOptions();
+  renderPriceSourceStatus();
 }
 
 function renderPriceProductOptions(query = "") {
@@ -372,6 +379,17 @@ function updateBuyerPricePreview() {
 
 function allSupplyPriceProducts() {
   return [...mercuryPrices, ...firstClassPrices, ...stripflipsPrices];
+}
+
+function renderPriceSourceStatus() {
+  const target = $("priceSourceStatus");
+  if (!target) return;
+  const sources = [priceSourceInfo.mercury, priceSourceInfo.firstClass, priceSourceInfo.stripflips].filter(Boolean);
+  target.innerHTML = sources.map((source) => {
+    if (source.error) return `<span class="price-source bad">${escapeHtml(source.label)} not loaded</span>`;
+    if (!source.count) return `<span class="price-source warn" title="${escapeAttr(source.message || "Check the saved price-list link.")}">${escapeHtml(source.label)}: 0 products</span>`;
+    return `<span class="price-source ok">${escapeHtml(source.label)}: ${source.count} products</span>`;
+  }).join("");
 }
 
 function normalizeProductSearchQuery(query) {

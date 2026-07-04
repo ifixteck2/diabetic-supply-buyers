@@ -76,3 +76,4 @@
 .diabetic-admin-body .tab:nth-child(10)::before{background:var(--crm-green);content:"CUS"}
 @media(max-width:980px){.diabetic-admin-body .admin-shell{grid-template-columns:1fr}.diabetic-admin-body .admin-side{max-height:none;position:static}.diabetic-admin-body .tabs{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:660px){.diabetic-admin-body .tabs{grid-template-columns:1fr}}
+.price-source-status{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}.price-source{border-radius:999px;font-size:12px;font-weight:950;padding:7px 10px;text-transform:uppercase}.price-source.ok{background:#e9f4ef;color:var(--crm-green,var(--d))}.price-source.warn{background:#fff4dd;color:var(--crm-amber,#7a5700)}.price-source.bad{background:#fff0ee;color:var(--crm-rose,var(--r))}
