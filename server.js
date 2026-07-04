@@ -2074,8 +2074,15 @@ async function getStripflipsPrices() {
   const buyer = await getBuyerNumberOne();
   const buyerName = buyer?.company_name || "Stripflips";
   const csvUrl = toGoogleCsvUrl(process.env.STRIPFLIPS_PRICE_SHEET_CSV_URL || buyer?.price_list_url || "");
+  const staticRows = getStaticStripflipsPrices(buyerName);
   if (!csvUrl) {
-    stripflipsPriceCache = { fetchedAt: Date.now(), buyer: buyerName, source_url: "", rows: [], message: "Buyer #1 has no price list link saved." };
+    stripflipsPriceCache = {
+      fetchedAt: Date.now(),
+      buyer: buyerName,
+      source_url: "public/stripflips-prices.json",
+      rows: staticRows,
+      message: "Loaded Stripflips PDF price list saved in the system.",
+    };
     return stripflipsPriceCache;
   }
   const response = await fetch(csvUrl);
@@ -2086,10 +2093,33 @@ async function getStripflipsPrices() {
     fetchedAt: Date.now(),
     buyer: buyerName,
     source_url: csvUrl,
-    rows,
-    message: rows.length ? "" : "No products were found in Buyer #1 price list.",
+    rows: rows.length ? rows : staticRows,
+    message: rows.length ? "" : "No products were found in Buyer #1 price list, so the saved PDF list was used.",
   };
   return stripflipsPriceCache;
+}
+
+function getStaticStripflipsPrices(buyerName = "Stripflips") {
+  try {
+    const path = new URL("./public/stripflips-prices.json", import.meta.url);
+    const data = JSON.parse(fs.readFileSync(path, "utf8"));
+    const labels = ["10 MO", "7 MO", "6 MO", "5 MO", "4 MO", "2 MO"];
+    return (data.rows || []).map((row) => ({
+      id: makePriceKey(`stripflips-${row.product}`),
+      buyer: buyerName,
+      product: row.product,
+      category: row.category || inferCategory(row.product),
+      prices: (row.prices || []).map((price, index) => ({
+        label: (row.labels || labels)[index] || `Tier ${index + 1}`,
+        damaged: /damaged/i.test((row.labels || labels)[index] || ""),
+        raw: price === null || price === undefined ? "N/A" : `$${price}`,
+        price: price === null || price === undefined ? null : Number(price),
+      })).filter((entry) => entry.raw),
+    }));
+  } catch (error) {
+    console.warn("Could not load static Stripflips prices.", error.message);
+    return [];
+  }
 }
 
 async function getBuyerNumberOne() {
