@@ -82,6 +82,7 @@ function bindEvents() {
   $("invoiceFilter").onchange = loadBatches;
   $("historyFilter").onchange = renderInvoiceHistory;
   $("customerSearch").addEventListener("input", debounce(loadCustomers, 250));
+  $("priceProductSearch").addEventListener("input", () => renderPriceProductOptions($("priceProductSearch").value));
   $("priceProductSelect").onchange = applySelectedPriceProduct;
   $("expiration").onchange = updateBuyerPricePreview;
   $("condition").onchange = updateBuyerPricePreview;
@@ -238,6 +239,7 @@ function addItem() {
 
 function clearItem() {
   $("category").value = "Diabetic Pods";
+  $("priceProductSearch").value = "";
   $("priceProductSelect").value = "";
   $("buyerPricePreview").value = "";
   $("brand").value = "";
@@ -298,12 +300,36 @@ async function loadBuyerPrices() {
   renderPriceProductOptions();
 }
 
-function renderPriceProductOptions() {
+function renderPriceProductOptions(query = "") {
   const select = $("priceProductSelect");
   if (!select) return;
-  select.innerHTML = `<option value="">Manual item / choose Mercury product</option>` + mercuryPrices.map((item) => (
+  const selected = select.value;
+  const results = filterPriceProducts(query);
+  const options = results.map((item) => (
     `<option value="${escapeAttr(item.id)}">${escapeHtml(cleanMercuryProductName(item.product))}</option>`
   )).join("");
+  const emptyLabel = query ? `No Mercury products match "${query}"` : "Manual item / choose Mercury product";
+  select.innerHTML = `<option value="">${escapeHtml(emptyLabel)}</option>` + options;
+  if (selected && results.some((item) => item.id === selected)) select.value = selected;
+}
+
+function filterPriceProducts(query = "") {
+  const term = normalizeMatchText(query);
+  if (!term) return mercuryPrices;
+  const querySkus = skuCandidatesFromText(query);
+  return mercuryPrices
+    .map((product) => {
+      const productText = normalizeMatchText(product.product);
+      const alias = productAliasKey(product.product);
+      const sharedSku = querySkus.size && hasSharedSku(querySkus, skuCandidatesFromText(product.product));
+      const directText = productText.includes(term) || term.split(" ").every((part) => productText.includes(part));
+      const aliasText = alias.includes(term);
+      const score = sharedSku ? 0 : productText === term ? 1 : productText.startsWith(term) ? 2 : directText ? 3 : aliasText ? 4 : 99;
+      return { product, score };
+    })
+    .filter((entry) => entry.score < 99)
+    .sort((left, right) => left.score - right.score || cleanMercuryProductName(left.product.product).localeCompare(cleanMercuryProductName(right.product.product)))
+    .map((entry) => entry.product);
 }
 
 function getSelectedPriceProduct() {
@@ -320,6 +346,7 @@ function applySelectedPriceProduct() {
   $("category").value = product.category || "Other";
   $("brand").value = cleanMercuryProductName(product.product) || "";
   $("model").value = "";
+  $("priceProductSearch").value = cleanMercuryProductName(product.product) || "";
   updateBuyerPricePreview();
 }
 
