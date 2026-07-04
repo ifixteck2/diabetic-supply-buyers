@@ -31,6 +31,7 @@
             <button class="tab" data-tab="invoices">Active Invoices</button>
             <button class="tab" data-tab="hold">No Buyer Items</button>
             <button class="tab" data-tab="history">Invoice History</button>
+            <button class="tab" data-tab="buyers">Buyers</button>
             <button class="tab" data-tab="customers">Customers</button>
           </nav>
           <button class="btn danger logout" id="logoutBtn">Log Out</button>
@@ -282,6 +283,38 @@
                 <select id="historyFilter" class="compact-select"><option>Past</option><option>Sold</option><option>Shipped</option><option>All</option></select>
               </div>
               <div id="invoiceHistoryList" class="invoice-list"></div>
+            </section>
+          </section>
+
+          <section id="buyersTab" class="tab-panel hidden">
+            <section class="panel">
+              <div class="panel-head">
+                <div><h2>Buyer Manager</h2><p>Save buyer company details, contact info, notes, and price-list links or files.</p></div>
+                <button class="btn secondary" id="clearBuyerBtn">Clear</button>
+              </div>
+              <input id="buyerId" type="hidden">
+              <div class="form-grid three">
+                <label>Company name<input id="buyerCompany" placeholder="Mercury Medical Supplies"></label>
+                <label>Contact name<input id="buyerContact" placeholder="Buyer contact"></label>
+                <label>Email<input id="buyerEmail" placeholder="buyer@email.com"></label>
+              </div>
+              <div class="form-grid three">
+                <label>Phone<input id="buyerPhone" placeholder="561-510-1236"></label>
+                <label>Price list link<input id="buyerPriceUrl" placeholder="Google Sheet or website URL"></label>
+                <label>Upload price list<input id="buyerPriceFile" type="file" accept=".pdf,.csv,.xls,.xlsx,image/*"></label>
+              </div>
+              <div class="form-grid">
+                <label>Notes<textarea id="buyerNotes" rows="3" placeholder="Payment terms, shipping rules, preferred products, contact notes"></textarea></label>
+              </div>
+              <div class="actions"><button class="btn" id="saveBuyerBtn">Save Buyer</button></div>
+              <div id="buyerStatus"></div>
+            </section>
+            <section class="panel">
+              <div class="panel-head">
+                <div><h2>Saved Buyers</h2><p>Buyer # records are assigned automatically as you add them.</p></div>
+                <input id="buyerSearch" class="search-input" placeholder="Search buyers">
+              </div>
+              <div id="buyerList" class="customer-list"></div>
             </section>
           </section>
 

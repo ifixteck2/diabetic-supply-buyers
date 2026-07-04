@@ -566,6 +566,66 @@ app.get("/api/customers", requireAuth, async (req, res) => {
   res.json({ customers: result.rows });
 });
 
+app.get("/api/buyers", requireAuth, async (req, res) => {
+  const search = String(req.query.search || "").trim().toLowerCase();
+  const params = [];
+  let where = "";
+  if (search) {
+    params.push(`%${search}%`);
+    where = `where lower(company_name) like $1 or lower(contact_name) like $1 or lower(email) like $1 or lower(phone) like $1 or lower(notes) like $1 or buyer_number::text like $1`;
+  }
+  const result = await pool.query(
+    `select * from buyer_contacts
+     ${where}
+     order by buyer_number asc`,
+    params
+  );
+  res.json({ buyers: result.rows });
+});
+
+app.post("/api/buyers", requireAuth, async (req, res) => {
+  const input = req.body || {};
+  const id = Number(input.id || 0) || null;
+  const companyName = String(input.company_name || "").trim();
+  const contactName = String(input.contact_name || "").trim();
+  const email = String(input.email || "").trim();
+  const phone = String(input.phone || "").trim();
+  const priceListUrl = String(input.price_list_url || "").trim();
+  const priceListFileName = String(input.price_list_file_name || "").trim().slice(0, 180);
+  const priceListDataUrl = isAllowedDocumentDataUrl(input.price_list_data_url) ? String(input.price_list_data_url) : "";
+  const notes = String(input.notes || "").trim();
+  if (!companyName) return res.status(400).json({ error: "Company name is required." });
+
+  if (id) {
+    const result = await pool.query(
+      `update buyer_contacts
+       set company_name = $1,
+         contact_name = $2,
+         email = $3,
+         phone = $4,
+         price_list_url = $5,
+         price_list_file_name = coalesce(nullif($6,''), price_list_file_name),
+         price_list_data_url = coalesce(nullif($7,''), price_list_data_url),
+         notes = $8,
+         updated_at = now()
+       where id = $9
+       returning *`,
+      [companyName, contactName, email, phone, priceListUrl, priceListFileName, priceListDataUrl, notes, id]
+    );
+    if (!result.rows[0]) return res.status(404).json({ error: "Buyer not found." });
+    return res.json({ ok: true, buyer: result.rows[0] });
+  }
+
+  const result = await pool.query(
+    `insert into buyer_contacts
+     (buyer_number, company_name, contact_name, email, phone, price_list_url, price_list_file_name, price_list_data_url, notes)
+     values ((select coalesce(max(buyer_number),0) + 1 from buyer_contacts), $1,$2,$3,$4,$5,$6,$7,$8)
+     returning *`,
+    [companyName, contactName, email, phone, priceListUrl, priceListFileName, priceListDataUrl, notes]
+  );
+  res.json({ ok: true, buyer: result.rows[0] });
+});
+
 app.post("/api/customers", requireAuth, async (req, res) => {
   const input = req.body || {};
   const phone = normalizePhone(input.phone || "");
@@ -1126,6 +1186,21 @@ async function migrate() {
       updated_at timestamptz not null default now()
     );
 
+    create table if not exists buyer_contacts (
+      id serial primary key,
+      buyer_number integer unique not null,
+      company_name text not null default '',
+      contact_name text not null default '',
+      email text not null default '',
+      phone text not null default '',
+      price_list_url text not null default '',
+      price_list_file_name text not null default '',
+      price_list_data_url text not null default '',
+      notes text not null default '',
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+
     create table if not exists invoices (
       id serial primary key,
       customer_id integer not null references customers(id) on delete cascade,
@@ -1217,6 +1292,15 @@ async function migrate() {
     alter table customers add column if not exists crm_status text not null default 'Customer';
     alter table customers add column if not exists next_follow_up_at date;
     alter table customers add column if not exists last_follow_up_at date;
+    alter table buyer_contacts add column if not exists buyer_number integer;
+    alter table buyer_contacts add column if not exists company_name text not null default '';
+    alter table buyer_contacts add column if not exists contact_name text not null default '';
+    alter table buyer_contacts add column if not exists email text not null default '';
+    alter table buyer_contacts add column if not exists phone text not null default '';
+    alter table buyer_contacts add column if not exists price_list_url text not null default '';
+    alter table buyer_contacts add column if not exists price_list_file_name text not null default '';
+    alter table buyer_contacts add column if not exists price_list_data_url text not null default '';
+    alter table buyer_contacts add column if not exists notes text not null default '';
     alter table invoice_batches add column if not exists sold_to text not null default '';
     alter table invoice_batches add column if not exists sale_price numeric(12,2);
     alter table invoice_batches add column if not exists sale_notes text not null default '';
@@ -1281,6 +1365,17 @@ async function migrate() {
 
     create unique index if not exists customers_customer_number_idx on customers(customer_number);
     alter table customers alter column customer_number set not null;
+    update buyer_contacts b
+    set buyer_number = numbered.next_number
+    from (
+      select id,
+        row_number() over (order by created_at asc, id asc)::int + coalesce((select max(buyer_number) from buyer_contacts), 0) as next_number
+      from buyer_contacts
+      where buyer_number is null
+    ) numbered
+    where b.id = numbered.id;
+    create unique index if not exists buyer_contacts_buyer_number_idx on buyer_contacts(buyer_number);
+    alter table buyer_contacts alter column buyer_number set not null;
   `);
 }
 
@@ -1624,6 +1719,10 @@ function parseSeedMoney(value) {
 
 function isAllowedPhotoDataUrl(value) {
   return /^data:image\/(png|jpeg|jpg|webp);base64,/i.test(String(value || ""));
+}
+
+function isAllowedDocumentDataUrl(value) {
+  return /^data:(application\/pdf|text\/csv|application\/vnd\.ms-excel|application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet|image\/(?:png|jpeg|jpg|webp));base64,/i.test(String(value || ""));
 }
 
 function findPhonePrice(purchase, priceRows, buyer) {

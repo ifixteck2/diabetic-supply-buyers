@@ -13,6 +13,7 @@ let loadedCustomer = null;
 let batchesCache = [];
 let allBatchesCache = [];
 let customersCache = [];
+let buyersCache = [];
 let followupsCache = [];
 let managerPhone = "";
 let managerInvoicesCache = [];
@@ -65,6 +66,9 @@ function bindEvents() {
   $("leadFollowupFilter").onchange = renderLeads;
   $("refreshFollowupsBtn").onclick = loadFollowups;
   $("refreshHoldBtn").onclick = loadBatches;
+  $("saveBuyerBtn").onclick = saveBuyer;
+  $("clearBuyerBtn").onclick = clearBuyerForm;
+  $("buyerSearch").addEventListener("input", debounce(loadBuyers, 250));
   $("saveCustomerProfileBtn").onclick = saveCustomerProfile;
   $("clearCustomerProfileBtn").onclick = clearCustomerProfile;
   $("backToCustomersBtn").onclick = showCustomerList;
@@ -117,12 +121,12 @@ async function showApp() {
 
 async function refreshAll() {
   await loadBuyerPrices();
-  await Promise.all([loadBatches(), loadCustomers(), loadFollowups()]);
+  await Promise.all([loadBatches(), loadCustomers(), loadFollowups(), loadBuyers()]);
   renderDashboard();
 }
 
 function openTab(name) {
-  const titles = { dashboard: "Dashboard", growth: "Growth CRM", leads: "Leads", followups: "Follow Ups", templates: "Templates", purchase: "New Purchase", invoices: "Active Invoices", hold: "No Buyer Items", history: "Invoice History", customers: "Customers" };
+  const titles = { dashboard: "Dashboard", growth: "Growth CRM", leads: "Leads", followups: "Follow Ups", templates: "Templates", purchase: "New Purchase", invoices: "Active Invoices", hold: "No Buyer Items", history: "Invoice History", buyers: "Buyers", customers: "Customers" };
   document.querySelectorAll(".tab").forEach((button) => button.classList.toggle("active", button.dataset.tab === name));
   document.querySelectorAll(".tab-panel").forEach((panel) => panel.classList.add("hidden"));
   $(`${name}Tab`).classList.remove("hidden");
@@ -137,6 +141,7 @@ function openTab(name) {
     showCustomerList();
     loadCustomers();
   }
+  if (name === "buyers") loadBuyers();
   if (name === "followups") loadFollowups();
   if (name === "leads") loadCustomers();
   if (name === "templates") renderTemplateGroups();
@@ -1311,6 +1316,100 @@ window.applyBuyerPricing = (id, buyerName) => {
   soldTo.value = /first\s*class/i.test(buyer || "") ? "First Class Medical Supply" : "Mercury Medical Supplies";
   salePrice.value = total.toFixed(2);
 };
+
+async function loadBuyers() {
+  const search = $("buyerSearch")?.value || "";
+  const result = await api(`/api/buyers?search=${encodeURIComponent(search)}`, { silent: true });
+  buyersCache = result.buyers || [];
+  renderBuyers();
+}
+
+function renderBuyers() {
+  const container = $("buyerList");
+  if (!container) return;
+  if (!buyersCache.length) {
+    container.innerHTML = `<div class="empty">No buyers saved yet.</div>`;
+    return;
+  }
+  container.innerHTML = buyersCache.map((buyer) => `
+    <article class="customer-row buyer-row">
+      <div>
+        <h3>Buyer #${buyer.buyer_number} - ${escapeHtml(buyer.company_name || "Buyer")}</h3>
+        <p>${escapeHtml(buyer.contact_name || "No contact name")} ${buyer.phone ? "- " + escapeHtml(buyer.phone) : ""} ${buyer.email ? "- " + escapeHtml(buyer.email) : ""}</p>
+        ${buyer.notes ? `<p class="mini">${escapeHtml(buyer.notes)}</p>` : ""}
+        <div class="buyer-links">
+          ${buyer.price_list_url ? `<a class="mini-btn" href="${escapeAttr(buyer.price_list_url)}" target="_blank" rel="noopener">Open Price Link</a>` : ""}
+          ${buyer.price_list_data_url ? `<a class="mini-btn" href="${escapeAttr(buyer.price_list_data_url)}" download="${escapeAttr(buyer.price_list_file_name || `buyer-${buyer.buyer_number}-price-list`)}">Download Uploaded List</a>` : ""}
+        </div>
+      </div>
+      <div class="customer-meta">
+        <strong>#${buyer.buyer_number}</strong>
+        <button class="mini-btn" onclick="editBuyer(${buyer.id})">Edit</button>
+      </div>
+    </article>
+  `).join("");
+}
+
+async function saveBuyer() {
+  const file = $("buyerPriceFile")?.files?.[0] || null;
+  let dataUrl = "";
+  if (file) dataUrl = await readBuyerFile(file);
+  const result = await api("/api/buyers", {
+    method: "POST",
+    body: {
+      id: $("buyerId").value || null,
+      company_name: $("buyerCompany").value.trim(),
+      contact_name: $("buyerContact").value.trim(),
+      email: $("buyerEmail").value.trim(),
+      phone: $("buyerPhone").value.trim(),
+      price_list_url: $("buyerPriceUrl").value.trim(),
+      price_list_file_name: file?.name || "",
+      price_list_data_url: dataUrl,
+      notes: $("buyerNotes").value.trim(),
+    },
+  });
+  if (!result?.ok) return status("buyerStatus", result?.error || "Could not save buyer.", "bad");
+  status("buyerStatus", `Buyer #${result.buyer.buyer_number} saved.`);
+  clearBuyerForm(false);
+  await loadBuyers();
+}
+
+function editBuyer(id) {
+  const buyer = buyersCache.find((entry) => Number(entry.id) === Number(id));
+  if (!buyer) return;
+  $("buyerId").value = buyer.id;
+  $("buyerCompany").value = buyer.company_name || "";
+  $("buyerContact").value = buyer.contact_name || "";
+  $("buyerEmail").value = buyer.email || "";
+  $("buyerPhone").value = buyer.phone || "";
+  $("buyerPriceUrl").value = buyer.price_list_url || "";
+  $("buyerPriceFile").value = "";
+  $("buyerNotes").value = buyer.notes || "";
+  status("buyerStatus", `Editing Buyer #${buyer.buyer_number}. Upload a file only if you want to replace the saved file.`);
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function clearBuyerForm(clearMessage = true) {
+  ["buyerId", "buyerCompany", "buyerContact", "buyerEmail", "buyerPhone", "buyerPriceUrl", "buyerNotes"].forEach((id) => ($(id).value = ""));
+  $("buyerPriceFile").value = "";
+  if (clearMessage) status("buyerStatus", "");
+}
+
+function readBuyerFile(file) {
+  return new Promise((resolve, reject) => {
+    if (file.size > 5 * 1024 * 1024) {
+      reject(new Error("Price list file must be under 5 MB."));
+      return;
+    }
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Could not read file."));
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.readAsDataURL(file);
+  }).catch((error) => {
+    status("buyerStatus", error.message, "bad");
+    return "";
+  });
+}
 
 async function loadCustomers() {
   const search = $("customerSearch")?.value || "";
