@@ -583,7 +583,7 @@ async function addQuickPhoneLines(entries) {
     applyQuickPhoneFields(parsed);
     const result = await savePhonePurchase({ silent: true, keepForm: true });
     if (result?.ok) added += 1;
-    else failures.push(`${line} (${result?.error || "not saved"})`);
+    else failures.push(`${typeof entry === "string" ? entry : entry.text} (${result?.error || "not saved"})`);
   }
   await loadPhoneInvoices();
   if (failures.length) {
@@ -635,8 +635,9 @@ function parseQuickPhoneLine(value) {
   let itemText = quantityResult.text;
   const priceResult = extractQuickPrice(itemText);
   const cost = priceResult.price || 0;
+  const priceSource = priceResult.source;
   itemText = priceResult.text;
-  if (!seller) {
+  if (!seller && !priceSource) {
     const looseSeller = extractQuickLooseSeller(itemText);
     if (looseSeller) {
       seller = looseSeller;
@@ -671,6 +672,7 @@ function parseQuickPhoneLine(value) {
     faceId: /face\s*id/i.test(raw),
   };
   const notes = [
+    priceSource ? `Source: ${priceSource}` : "",
     seller ? `Seller ${seller}` : "",
     purchaseLocation ? `Bought at ${purchaseLocation}` : "",
     gradeResult.raw ? gradeResult.raw : "",
@@ -862,9 +864,12 @@ function extractQuickPrice(value) {
     const after = text.slice(match.index + match[0].length, match.index + match[0].length + 4);
     return Number.isFinite(price) && price >= 50 && !normalizeQuickStorage(match[1], after.match(/^\s*(gb|g|tb|t)\b/i)?.[1] || "");
   });
-  if (!matches.length) return { price: 0, text };
+  if (!matches.length) return { price: 0, text, source: "" };
   const match = matches[matches.length - 1];
-  return { price: Number(match[1].replace(/,/g, "")), text: removeQuickMatch(text, match) };
+  const afterPrice = text.slice(match.index + match[0].length);
+  const source = quickTitle(stripQuickNoise(afterPrice.replace(/^[\s,;:-]+/, "")));
+  const cleanedText = source ? text.slice(0, match.index).trim() : removeQuickMatch(text, match);
+  return { price: Number(match[1].replace(/,/g, "")), text: cleanedText, source };
 }
 
 function extractQuickStorage(value) {
