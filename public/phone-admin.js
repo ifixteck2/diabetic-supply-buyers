@@ -1208,8 +1208,13 @@ function renderPhoneInvoiceCard(invoice) {
   const canRemove = invoice.status === "Pending";
   const canReturn = salePrice === null;
   const isPending = invoice.status === "Pending";
-  const rows = purchases.map((row) => `
+  let itemNumber = 1;
+  const rows = purchases.map((row) => {
+    const itemLabel = phoneInvoiceItemNumber(row, itemNumber);
+    itemNumber += phoneInvoiceQuantity(row);
+    return `
     <tr class="phone-purchase-row">
+      <td>${escapeHtml(itemLabel)}</td>
       <td class="phone-device-cell">
         <strong>${escapeHtml(row.model)}</strong>
         <span>${escapeHtml(phoneInvoiceItemCondition(row))}</span>
@@ -1221,9 +1226,15 @@ function renderPhoneInvoiceCard(invoice) {
       <td>${money(row.cost_each)}</td>
       <td><div class="phone-row-actions"><button class="mini-btn" onclick="startPhonePurchaseEdit(${row.id})">Edit</button>${canRemove ? `<button class="mini-btn" onclick="movePhonePurchaseToInvoice(${row.id})">Move</button>` : ""}${canReturn ? `<button class="mini-btn warning" onclick="returnPhonePurchaseToKt(${row.id})">Return</button>` : ""}${canRemove ? `<button class="mini-btn danger" onclick="removePhonePurchaseFromInvoice(${row.id})">Remove</button>` : ""}</div></td>
     </tr>
-  `).join("");
-  const pendingRows = purchases.map((row) => `
+  `;
+  }).join("");
+  itemNumber = 1;
+  const pendingRows = purchases.map((row) => {
+    const itemLabel = phoneInvoiceItemNumber(row, itemNumber);
+    itemNumber += phoneInvoiceQuantity(row);
+    return `
     <tr class="pending-phone-row">
+      <td>${escapeHtml(itemLabel)}</td>
       <td class="phone-device-cell">
         <strong>${escapeHtml(row.model)}</strong>
         <span>${escapeHtml(phoneInvoiceItemCondition(row))}</span>
@@ -1237,7 +1248,8 @@ function renderPhoneInvoiceCard(invoice) {
       <td>${phoneAddedDate(row)}</td>
       <td><div class="phone-row-actions"><button class="mini-btn" onclick="startPhonePurchaseEdit(${row.id})">Edit</button>${canRemove ? `<button class="mini-btn" onclick="movePhonePurchaseToInvoice(${row.id})">Move</button>` : ""}${canReturn ? `<button class="mini-btn warning" onclick="returnPhonePurchaseToKt(${row.id})">Return</button>` : ""}${canRemove ? `<button class="mini-btn danger" onclick="removePhonePurchaseFromInvoice(${row.id})">Remove</button>` : ""}</div></td>
     </tr>
-  `).join("");
+  `;
+  }).join("");
   const saleControls = `
     <div class="sale-box phone-sale-box">
       <div class="form-grid three">
@@ -1269,15 +1281,15 @@ function renderPhoneInvoiceCard(invoice) {
       ${isPending ? `
         <div class="table-wrap pending-table-wrap">
           <table class="phone-profit-table pending-phone-table">
-            <thead><tr><th>Phone</th><th>Carrier</th><th>Qty</th><th>Cost</th><th>Added</th><th></th></tr></thead>
-            <tbody>${pendingRows || `<tr><td colspan="6">No purchases added.</td></tr>`}</tbody>
+            <thead><tr><th>Item #</th><th>Phone</th><th>Carrier</th><th>Qty</th><th>Cost</th><th>Added</th><th></th></tr></thead>
+            <tbody>${pendingRows || `<tr><td colspan="7">No purchases added.</td></tr>`}</tbody>
           </table>
         </div>
       ` : `
         <div class="table-wrap">
           <table class="phone-profit-table">
-            <thead><tr><th>Device</th><th>Carrier</th><th>Qty</th><th>Cost Each</th><th></th></tr></thead>
-            <tbody>${rows || `<tr><td colspan="5">No purchases added.</td></tr>`}</tbody>
+            <thead><tr><th>Item #</th><th>Device</th><th>Carrier</th><th>Qty</th><th>Cost Each</th><th></th></tr></thead>
+            <tbody>${rows || `<tr><td colspan="6">No purchases added.</td></tr>`}</tbody>
           </table>
         </div>
       `}
@@ -1390,6 +1402,15 @@ function ensureSelectOption(id, value, label) {
 function phoneInvoiceItemCondition(row) {
   if (row.condition_type === "New") return row.packaging ? `NEW - ${row.packaging}` : "NEW";
   return row.grade || "USED";
+}
+
+function phoneInvoiceQuantity(row) {
+  return Math.max(1, Number(row.quantity || 1));
+}
+
+function phoneInvoiceItemNumber(row, start) {
+  const quantity = phoneInvoiceQuantity(row);
+  return quantity > 1 ? `${start}-${start + quantity - 1}` : String(start);
 }
 
 function phoneAddedDate(row) {

@@ -1423,21 +1423,12 @@ async function attachPhonePurchases(invoices) {
 
 function sortPhonePurchases(purchases) {
   return [...purchases].sort((a, b) => {
-    const aTablet = a.device_type === "Tablet" ? 1 : 0;
-    const bTablet = b.device_type === "Tablet" ? 1 : 0;
-    if (aTablet !== bTablet) return aTablet - bTablet;
-
-    const modelCompare = phoneModelSortValue(b.model) - phoneModelSortValue(a.model)
-      || String(a.model || "").localeCompare(String(b.model || ""), undefined, {
-        numeric: true,
-        sensitivity: "base",
-      });
-    if (modelCompare !== 0) return modelCompare;
-
-    const aCondition = phoneConditionRank(a);
-    const bCondition = phoneConditionRank(b);
-    if (aCondition !== bCondition) return aCondition - bCondition;
-
+    const dateCompare = new Date(a.purchase_date || a.invoice_added_at || a.created_at || 0)
+      - new Date(b.purchase_date || b.invoice_added_at || b.created_at || 0);
+    if (dateCompare !== 0) return dateCompare;
+    const addedCompare = new Date(a.invoice_added_at || a.created_at || 0)
+      - new Date(b.invoice_added_at || b.created_at || 0);
+    if (addedCompare !== 0) return addedCompare;
     return Number(a.id || 0) - Number(b.id || 0);
   });
 }
@@ -2453,6 +2444,7 @@ function createPhoneInvoiceHtml(invoice, priceOverrides = {}) {
   const invoiceDate = invoice.created_at ? new Date(invoice.created_at).toLocaleDateString("en-US") : new Date().toLocaleDateString("en-US");
   const rows = invoiceLines.map((row) => `
     <tr>
+      <td>${escapeHtml(row.item_number)}</td>
       <td class="item">${escapeHtml(row.model)}</td>
       <td>${escapeHtml(row.carrier || "")}</td>
       <td>${escapeHtml(row.condition)}</td>
@@ -2470,7 +2462,7 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f5f7f8;color:#132126;mar
 <main class="page">
 <header><div class="brand"><h1>Invoice</h1><p>${escapeHtml(invoice.label || "Phone Invoice")}</p></div><div class="meta"><strong>Invoice #${invoice.id}</strong><p>Date: ${invoiceDate}</p><p>Status: ${escapeHtml(invoice.status)}</p></div></header>
 <section class="blocks"><div class="block"><h2>From</h2><strong>iFixTeck LLC</strong><p>1612 Lucerne Ave</p><p>Lake Worth, FL 33460</p></div><div class="block"><h2>Bill To</h2><strong>${escapeHtml(buyerName)}</strong><p>${escapeHtml(invoice.buyer)} buyer invoice</p></div></section>
-<table><thead><tr><th>Model</th><th>Carrier</th><th>Condition</th><th>Qty</th><th class="num">Unit Price</th><th class="num">Line Total</th></tr></thead><tbody>${rows || `<tr><td colspan="6">No purchases added.</td></tr>`}</tbody></table>
+<table><thead><tr><th>Item #</th><th>Model</th><th>Carrier</th><th>Condition</th><th>Qty</th><th class="num">Unit Price</th><th class="num">Line Total</th></tr></thead><tbody>${rows || `<tr><td colspan="7">No purchases added.</td></tr>`}</tbody></table>
 <section class="total"><div class="total-box"><span>Total Due</span><strong>${moneyText(totalSale)}</strong></div></section>
 <p class="note">Thank you for your business. Pricing is listed as the buyer sell price for this invoice.</p>
 </main>
@@ -2491,6 +2483,7 @@ function parsePhoneInvoicePriceOverrides(raw) {
 }
 
 function phoneInvoiceLinesWithPrices(purchases, priceOverrides) {
+  let itemNumber = 1;
   return purchases.flatMap((row) => {
     const quantity = Math.max(1, Number(row.quantity || 1));
     const overridePrices = Array.isArray(priceOverrides[row.id]) ? priceOverrides[row.id] : [];
@@ -2499,6 +2492,7 @@ function phoneInvoiceLinesWithPrices(purchases, priceOverrides) {
       return Array.from({ length: quantity }, (_, index) => {
         const unitPrice = Number(overridePrices[index] ?? row.projected_sell_each ?? 0);
         return {
+          item_number: String(itemNumber++),
           model: quantity > 1 ? `${row.model} (${index + 1} of ${quantity})` : row.model,
           carrier: row.carrier || "",
           condition,
@@ -2509,7 +2503,10 @@ function phoneInvoiceLinesWithPrices(purchases, priceOverrides) {
       });
     }
     const unitPrice = Number(overridePrices[0] ?? row.projected_sell_each ?? 0);
+    const lineItemNumber = quantity > 1 ? `${itemNumber}-${itemNumber + quantity - 1}` : String(itemNumber);
+    itemNumber += quantity;
     return [{
+      item_number: lineItemNumber,
       model: row.model,
       carrier: row.carrier || "",
       condition,
