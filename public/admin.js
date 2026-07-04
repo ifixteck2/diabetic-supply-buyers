@@ -859,6 +859,25 @@ function renderHoldItems() {
         </div>
         <span class="pill active">Holding</span>
       </div>
+      <div class="buyer-pdf-setup">
+        <div class="form-grid three">
+          <label>Offer buyer<select id="holdPdfBuyer" onchange="fillHoldBuyerPrices()">
+            <option>Mercury Medical Supplies</option>
+            <option>First Class Medical Supply</option>
+          </select></label>
+          <label>Fill all prices<input id="holdPdfFillAll" type="number" min="0" step="0.01" placeholder="0.00"></label>
+          <label>Offer PDF<span class="pdf-action-row">
+            <button class="mini-btn" onclick="fillHoldPdfPrices()">Fill All Prices</button>
+            <button class="mini-btn" onclick="generateHoldBuyerPdf(true)">With Prices</button>
+            <button class="mini-btn" onclick="generateHoldBuyerPdf(false)">No Prices</button>
+          </span></label>
+        </div>
+        <div class="buyer-pdf-items">
+          <h4>Items Included In Offer PDF</h4>
+          ${renderHoldPdfPriceRows(heldItems)}
+        </div>
+        <div id="holdPdfStatus"></div>
+      </div>
       <div class="table-wrap pending-item-table">
         <table>
           <thead><tr><th>Qty</th><th>Item</th><th>Exp</th><th>Paid Each</th><th>Customer</th><th>Original Invoice</th><th></th></tr></thead>
@@ -883,6 +902,76 @@ function renderHoldItemRow(entry) {
     </tr>
   `;
 }
+
+function holdPdfItemsForPricing(itemsList) {
+  return (itemsList || []).map((item) => ({ ...item, invoice_removed_at: null }));
+}
+
+function renderHoldPdfPriceRows(itemsList) {
+  const pseudoBatch = { purchases: [{ items: holdPdfItemsForPricing(itemsList) }] };
+  const buyer = $("holdPdfBuyer")?.value || "Mercury Medical Supplies";
+  return buyerPdfItemGroups(pseudoBatch).map((group, index) => {
+    const itemIds = group.items.map((item) => item.id).join(",");
+    const expected = getExpectedBuyerPrice(group.items[0], buyer);
+    const priceValue = expected === null ? "" : Number(expected).toFixed(2);
+    return `
+      <div class="buyer-pdf-item">
+        <span><b>${group.quantity}x ${escapeHtml(group.name)}</b><small>${group.items.length} line${group.items.length === 1 ? "" : "s"} grouped - Exp ${escapeHtml(group.expiration)}</small></span>
+        <span class="pdf-item-actions"><input id="holdPdfPrice-${index}" data-item-ids="${escapeAttr(itemIds)}" class="pdf-item-price" type="number" min="0" step="0.01" value="${priceValue}" placeholder="Sell each"></span>
+      </div>
+    `;
+  }).join("") || `<div class="empty">No held items to include.</div>`;
+}
+
+window.fillHoldBuyerPrices = () => {
+  const buyer = $("holdPdfBuyer")?.value || "";
+  const heldItems = allBatchesCache.flatMap((batch) => (batch.purchases || []).flatMap((purchase) => (
+    (purchase.items || [])
+      .filter((item) => item.invoice_removed_at && item.invoice_removed_reason === HOLD_ITEM_REASON)
+      .map((item) => ({ ...item, batch, purchase }))
+  )));
+  const pseudoBatch = { purchases: [{ items: holdPdfItemsForPricing(heldItems) }] };
+  buyerPdfItemGroups(pseudoBatch).forEach((group, index) => {
+    const input = $(`holdPdfPrice-${index}`);
+    const expected = getExpectedBuyerPrice(group.items[0], buyer);
+    if (input) input.value = expected === null ? "" : Number(expected).toFixed(2);
+  });
+  status("holdPdfStatus", "Loaded buyer prices where matches were found.");
+};
+
+window.fillHoldPdfPrices = () => {
+  const value = Number($("holdPdfFillAll")?.value || 0);
+  if (!value || value <= 0) return status("holdPdfStatus", "Enter a fill-all price first.", "bad");
+  document.querySelectorAll("[id^='holdPdfPrice-']").forEach((input) => {
+    input.value = value.toFixed(2);
+  });
+  status("holdPdfStatus", "Filled every offer price. Adjust any grouped lines before exporting.");
+};
+
+window.generateHoldBuyerPdf = (showPrices = true) => {
+  const prices = {};
+  const itemIds = [];
+  let ok = true;
+  document.querySelectorAll("[id^='holdPdfPrice-']").forEach((input) => {
+    const ids = String(input.dataset.itemIds || "").split(",").map((id) => Number(id)).filter(Boolean);
+    const value = Number(String(input.value || "").replace(/[$,\s]/g, ""));
+    if (!Number.isFinite(value) || value <= 0) ok = false;
+    ids.forEach((id) => {
+      itemIds.push(id);
+      prices[id] = value;
+    });
+  });
+  if (!itemIds.length) return status("holdPdfStatus", "No held items found.", "bad");
+  if (showPrices && !ok) return status("holdPdfStatus", "Enter a selling price for each grouped item.", "bad");
+  const params = new URLSearchParams({
+    buyer: $("holdPdfBuyer")?.value || "Buyer",
+    item_ids: [...new Set(itemIds)].join(","),
+    item_prices: JSON.stringify(prices),
+  });
+  if (!showPrices) params.set("prices", "0");
+  window.open(`/api/hold-items/buyer-pdf?${params.toString()}`, "_blank");
+  status("holdPdfStatus", "Offer PDF is opening.");
+};
 
 function renderBuyerPdfItemControls(batch, context) {
   const items = (batch.purchases || []).flatMap((purchase) => (purchase.items || []).map((item) => ({

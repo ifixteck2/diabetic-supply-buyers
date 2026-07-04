@@ -773,6 +773,56 @@ app.get("/api/batches/:id/buyer-pdf", requireAuth, async (req, res) => {
   res.send(pdf);
 });
 
+app.get("/api/hold-items/buyer-pdf", requireAuth, async (req, res) => {
+  const itemIds = String(req.query.item_ids || "")
+    .split(",")
+    .map((id) => Number(id))
+    .filter(Boolean);
+  const buyer = String(req.query.buyer || "Buyer").trim();
+  const itemPrices = parseBuyerPdfItemPrices(req.query.item_prices);
+  if (!itemIds.length) return res.status(400).send("Choose at least one item.");
+
+  const items = await pool.query(
+    `select pi.*, i.purchase_date, c.name as customer_name, c.phone as customer_phone
+     from purchase_items pi
+     join invoices i on i.id = pi.invoice_id
+     join customers c on c.id = i.customer_id
+     where pi.id = any($1::int[])
+       and pi.invoice_removed_reason = $2
+     order by pi.id asc`,
+    [itemIds, "No buyer right now"]
+  );
+  if (!items.rows.length) return res.status(404).send("No held items found.");
+
+  const total = items.rows.reduce((sum, item) => {
+    const price = Number(itemPrices[item.id] ?? item.expected_sell_each ?? 0);
+    return sum + Number(item.quantity || 0) * price;
+  }, 0);
+  const batch = {
+    id: "hold",
+    label: "No Buyer Items Offer",
+    status: "Offer",
+    sold_to: buyer,
+    sale_price: total,
+    created_at: new Date().toISOString(),
+    purchases: [{
+      customer_name: "Held inventory",
+      customer_phone: "",
+      purchase_date: new Date().toISOString().slice(0, 10),
+      photos: [],
+      items: items.rows.map((item) => ({ ...item, invoice_removed_at: null })),
+    }],
+  };
+  const buyerPrices = /first\s*class/i.test(buyer) ? await getFirstClassPrices() : await getMercuryPrices();
+  const pdf = createBuyerInvoicePdf(batch, buyerPrices, {
+    showPrices: String(req.query.prices || "1") !== "0",
+    itemPrices,
+  });
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `attachment; filename="no-buyer-items-offer.pdf"`);
+  res.send(pdf);
+});
+
 app.post("/api/purchases", requireAuth, async (req, res) => {
   const body = req.body || {};
   const customerInput = body.customer || {};
