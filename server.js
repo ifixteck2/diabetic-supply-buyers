@@ -580,7 +580,19 @@ app.get("/api/buyers", requireAuth, async (req, res) => {
      order by buyer_number asc`,
     params
   );
-  res.json({ buyers: result.rows });
+  const batches = await pool.query(
+    `select id, label, status, sold_to, sale_price, tracking_number, sold_at, shipped_at, created_at, status_updated_at
+     from invoice_batches
+     where sold_to <> ''
+       and status in ('Sold','Shipped')
+     order by status_updated_at desc, created_at desc
+     limit 500`
+  );
+  const buyers = result.rows.map((buyer) => ({
+    ...buyer,
+    invoices: batches.rows.filter((batch) => sameBuyerName(batch.sold_to, buyer.company_name)),
+  }));
+  res.json({ buyers });
 });
 
 app.post("/api/buyers", requireAuth, async (req, res) => {
@@ -590,6 +602,7 @@ app.post("/api/buyers", requireAuth, async (req, res) => {
   const contactName = String(input.contact_name || "").trim();
   const email = String(input.email || "").trim();
   const phone = String(input.phone || "").trim();
+  const shippingAddress = String(input.shipping_address || "").trim();
   const priceListUrl = String(input.price_list_url || "").trim();
   const priceListFileName = String(input.price_list_file_name || "").trim().slice(0, 180);
   const priceListDataUrl = isAllowedDocumentDataUrl(input.price_list_data_url) ? String(input.price_list_data_url) : "";
@@ -603,14 +616,15 @@ app.post("/api/buyers", requireAuth, async (req, res) => {
          contact_name = $2,
          email = $3,
          phone = $4,
-         price_list_url = $5,
-         price_list_file_name = coalesce(nullif($6,''), price_list_file_name),
-         price_list_data_url = coalesce(nullif($7,''), price_list_data_url),
-         notes = $8,
+         shipping_address = $5,
+         price_list_url = $6,
+         price_list_file_name = coalesce(nullif($7,''), price_list_file_name),
+         price_list_data_url = coalesce(nullif($8,''), price_list_data_url),
+         notes = $9,
          updated_at = now()
-       where id = $9
+       where id = $10
        returning *`,
-      [companyName, contactName, email, phone, priceListUrl, priceListFileName, priceListDataUrl, notes, id]
+      [companyName, contactName, email, phone, shippingAddress, priceListUrl, priceListFileName, priceListDataUrl, notes, id]
     );
     if (!result.rows[0]) return res.status(404).json({ error: "Buyer not found." });
     return res.json({ ok: true, buyer: result.rows[0] });
@@ -618,10 +632,10 @@ app.post("/api/buyers", requireAuth, async (req, res) => {
 
   const result = await pool.query(
     `insert into buyer_contacts
-     (buyer_number, company_name, contact_name, email, phone, price_list_url, price_list_file_name, price_list_data_url, notes)
-     values ((select coalesce(max(buyer_number),0) + 1 from buyer_contacts), $1,$2,$3,$4,$5,$6,$7,$8)
+     (buyer_number, company_name, contact_name, email, phone, shipping_address, price_list_url, price_list_file_name, price_list_data_url, notes)
+     values ((select coalesce(max(buyer_number),0) + 1 from buyer_contacts), $1,$2,$3,$4,$5,$6,$7,$8,$9)
      returning *`,
-    [companyName, contactName, email, phone, priceListUrl, priceListFileName, priceListDataUrl, notes]
+    [companyName, contactName, email, phone, shippingAddress, priceListUrl, priceListFileName, priceListDataUrl, notes]
   );
   res.json({ ok: true, buyer: result.rows[0] });
 });
@@ -1193,6 +1207,7 @@ async function migrate() {
       contact_name text not null default '',
       email text not null default '',
       phone text not null default '',
+      shipping_address text not null default '',
       price_list_url text not null default '',
       price_list_file_name text not null default '',
       price_list_data_url text not null default '',
@@ -1297,6 +1312,7 @@ async function migrate() {
     alter table buyer_contacts add column if not exists contact_name text not null default '';
     alter table buyer_contacts add column if not exists email text not null default '';
     alter table buyer_contacts add column if not exists phone text not null default '';
+    alter table buyer_contacts add column if not exists shipping_address text not null default '';
     alter table buyer_contacts add column if not exists price_list_url text not null default '';
     alter table buyer_contacts add column if not exists price_list_file_name text not null default '';
     alter table buyer_contacts add column if not exists price_list_data_url text not null default '';
@@ -2740,6 +2756,20 @@ function parseBuyerPdfItemPrices(raw) {
   } catch {
     return {};
   }
+}
+
+function sameBuyerName(left, right) {
+  const a = normalizeBuyerName(left);
+  const b = normalizeBuyerName(right);
+  return !!a && !!b && (a === b || a.includes(b) || b.includes(a));
+}
+
+function normalizeBuyerName(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/\b(inc|llc|corp|corporation|company|co|medical|med|supplies|supply)\b/g, " ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
 }
 
 function createBuyerInvoicePdf(batch, mercuryPrices = [], options = {}) {

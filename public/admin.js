@@ -1336,10 +1336,15 @@ function renderBuyers() {
       <div>
         <h3>Buyer #${buyer.buyer_number} - ${escapeHtml(buyer.company_name || "Buyer")}</h3>
         <p>${escapeHtml(buyer.contact_name || "No contact name")} ${buyer.phone ? "- " + escapeHtml(buyer.phone) : ""} ${buyer.email ? "- " + escapeHtml(buyer.email) : ""}</p>
+        ${buyer.shipping_address ? `<p class="mini"><b>Ship to:</b> ${escapeHtml(buyer.shipping_address)}</p>` : ""}
         ${buyer.notes ? `<p class="mini">${escapeHtml(buyer.notes)}</p>` : ""}
         <div class="buyer-links">
           ${buyer.price_list_url ? `<a class="mini-btn" href="${escapeAttr(buyer.price_list_url)}" target="_blank" rel="noopener">Open Price Link</a>` : ""}
           ${buyer.price_list_data_url ? `<a class="mini-btn" href="${escapeAttr(buyer.price_list_data_url)}" download="${escapeAttr(buyer.price_list_file_name || `buyer-${buyer.buyer_number}-price-list`)}">Download Uploaded List</a>` : ""}
+          <button class="mini-btn" onclick="toggleBuyerHistory(${buyer.id})">Invoice History (${buyer.invoices?.length || 0})</button>
+        </div>
+        <div id="buyerHistory-${buyer.id}" class="buyer-history hidden">
+          ${renderBuyerInvoiceHistory(buyer)}
         </div>
       </div>
       <div class="customer-meta">
@@ -1349,6 +1354,32 @@ function renderBuyers() {
     </article>
   `).join("");
 }
+
+function renderBuyerInvoiceHistory(buyer) {
+  const invoices = buyer.invoices || [];
+  if (!invoices.length) return `<div class="empty">No sold or shipped invoices found for this buyer.</div>`;
+  return `
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Invoice</th><th>Status</th><th>Sold For</th><th>Tracking</th><th>Updated</th><th></th></tr></thead>
+        <tbody>${invoices.map((invoice) => `
+          <tr>
+            <td><strong>${escapeHtml(formatInvoiceNumber(invoice))}</strong><span>${escapeHtml(invoice.label || "")}</span></td>
+            <td><span class="pill ${String(invoice.status || "").toLowerCase()}">${escapeHtml(invoice.status || "")}</span></td>
+            <td>${money(invoice.sale_price)}</td>
+            <td>${invoice.tracking_number ? renderTrackingLink(invoice.tracking_number) : ""}</td>
+            <td>${formatDateTime(invoice.status_updated_at || invoice.shipped_at || invoice.sold_at || invoice.created_at)}</td>
+            <td><button class="mini-btn" onclick="openTab('history')">Open History</button></td>
+          </tr>
+        `).join("")}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+window.toggleBuyerHistory = (id) => {
+  $(`buyerHistory-${id}`)?.classList.toggle("hidden");
+};
 
 async function saveBuyer() {
   const file = $("buyerPriceFile")?.files?.[0] || null;
@@ -1362,6 +1393,7 @@ async function saveBuyer() {
       contact_name: $("buyerContact").value.trim(),
       email: $("buyerEmail").value.trim(),
       phone: $("buyerPhone").value.trim(),
+      shipping_address: $("buyerShippingAddress").value.trim(),
       price_list_url: $("buyerPriceUrl").value.trim(),
       price_list_file_name: file?.name || "",
       price_list_data_url: dataUrl,
@@ -1382,6 +1414,7 @@ function editBuyer(id) {
   $("buyerContact").value = buyer.contact_name || "";
   $("buyerEmail").value = buyer.email || "";
   $("buyerPhone").value = buyer.phone || "";
+  $("buyerShippingAddress").value = buyer.shipping_address || "";
   $("buyerPriceUrl").value = buyer.price_list_url || "";
   $("buyerPriceFile").value = "";
   $("buyerNotes").value = buyer.notes || "";
@@ -1390,7 +1423,7 @@ function editBuyer(id) {
 }
 
 function clearBuyerForm(clearMessage = true) {
-  ["buyerId", "buyerCompany", "buyerContact", "buyerEmail", "buyerPhone", "buyerPriceUrl", "buyerNotes"].forEach((id) => ($(id).value = ""));
+  ["buyerId", "buyerCompany", "buyerContact", "buyerEmail", "buyerPhone", "buyerShippingAddress", "buyerPriceUrl", "buyerNotes"].forEach((id) => ($(id).value = ""));
   $("buyerPriceFile").value = "";
   if (clearMessage) status("buyerStatus", "");
 }
