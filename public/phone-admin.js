@@ -96,6 +96,7 @@ function openPhoneTab(name) {
     priceChecker: "Price Checker",
     atlasPending: "Atlas Pending",
     ktPending: "KT Pending",
+    locallySold: "Locally Sold",
     ktReturns: "Returns",
     pastInvoices: "Past Invoices",
   };
@@ -1146,6 +1147,7 @@ function resetPhonePurchase(clearStatus = true) {
 function renderInvoiceLists() {
   renderInvoiceGroup("atlasPendingList", "Atlas", "Pending");
   renderInvoiceGroup("ktPendingList", "KT", "Pending");
+  renderLocallySold();
   renderKtReturns();
   renderPastInvoices();
 }
@@ -1170,6 +1172,68 @@ function renderKtReturns() {
     .filter((invoice) => (invoice.returns || []).length)
     .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
   $("ktReturnsList").innerHTML = list.map(renderKtReturnCard).join("") || `<div class="empty">No returns yet.</div>`;
+}
+
+function renderLocallySold() {
+  const list = phoneInvoices
+    .filter((invoice) => (invoice.local_sold || []).length)
+    .sort((a, b) => newestLocalSoldDate(b) - newestLocalSoldDate(a));
+  $("locallySoldList").innerHTML = list.map(renderLocallySoldCard).join("") || `<div class="empty">No locally sold phones yet.</div>`;
+}
+
+function newestLocalSoldDate(invoice) {
+  const dates = (invoice.local_sold || []).map((row) => new Date(row.local_sold_at || row.invoice_removed_at || row.created_at || 0).getTime());
+  return Math.max(0, ...dates);
+}
+
+function renderLocallySoldCard(invoice) {
+  const localSold = invoice.local_sold || [];
+  const totalCost = localSold.reduce((sum, row) => sum + Number(row.quantity || 0) * Number(row.cost_each || 0), 0);
+  const totalSale = localSold.reduce((sum, row) => sum + Number(row.local_sale_price || 0), 0);
+  const totalProfit = totalSale ? totalSale - totalCost : null;
+  const rows = localSold.map((row) => {
+    const cost = Number(row.quantity || 0) * Number(row.cost_each || 0);
+    const sale = row.local_sale_price === null || row.local_sale_price === undefined || row.local_sale_price === "" ? null : Number(row.local_sale_price);
+    const profit = sale === null ? null : sale - cost;
+    return `
+      <tr>
+        <td class="phone-device-cell">
+          <strong>${escapeHtml(row.model)}</strong>
+          <span>${escapeHtml(phoneInvoiceItemCondition(row))}</span>
+          ${row.imei ? `<em>IMEI ${escapeHtml(row.imei)}</em>` : ""}
+          ${row.notes ? `<em>${escapeHtml(row.notes)}</em>` : ""}
+        </td>
+        <td>${escapeHtml(row.carrier || "")}</td>
+        <td>${row.quantity}</td>
+        <td>${money(row.cost_each)}</td>
+        <td>${sale === null ? "Not Set" : money(sale)}</td>
+        <td class="${profit === null || profit >= 0 ? "profit-good" : "profit-bad"}">${profit === null ? "Not Set" : money(profit)}</td>
+        <td>${row.local_sold_at || row.invoice_removed_at ? new Date(row.local_sold_at || row.invoice_removed_at).toLocaleDateString() : ""}</td>
+      </tr>
+    `;
+  }).join("");
+  return `
+    <article class="invoice-card phone-invoice-card local-sold-card">
+      <div class="invoice-top">
+        <div class="phone-invoice-title">
+          <h3>${escapeHtml(invoice.label || `${invoice.buyer} Invoice`)}</h3>
+          <p>#${invoice.id} - ${escapeHtml(invoice.buyer)} - ${localSold.length} locally sold item${localSold.length === 1 ? "" : "s"}</p>
+        </div>
+        <span class="pill sold">Locally Sold</span>
+      </div>
+      <div class="table-wrap">
+        <table class="phone-profit-table">
+          <thead><tr><th>Phone</th><th>Carrier</th><th>Qty</th><th>Cost Each</th><th>Sold For</th><th>Profit</th><th>Sold</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      <div class="sale-summary">
+        <span>Cost ${money(totalCost)}</span>
+        <span>Local Sales ${totalSale ? money(totalSale) : "Not Set"}</span>
+        ${totalProfit === null ? "" : `<strong class="${totalProfit >= 0 ? "profit-good" : "profit-bad"}">Profit ${money(totalProfit)}</strong>`}
+      </div>
+    </article>
+  `;
 }
 
 function renderKtReturnCard(invoice) {
@@ -1264,7 +1328,7 @@ function renderPhoneInvoiceCard(invoice) {
       <td>${escapeHtml(row.carrier || "")}</td>
       <td>${row.quantity}</td>
       <td>${money(row.cost_each)}</td>
-      <td><div class="phone-row-actions"><button class="mini-btn" onclick="startPhonePurchaseEdit(${row.id})">Edit</button>${canRemove ? `<button class="mini-btn" onclick="movePhonePurchaseToInvoice(${row.id})">Move</button>` : ""}${canReturn ? `<button class="mini-btn warning" onclick="returnPhonePurchaseToKt(${row.id})">Return</button>` : ""}${canRemove ? `<button class="mini-btn danger" onclick="removePhonePurchaseFromInvoice(${row.id})">Remove</button>` : ""}</div></td>
+      <td><div class="phone-row-actions"><button class="mini-btn" onclick="startPhonePurchaseEdit(${row.id})">Edit</button>${canRemove ? `<button class="mini-btn" onclick="movePhonePurchaseToInvoice(${row.id})">Move</button>` : ""}${canReturn ? `<button class="mini-btn warning" onclick="returnPhonePurchaseToKt(${row.id})">Return</button>` : ""}${canRemove ? `<button class="mini-btn danger" onclick="removePhonePurchaseFromInvoice(${row.id})">Locally Sold</button>` : ""}</div></td>
     </tr>
   `;
   }).join("");
@@ -1286,7 +1350,7 @@ function renderPhoneInvoiceCard(invoice) {
       <td>${row.quantity}</td>
       <td>${money(row.cost_each)}</td>
       <td>${phoneAddedDate(row)}</td>
-      <td><div class="phone-row-actions"><button class="mini-btn" onclick="startPhonePurchaseEdit(${row.id})">Edit</button>${canRemove ? `<button class="mini-btn" onclick="movePhonePurchaseToInvoice(${row.id})">Move</button>` : ""}${canReturn ? `<button class="mini-btn warning" onclick="returnPhonePurchaseToKt(${row.id})">Return</button>` : ""}${canRemove ? `<button class="mini-btn danger" onclick="removePhonePurchaseFromInvoice(${row.id})">Remove</button>` : ""}</div></td>
+      <td><div class="phone-row-actions"><button class="mini-btn" onclick="startPhonePurchaseEdit(${row.id})">Edit</button>${canRemove ? `<button class="mini-btn" onclick="movePhonePurchaseToInvoice(${row.id})">Move</button>` : ""}${canReturn ? `<button class="mini-btn warning" onclick="returnPhonePurchaseToKt(${row.id})">Return</button>` : ""}${canRemove ? `<button class="mini-btn danger" onclick="removePhonePurchaseFromInvoice(${row.id})">Locally Sold</button>` : ""}</div></td>
     </tr>
   `;
   }).join("");
@@ -1607,17 +1671,24 @@ async function savePhoneInvoiceSaleValue(id, salePrice, saleNotes = "") {
 }
 
 window.removePhonePurchaseFromInvoice = async (id) => {
-  if (!confirm("Remove this item from the pending invoice? It will stay saved as sold locally.")) {
+  const salePriceInput = prompt("Amount sold locally? Leave blank if you do not know yet.");
+  if (salePriceInput === null) {
+    return false;
+  }
+  const cleanSalePrice = String(salePriceInput || "").replace(/[$,\s]/g, "");
+  if (cleanSalePrice && (Number.isNaN(Number(cleanSalePrice)) || Number(cleanSalePrice) < 0)) {
+    alert("Enter a valid local sale amount, or leave it blank.");
     return false;
   }
   const result = await api(`/api/phone-purchases/${id}/invoice-removal`, {
     method: "PATCH",
-    body: { remove: true, reason: "Sold locally" },
+    body: { remove: true, reason: "Sold locally", local_sale_price: cleanSalePrice },
   });
   if (!result?.ok) {
-    return alert(result?.error || "Could not remove this item from the invoice.");
+    return alert(result?.error || "Could not move this item to locally sold.");
   }
   await loadPhoneInvoices();
+  openPhoneTab("locallySold");
   return true;
 };
 

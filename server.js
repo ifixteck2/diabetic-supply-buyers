@@ -469,17 +469,27 @@ app.patch("/api/phone-purchases/:id/invoice-removal", requirePhoneAuth, async (r
   const id = Number(req.params.id);
   const remove = req.body?.remove !== false;
   const reason = String(req.body?.reason || "Sold locally").trim();
+  const localSalePrice = req.body?.local_sale_price === "" || req.body?.local_sale_price === undefined || req.body?.local_sale_price === null
+    ? null
+    : Number(req.body.local_sale_price);
+  const localSaleNotes = String(req.body?.local_sale_notes || "").trim();
   if (!id) return res.status(400).json({ error: "Purchase ID is required." });
+  if (localSalePrice !== null && (!Number.isFinite(localSalePrice) || localSalePrice < 0)) {
+    return res.status(400).json({ error: "Enter a valid local sale amount." });
+  }
   const result = await pool.query(
     `update phone_purchases pp
      set invoice_removed_at = case when $2 then now() else null end,
-       invoice_removed_reason = case when $2 then coalesce(nullif($3,''), 'Sold locally') else '' end
+       invoice_removed_reason = case when $2 then coalesce(nullif($3,''), 'Sold locally') else '' end,
+       local_sale_price = case when $2 then $4::numeric else null end,
+       local_sold_at = case when $2 and lower(coalesce(nullif($3,''), 'Sold locally')) like '%sold locally%' then now() else null end,
+       local_sale_notes = case when $2 then $5 else '' end
      from phone_invoices pi
      where pp.invoice_id = pi.id
        and pp.id = $1
        and pi.status = 'Pending'
      returning pp.*`,
-    [id, remove, reason]
+    [id, remove, reason, localSalePrice, localSaleNotes]
   );
   if (!result.rows[0]) return res.status(404).json({ error: "Pending invoice item not found." });
   res.json({ ok: true, purchase: result.rows[0] });
@@ -1301,6 +1311,9 @@ async function migrate() {
       notes text not null default '',
       invoice_removed_at timestamptz,
       invoice_removed_reason text not null default '',
+      local_sale_price numeric,
+      local_sold_at timestamptz,
+      local_sale_notes text not null default '',
       returned_at timestamptz,
       return_reason text not null default '',
       invoice_added_at timestamptz not null default now(),
@@ -1344,6 +1357,9 @@ async function migrate() {
     alter table phone_purchases add column if not exists photo_data_url text not null default '';
     alter table phone_purchases add column if not exists returned_at timestamptz;
     alter table phone_purchases add column if not exists return_reason text not null default '';
+    alter table phone_purchases add column if not exists local_sale_price numeric;
+    alter table phone_purchases add column if not exists local_sold_at timestamptz;
+    alter table phone_purchases add column if not exists local_sale_notes text not null default '';
     alter table phone_purchases add column if not exists invoice_added_at timestamptz;
     update phone_purchases set invoice_added_at = created_at where invoice_added_at is null;
     alter table phone_purchases alter column invoice_added_at set default now();
@@ -1584,10 +1600,20 @@ async function attachPhonePurchases(invoices) {
      order by returned_at desc, created_at desc`,
     [invoiceIds]
   );
+  const localSold = await pool.query(
+    `select * from phone_purchases
+     where invoice_id = any($1::int[])
+       and invoice_removed_at is not null
+       and returned_at is null
+       and (local_sold_at is not null or invoice_removed_reason ilike 'Sold locally%')
+     order by coalesce(local_sold_at, invoice_removed_at) desc, created_at desc`,
+    [invoiceIds]
+  );
   return invoices.map((invoice) => ({
     ...invoice,
     purchases: sortPhonePurchases(purchases.rows.filter((purchase) => purchase.invoice_id === invoice.id)),
     returns: sortPhonePurchases(returns.rows.filter((purchase) => purchase.invoice_id === invoice.id)),
+    local_sold: localSold.rows.filter((purchase) => purchase.invoice_id === invoice.id),
   }));
 }
 
