@@ -558,6 +558,25 @@ app.patch("/api/phone-purchases/:id/gift-card-details", requirePhoneAuth, async 
   res.json({ ok: true, purchase: result.rows[0] });
 });
 
+app.patch("/api/phone-purchases/:id/gift-card-receipt-pdf", requirePhoneAuth, express.raw({ type: "application/pdf", limit: "25mb" }), async (req, res) => {
+  const id = Number(req.params.id);
+  if (!id) return res.status(400).json({ error: "Purchase ID is required." });
+  if (!Buffer.isBuffer(req.body) || !req.body.length) return res.status(400).json({ error: "Choose a PDF receipt." });
+  const fileName = decodeURIComponent(String(req.headers["x-file-name"] || "receipt.pdf")).slice(0, 240);
+  const dataUrl = `data:application/pdf;base64,${req.body.toString("base64")}`;
+  const result = await pool.query(
+    `update phone_purchases
+     set gift_card_receipt_file_name = $2,
+       gift_card_receipt_data_url = $3
+     where id = $1
+       and gift_card_at is not null
+     returning *`,
+    [id, fileName || "receipt.pdf", dataUrl]
+  );
+  if (!result.rows[0]) return res.status(404).json({ error: "Gift card record not found." });
+  res.json({ ok: true, purchase: result.rows[0] });
+});
+
 app.patch("/api/phone-purchases/:id/return", requirePhoneAuth, async (req, res) => {
   const id = Number(req.params.id);
   const reason = String(req.body?.reason || "").trim();

@@ -500,15 +500,6 @@ function imageFileToDataUrl(file) {
   });
 }
 
-function fileToDataUrl(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error("Could not read file."));
-    reader.onload = () => resolve({ file_name: file.name, data_url: reader.result });
-    reader.readAsDataURL(file);
-  });
-}
-
 function updateProjectedPrice() {
   const selectedModel = $("phoneModel").value;
   const selectedStorage = $("phoneStorage").value;
@@ -1807,16 +1798,23 @@ window.movePhonePurchaseToGiftCard = async (id) => {
 window.saveGiftCardDetails = async (id) => {
   const cardFile = $(`giftCardPhoto${id}`)?.files?.[0] || null;
   const receiptFile = $(`giftCardReceipt${id}`)?.files?.[0] || null;
+  const receiptIsPdf = receiptFile && isPdfFile(receiptFile);
   const result = await api(`/api/phone-purchases/${id}/gift-card-details`, {
     method: "PATCH",
     body: {
       gift_card_number: $(`giftCardNumber${id}`)?.value?.trim() || "",
       gift_card_photo: cardFile ? await imageFileToDataUrl(cardFile) : null,
-      receipt_photo: receiptFile ? await giftCardReceiptFileToDataUrl(receiptFile) : null,
+      receipt_photo: receiptFile && !receiptIsPdf ? await imageFileToDataUrl(receiptFile) : null,
     },
   });
   if (!result?.ok) {
     return alert(result?.error || "Could not save gift card details.");
+  }
+  if (receiptIsPdf) {
+    const pdfResult = await uploadGiftCardReceiptPdf(id, receiptFile);
+    if (!pdfResult?.ok) {
+      return alert(pdfResult?.error || "Could not upload PDF receipt.");
+    }
   }
   await loadPhoneInvoices();
   openPhoneTab("giftCards");
@@ -1824,9 +1822,32 @@ window.saveGiftCardDetails = async (id) => {
   return true;
 };
 
-async function giftCardReceiptFileToDataUrl(file) {
-  if (file.type === "application/pdf" || /\.pdf$/i.test(file.name)) return fileToDataUrl(file);
-  return imageFileToDataUrl(file);
+async function uploadGiftCardReceiptPdf(id, file) {
+  try {
+    const response = await fetch(`/api/phone-purchases/${id}/gift-card-receipt-pdf`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/pdf",
+        "X-File-Name": encodeURIComponent(file.name || "receipt.pdf"),
+      },
+      body: file,
+    });
+    const text = await response.text();
+    let data = {};
+    try {
+      data = text ? JSON.parse(text) : {};
+    } catch {
+      data = { error: text || `Request failed with status ${response.status}` };
+    }
+    if (!response.ok) return data;
+    return data;
+  } catch (error) {
+    return { error: `Network error uploading PDF receipt. ${error?.message || ""}`.trim() };
+  }
+}
+
+function isPdfFile(file) {
+  return file?.type === "application/pdf" || /\.pdf$/i.test(file?.name || "");
 }
 
 function isPdfDataUrl(value) {
