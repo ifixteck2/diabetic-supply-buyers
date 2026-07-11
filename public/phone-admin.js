@@ -1252,6 +1252,8 @@ function renderGiftCards() {
     const cost = phoneLineCost(row);
     const value = Number(row.gift_card_value || 0);
     const profit = value - cost;
+    const cardPhotoId = `giftCardPhoto${row.id}`;
+    const receiptPhotoId = `giftCardReceipt${row.id}`;
     return `
       <tr>
         <td class="phone-device-cell">
@@ -1267,6 +1269,16 @@ function renderGiftCards() {
         <td>${money(value)}</td>
         <td class="${profit >= 0 ? "profit-good" : "profit-bad"}">${money(profit)}</td>
         <td>${row.gift_card_at ? new Date(row.gift_card_at).toLocaleDateString() : ""}</td>
+        <td>
+          <div class="phone-row-actions gift-card-actions">
+            <input class="mini-input" id="giftCardNumber${row.id}" value="${escapeAttr(row.gift_card_number || "")}" placeholder="Card #">
+            <label class="mini-file">Card<input id="${cardPhotoId}" type="file" accept="image/*"></label>
+            <label class="mini-file">Receipt<input id="${receiptPhotoId}" type="file" accept="image/*"></label>
+            ${row.gift_card_photo_data_url ? `<button class="mini-btn" onclick="openGiftCardImage(${row.id}, 'card')">View Card</button>` : ""}
+            ${row.gift_card_receipt_data_url ? `<button class="mini-btn" onclick="openGiftCardImage(${row.id}, 'receipt')">View Receipt</button>` : ""}
+            <button class="mini-btn" onclick="saveGiftCardDetails(${row.id})">Save</button>
+          </div>
+        </td>
       </tr>
     `;
   }).join("");
@@ -1281,7 +1293,7 @@ function renderGiftCards() {
       </div>
       <div class="table-wrap">
         <table class="phone-profit-table">
-          <thead><tr><th>Phone Traded In</th><th>Buyer</th><th>From Invoice</th><th>Qty</th><th>Cost</th><th>Gift Card Value</th><th>Profit</th><th>Date</th></tr></thead>
+          <thead><tr><th>Phone Traded In</th><th>Buyer</th><th>From Invoice</th><th>Qty</th><th>Cost</th><th>Gift Card Value</th><th>Profit</th><th>Date</th><th>Card Info</th></tr></thead>
           <tbody>${body}</tbody>
         </table>
       </div>
@@ -1762,10 +1774,13 @@ window.movePhonePurchaseToGiftCard = async (id) => {
     alert("Enter the Apple gift card value.");
     return false;
   }
+  const cardNumber = prompt("Gift card number? Leave blank if you do not have it yet.");
+  if (cardNumber === null) return false;
   const result = await api(`/api/phone-purchases/${id}/gift-card`, {
     method: "PATCH",
     body: {
       gift_card_value: cleanValue,
+      gift_card_number: cardNumber.trim(),
       gift_card_notes: "Apple trade-in gift card",
     },
   });
@@ -1775,6 +1790,36 @@ window.movePhonePurchaseToGiftCard = async (id) => {
   await loadPhoneInvoices();
   openPhoneTab("giftCards");
   return true;
+};
+
+window.saveGiftCardDetails = async (id) => {
+  const cardFile = $(`giftCardPhoto${id}`)?.files?.[0] || null;
+  const receiptFile = $(`giftCardReceipt${id}`)?.files?.[0] || null;
+  const result = await api(`/api/phone-purchases/${id}/gift-card-details`, {
+    method: "PATCH",
+    body: {
+      gift_card_number: $(`giftCardNumber${id}`)?.value?.trim() || "",
+      gift_card_photo: cardFile ? await imageFileToDataUrl(cardFile) : null,
+      receipt_photo: receiptFile ? await imageFileToDataUrl(receiptFile) : null,
+    },
+  });
+  if (!result?.ok) {
+    return alert(result?.error || "Could not save gift card details.");
+  }
+  await loadPhoneInvoices();
+  openPhoneTab("giftCards");
+  return true;
+};
+
+window.openGiftCardImage = (id, kind) => {
+  const row = phoneInvoices.flatMap((invoice) => invoice.gift_cards || []).find((entry) => Number(entry.id) === Number(id));
+  const src = kind === "receipt" ? row?.gift_card_receipt_data_url : row?.gift_card_photo_data_url;
+  if (!src) return;
+  const label = kind === "receipt" ? "Receipt" : "Gift card";
+  const viewer = document.createElement("div");
+  viewer.className = "photo-viewer";
+  viewer.innerHTML = `<div class="photo-viewer-backdrop" onclick="this.parentElement.remove()"></div><div class="photo-viewer-panel"><button class="photo-viewer-close" onclick="this.closest('.photo-viewer').remove()">Close</button><img src="${escapeAttr(src)}" alt="${label} photo"><p>${escapeHtml(label)} - ${escapeHtml(row.model || "Phone")}</p></div>`;
+  document.body.appendChild(viewer);
 };
 
 window.returnPhonePurchaseToKt = async (id) => {
