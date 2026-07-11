@@ -1272,10 +1272,12 @@ function renderGiftCards() {
         <td>
           <div class="phone-row-actions gift-card-actions">
             <input class="mini-input" id="giftCardNumber${row.id}" value="${escapeAttr(row.gift_card_number || "")}" placeholder="Card #">
+            <div class="gift-card-media">
+              ${row.gift_card_photo_data_url ? `<button class="gift-card-thumb" onclick="openGiftCardImage(${row.id}, 'card')" title="View gift card"><img src="${escapeAttr(row.gift_card_photo_data_url)}" alt="Gift card"></button>` : `<span class="gift-card-empty">No card photo</span>`}
+              ${row.gift_card_receipt_data_url ? `<button class="gift-card-thumb" onclick="openGiftCardImage(${row.id}, 'receipt')" title="View receipt"><img src="${escapeAttr(row.gift_card_receipt_data_url)}" alt="Receipt"></button>` : `<span class="gift-card-empty">No receipt</span>`}
+            </div>
             <label class="mini-file">Card<input id="${cardPhotoId}" type="file" accept="image/*"></label>
             <label class="mini-file">Receipt<input id="${receiptPhotoId}" type="file" accept="image/*"></label>
-            ${row.gift_card_photo_data_url ? `<button class="mini-btn" onclick="openGiftCardImage(${row.id}, 'card')">View Card</button>` : ""}
-            ${row.gift_card_receipt_data_url ? `<button class="mini-btn" onclick="openGiftCardImage(${row.id}, 'receipt')">View Receipt</button>` : ""}
             <button class="mini-btn" onclick="saveGiftCardDetails(${row.id})">Save</button>
           </div>
         </td>
@@ -1808,6 +1810,7 @@ window.saveGiftCardDetails = async (id) => {
   }
   await loadPhoneInvoices();
   openPhoneTab("giftCards");
+  alert("Gift card details saved.");
   return true;
 };
 
