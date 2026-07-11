@@ -1272,7 +1272,6 @@ function renderGiftCards() {
         <td>${row.gift_card_at ? new Date(row.gift_card_at).toLocaleDateString() : ""}</td>
         <td>
           <div class="phone-row-actions gift-card-actions">
-            <input class="mini-input" id="giftCardNumber${row.id}" value="${escapeAttr(row.gift_card_number || "")}" placeholder="Card #">
             <div class="gift-card-media">
               ${row.gift_card_photo_data_url ? `<button class="gift-card-thumb" onclick="openGiftCardImage(${row.id}, 'card')" title="View gift card"><img src="${escapeAttr(row.gift_card_photo_data_url)}" alt="Gift card"></button>` : `<span class="gift-card-empty">No card photo</span>`}
               ${row.gift_card_receipt_data_url ? (receiptIsPdf ? `<button class="gift-card-thumb gift-card-pdf" onclick="openGiftCardImage(${row.id}, 'receipt')" title="View receipt PDF">PDF<br>Receipt</button>` : `<button class="gift-card-thumb" onclick="openGiftCardImage(${row.id}, 'receipt')" title="View receipt"><img src="${escapeAttr(row.gift_card_receipt_data_url)}" alt="Receipt"></button>`) : `<span class="gift-card-empty">No receipt</span>`}
@@ -1301,7 +1300,7 @@ function renderGiftCards() {
         </table>
       </div>
       <div class="sale-summary">
-        <span>Phone Cost ${money(totalCost)}</span>
+        <span>Total Phones Cost ${money(totalCost)}</span>
         <span>Gift Card Value ${money(totalValue)}</span>
         <strong class="${totalProfit >= 0 ? "profit-good" : "profit-bad"}">Profit ${money(totalProfit)}</strong>
       </div>
@@ -1777,13 +1776,10 @@ window.movePhonePurchaseToGiftCard = async (id) => {
     alert("Enter the Apple gift card value.");
     return false;
   }
-  const cardNumber = prompt("Gift card number? Leave blank if you do not have it yet.");
-  if (cardNumber === null) return false;
   const result = await api(`/api/phone-purchases/${id}/gift-card`, {
     method: "PATCH",
     body: {
       gift_card_value: cleanValue,
-      gift_card_number: cardNumber.trim(),
       gift_card_notes: "Apple trade-in gift card",
     },
   });
@@ -1802,7 +1798,6 @@ window.saveGiftCardDetails = async (id) => {
   const result = await api(`/api/phone-purchases/${id}/gift-card-details`, {
     method: "PATCH",
     body: {
-      gift_card_number: $(`giftCardNumber${id}`)?.value?.trim() || "",
       gift_card_photo: cardFile ? await imageFileToDataUrl(cardFile) : null,
       receipt_photo: receiptFile && !receiptIsPdf ? await imageFileToDataUrl(receiptFile) : null,
     },

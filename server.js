@@ -501,7 +501,6 @@ app.patch("/api/phone-purchases/:id/gift-card", requirePhoneAuth, async (req, re
     ? null
     : Number(req.body.gift_card_value);
   const giftCardNotes = String(req.body?.gift_card_notes || "Apple trade-in gift card").trim();
-  const giftCardNumber = String(req.body?.gift_card_number || "").trim();
   if (!id) return res.status(400).json({ error: "Purchase ID is required." });
   if (giftCardValue === null || !Number.isFinite(giftCardValue) || giftCardValue < 0) {
     return res.status(400).json({ error: "Enter the Apple gift card value." });
@@ -513,7 +512,6 @@ app.patch("/api/phone-purchases/:id/gift-card", requirePhoneAuth, async (req, re
        gift_card_value = $2::numeric,
        gift_card_at = now(),
        gift_card_notes = $3,
-       gift_card_number = $4,
        local_sale_price = null,
        local_sold_at = null,
        local_sale_notes = ''
@@ -523,7 +521,7 @@ app.patch("/api/phone-purchases/:id/gift-card", requirePhoneAuth, async (req, re
        and pi.status = 'Pending'
        and pp.invoice_removed_at is null
      returning pp.*`,
-    [id, giftCardValue, giftCardNotes, giftCardNumber]
+    [id, giftCardValue, giftCardNotes]
   );
   if (!result.rows[0]) return res.status(404).json({ error: "Pending invoice item not found." });
   res.json({ ok: true, purchase: result.rows[0] });
@@ -531,23 +529,20 @@ app.patch("/api/phone-purchases/:id/gift-card", requirePhoneAuth, async (req, re
 
 app.patch("/api/phone-purchases/:id/gift-card-details", requirePhoneAuth, async (req, res) => {
   const id = Number(req.params.id);
-  const giftCardNumber = String(req.body?.gift_card_number || "").trim();
   const giftCardPhoto = req.body?.gift_card_photo || null;
   const receiptPhoto = req.body?.receipt_photo || null;
   if (!id) return res.status(400).json({ error: "Purchase ID is required." });
   const result = await pool.query(
     `update phone_purchases
-     set gift_card_number = $2,
-       gift_card_photo_file_name = coalesce(nullif($3,''), gift_card_photo_file_name),
-       gift_card_photo_data_url = coalesce(nullif($4,''), gift_card_photo_data_url),
-       gift_card_receipt_file_name = coalesce(nullif($5,''), gift_card_receipt_file_name),
-       gift_card_receipt_data_url = coalesce(nullif($6,''), gift_card_receipt_data_url)
+     set gift_card_photo_file_name = coalesce(nullif($2,''), gift_card_photo_file_name),
+       gift_card_photo_data_url = coalesce(nullif($3,''), gift_card_photo_data_url),
+       gift_card_receipt_file_name = coalesce(nullif($4,''), gift_card_receipt_file_name),
+       gift_card_receipt_data_url = coalesce(nullif($5,''), gift_card_receipt_data_url)
      where id = $1
        and gift_card_at is not null
      returning *`,
     [
       id,
-      giftCardNumber,
       String(giftCardPhoto?.file_name || ""),
       String(giftCardPhoto?.data_url || ""),
       String(receiptPhoto?.file_name || ""),
