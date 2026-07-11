@@ -500,6 +500,15 @@ function imageFileToDataUrl(file) {
   });
 }
 
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Could not read file."));
+    reader.onload = () => resolve({ file_name: file.name, data_url: reader.result });
+    reader.readAsDataURL(file);
+  });
+}
+
 function updateProjectedPrice() {
   const selectedModel = $("phoneModel").value;
   const selectedStorage = $("phoneStorage").value;
@@ -1254,6 +1263,7 @@ function renderGiftCards() {
     const profit = value - cost;
     const cardPhotoId = `giftCardPhoto${row.id}`;
     const receiptPhotoId = `giftCardReceipt${row.id}`;
+    const receiptIsPdf = isPdfDataUrl(row.gift_card_receipt_data_url) || /\.pdf$/i.test(row.gift_card_receipt_file_name || "");
     return `
       <tr>
         <td class="phone-device-cell">
@@ -1274,10 +1284,10 @@ function renderGiftCards() {
             <input class="mini-input" id="giftCardNumber${row.id}" value="${escapeAttr(row.gift_card_number || "")}" placeholder="Card #">
             <div class="gift-card-media">
               ${row.gift_card_photo_data_url ? `<button class="gift-card-thumb" onclick="openGiftCardImage(${row.id}, 'card')" title="View gift card"><img src="${escapeAttr(row.gift_card_photo_data_url)}" alt="Gift card"></button>` : `<span class="gift-card-empty">No card photo</span>`}
-              ${row.gift_card_receipt_data_url ? `<button class="gift-card-thumb" onclick="openGiftCardImage(${row.id}, 'receipt')" title="View receipt"><img src="${escapeAttr(row.gift_card_receipt_data_url)}" alt="Receipt"></button>` : `<span class="gift-card-empty">No receipt</span>`}
+              ${row.gift_card_receipt_data_url ? (receiptIsPdf ? `<button class="gift-card-thumb gift-card-pdf" onclick="openGiftCardImage(${row.id}, 'receipt')" title="View receipt PDF">PDF<br>Receipt</button>` : `<button class="gift-card-thumb" onclick="openGiftCardImage(${row.id}, 'receipt')" title="View receipt"><img src="${escapeAttr(row.gift_card_receipt_data_url)}" alt="Receipt"></button>`) : `<span class="gift-card-empty">No receipt</span>`}
             </div>
             <label class="mini-file">Card<input id="${cardPhotoId}" type="file" accept="image/*"></label>
-            <label class="mini-file">Receipt<input id="${receiptPhotoId}" type="file" accept="image/*"></label>
+            <label class="mini-file">Receipt<input id="${receiptPhotoId}" type="file" accept="image/*,.pdf,application/pdf"></label>
             <button class="mini-btn" onclick="saveGiftCardDetails(${row.id})">Save</button>
           </div>
         </td>
@@ -1802,7 +1812,7 @@ window.saveGiftCardDetails = async (id) => {
     body: {
       gift_card_number: $(`giftCardNumber${id}`)?.value?.trim() || "",
       gift_card_photo: cardFile ? await imageFileToDataUrl(cardFile) : null,
-      receipt_photo: receiptFile ? await imageFileToDataUrl(receiptFile) : null,
+      receipt_photo: receiptFile ? await giftCardReceiptFileToDataUrl(receiptFile) : null,
     },
   });
   if (!result?.ok) {
@@ -1814,6 +1824,15 @@ window.saveGiftCardDetails = async (id) => {
   return true;
 };
 
+async function giftCardReceiptFileToDataUrl(file) {
+  if (file.type === "application/pdf" || /\.pdf$/i.test(file.name)) return fileToDataUrl(file);
+  return imageFileToDataUrl(file);
+}
+
+function isPdfDataUrl(value) {
+  return String(value || "").startsWith("data:application/pdf");
+}
+
 window.openGiftCardImage = (id, kind) => {
   const row = phoneInvoices.flatMap((invoice) => invoice.gift_cards || []).find((entry) => Number(entry.id) === Number(id));
   const src = kind === "receipt" ? row?.gift_card_receipt_data_url : row?.gift_card_photo_data_url;
@@ -1821,7 +1840,10 @@ window.openGiftCardImage = (id, kind) => {
   const label = kind === "receipt" ? "Receipt" : "Gift card";
   const viewer = document.createElement("div");
   viewer.className = "photo-viewer";
-  viewer.innerHTML = `<div class="photo-viewer-backdrop" onclick="this.parentElement.remove()"></div><div class="photo-viewer-panel"><button class="photo-viewer-close" onclick="this.closest('.photo-viewer').remove()">Close</button><img src="${escapeAttr(src)}" alt="${label} photo"><p>${escapeHtml(label)} - ${escapeHtml(row.model || "Phone")}</p></div>`;
+  const media = isPdfDataUrl(src)
+    ? `<iframe class="gift-card-pdf-viewer" src="${escapeAttr(src)}" title="${escapeAttr(label)} PDF"></iframe>`
+    : `<img src="${escapeAttr(src)}" alt="${label} photo">`;
+  viewer.innerHTML = `<div class="photo-viewer-backdrop" onclick="this.parentElement.remove()"></div><div class="photo-viewer-panel"><button class="photo-viewer-close" onclick="this.closest('.photo-viewer').remove()">Close</button>${media}<p>${escapeHtml(label)} - ${escapeHtml(row.model || "Phone")}</p></div>`;
   document.body.appendChild(viewer);
 };
 

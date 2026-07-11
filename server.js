@@ -40,7 +40,7 @@ const pool = new Pool({
   ssl: isProduction ? { rejectUnauthorized: false } : false,
 });
 
-app.use(express.json({ limit: "8mb" }));
+app.use(express.json({ limit: "25mb" }));
 app.use(express.urlencoded({ extended: false }));
 app.use(express.static("public", { extensions: ["html"] }));
 
