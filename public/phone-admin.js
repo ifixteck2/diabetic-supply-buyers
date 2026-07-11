@@ -97,6 +97,7 @@ function openPhoneTab(name) {
     atlasPending: "Atlas Pending",
     ktPending: "KT Pending",
     locallySold: "Locally Sold",
+    giftCards: "Gift Cards",
     ktReturns: "Returns",
     pastInvoices: "Past Invoices",
   };
@@ -1148,6 +1149,7 @@ function renderInvoiceLists() {
   renderInvoiceGroup("atlasPendingList", "Atlas", "Pending");
   renderInvoiceGroup("ktPendingList", "KT", "Pending");
   renderLocallySold();
+  renderGiftCards();
   renderKtReturns();
   renderPastInvoices();
 }
@@ -1234,6 +1236,66 @@ function renderLocallySoldCard(invoice) {
       </div>
     </article>
   `;
+}
+
+function renderGiftCards() {
+  const rows = phoneInvoices.flatMap((invoice) => (invoice.gift_cards || []).map((row) => ({ ...row, invoice })))
+    .sort((a, b) => new Date(b.gift_card_at || b.invoice_removed_at || b.created_at || 0) - new Date(a.gift_card_at || a.invoice_removed_at || a.created_at || 0));
+  if (!rows.length) {
+    $("giftCardsList").innerHTML = `<div class="empty">No Apple gift card trade-ins yet.</div>`;
+    return;
+  }
+  const totalCost = rows.reduce((sum, row) => sum + phoneLineCost(row), 0);
+  const totalValue = rows.reduce((sum, row) => sum + Number(row.gift_card_value || 0), 0);
+  const totalProfit = totalValue - totalCost;
+  const body = rows.map((row) => {
+    const cost = phoneLineCost(row);
+    const value = Number(row.gift_card_value || 0);
+    const profit = value - cost;
+    return `
+      <tr>
+        <td class="phone-device-cell">
+          <strong>${escapeHtml(row.model)}</strong>
+          <span>${escapeHtml(phoneInvoiceItemCondition(row))}</span>
+          ${row.imei ? `<em>IMEI ${escapeHtml(row.imei)}</em>` : ""}
+          ${row.notes ? `<em>${escapeHtml(row.notes)}</em>` : ""}
+        </td>
+        <td>${escapeHtml(row.invoice?.buyer || row.buyer || "")}</td>
+        <td>${escapeHtml(row.invoice?.label || `Invoice #${row.invoice_id}`)}</td>
+        <td>${row.quantity}</td>
+        <td>${money(cost)}</td>
+        <td>${money(value)}</td>
+        <td class="${profit >= 0 ? "profit-good" : "profit-bad"}">${money(profit)}</td>
+        <td>${row.gift_card_at ? new Date(row.gift_card_at).toLocaleDateString() : ""}</td>
+      </tr>
+    `;
+  }).join("");
+  $("giftCardsList").innerHTML = `
+    <article class="invoice-card phone-invoice-card gift-card-card">
+      <div class="invoice-top">
+        <div class="phone-invoice-title">
+          <h3>Apple Gift Cards</h3>
+          <p>${rows.length} trade-in${rows.length === 1 ? "" : "s"} tracked for iPhone 18 season</p>
+        </div>
+        <span class="pill sold">Gift Cards</span>
+      </div>
+      <div class="table-wrap">
+        <table class="phone-profit-table">
+          <thead><tr><th>Phone Traded In</th><th>Buyer</th><th>From Invoice</th><th>Qty</th><th>Cost</th><th>Gift Card Value</th><th>Profit</th><th>Date</th></tr></thead>
+          <tbody>${body}</tbody>
+        </table>
+      </div>
+      <div class="sale-summary">
+        <span>Phone Cost ${money(totalCost)}</span>
+        <span>Gift Card Value ${money(totalValue)}</span>
+        <strong class="${totalProfit >= 0 ? "profit-good" : "profit-bad"}">Profit ${money(totalProfit)}</strong>
+      </div>
+    </article>
+  `;
+}
+
+function phoneLineCost(row) {
+  return Number(row.quantity || 0) * Number(row.cost_each || 0);
 }
 
 function renderKtReturnCard(invoice) {
@@ -1328,7 +1390,7 @@ function renderPhoneInvoiceCard(invoice) {
       <td>${escapeHtml(row.carrier || "")}</td>
       <td>${row.quantity}</td>
       <td>${money(row.cost_each)}</td>
-      <td><div class="phone-row-actions"><button class="mini-btn" onclick="startPhonePurchaseEdit(${row.id})">Edit</button>${canRemove ? `<button class="mini-btn" onclick="movePhonePurchaseToInvoice(${row.id})">Move</button>` : ""}${canReturn ? `<button class="mini-btn warning" onclick="returnPhonePurchaseToKt(${row.id})">Return</button>` : ""}${canRemove ? `<button class="mini-btn danger" onclick="removePhonePurchaseFromInvoice(${row.id})">Locally Sold</button>` : ""}</div></td>
+      <td><div class="phone-row-actions"><button class="mini-btn" onclick="startPhonePurchaseEdit(${row.id})">Edit</button>${canRemove ? `<button class="mini-btn" onclick="movePhonePurchaseToInvoice(${row.id})">Move</button>` : ""}${canRemove ? `<button class="mini-btn" onclick="movePhonePurchaseToGiftCard(${row.id})">Move to GC</button>` : ""}${canReturn ? `<button class="mini-btn warning" onclick="returnPhonePurchaseToKt(${row.id})">Return</button>` : ""}${canRemove ? `<button class="mini-btn danger" onclick="removePhonePurchaseFromInvoice(${row.id})">Locally Sold</button>` : ""}</div></td>
     </tr>
   `;
   }).join("");
@@ -1350,7 +1412,7 @@ function renderPhoneInvoiceCard(invoice) {
       <td>${row.quantity}</td>
       <td>${money(row.cost_each)}</td>
       <td>${phoneAddedDate(row)}</td>
-      <td><div class="phone-row-actions"><button class="mini-btn" onclick="startPhonePurchaseEdit(${row.id})">Edit</button>${canRemove ? `<button class="mini-btn" onclick="movePhonePurchaseToInvoice(${row.id})">Move</button>` : ""}${canReturn ? `<button class="mini-btn warning" onclick="returnPhonePurchaseToKt(${row.id})">Return</button>` : ""}${canRemove ? `<button class="mini-btn danger" onclick="removePhonePurchaseFromInvoice(${row.id})">Locally Sold</button>` : ""}</div></td>
+      <td><div class="phone-row-actions"><button class="mini-btn" onclick="startPhonePurchaseEdit(${row.id})">Edit</button>${canRemove ? `<button class="mini-btn" onclick="movePhonePurchaseToInvoice(${row.id})">Move</button>` : ""}${canRemove ? `<button class="mini-btn" onclick="movePhonePurchaseToGiftCard(${row.id})">Move to GC</button>` : ""}${canReturn ? `<button class="mini-btn warning" onclick="returnPhonePurchaseToKt(${row.id})">Return</button>` : ""}${canRemove ? `<button class="mini-btn danger" onclick="removePhonePurchaseFromInvoice(${row.id})">Locally Sold</button>` : ""}</div></td>
     </tr>
   `;
   }).join("");
@@ -1689,6 +1751,29 @@ window.removePhonePurchaseFromInvoice = async (id) => {
   }
   await loadPhoneInvoices();
   openPhoneTab("locallySold");
+  return true;
+};
+
+window.movePhonePurchaseToGiftCard = async (id) => {
+  const valueInput = prompt("Apple gift card value?");
+  if (valueInput === null) return false;
+  const cleanValue = String(valueInput || "").replace(/[$,\s]/g, "");
+  if (!cleanValue || Number.isNaN(Number(cleanValue)) || Number(cleanValue) < 0) {
+    alert("Enter the Apple gift card value.");
+    return false;
+  }
+  const result = await api(`/api/phone-purchases/${id}/gift-card`, {
+    method: "PATCH",
+    body: {
+      gift_card_value: cleanValue,
+      gift_card_notes: "Apple trade-in gift card",
+    },
+  });
+  if (!result?.ok) {
+    return alert(result?.error || "Could not move this item to gift cards.");
+  }
+  await loadPhoneInvoices();
+  openPhoneTab("giftCards");
   return true;
 };
 

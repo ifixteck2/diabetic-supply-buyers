@@ -495,6 +495,38 @@ app.patch("/api/phone-purchases/:id/invoice-removal", requirePhoneAuth, async (r
   res.json({ ok: true, purchase: result.rows[0] });
 });
 
+app.patch("/api/phone-purchases/:id/gift-card", requirePhoneAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  const giftCardValue = req.body?.gift_card_value === "" || req.body?.gift_card_value === undefined || req.body?.gift_card_value === null
+    ? null
+    : Number(req.body.gift_card_value);
+  const giftCardNotes = String(req.body?.gift_card_notes || "Apple trade-in gift card").trim();
+  if (!id) return res.status(400).json({ error: "Purchase ID is required." });
+  if (giftCardValue === null || !Number.isFinite(giftCardValue) || giftCardValue < 0) {
+    return res.status(400).json({ error: "Enter the Apple gift card value." });
+  }
+  const result = await pool.query(
+    `update phone_purchases pp
+     set invoice_removed_at = now(),
+       invoice_removed_reason = 'Apple gift card trade-in',
+       gift_card_value = $2::numeric,
+       gift_card_at = now(),
+       gift_card_notes = $3,
+       local_sale_price = null,
+       local_sold_at = null,
+       local_sale_notes = ''
+     from phone_invoices pi
+     where pp.invoice_id = pi.id
+       and pp.id = $1
+       and pi.status = 'Pending'
+       and pp.invoice_removed_at is null
+     returning pp.*`,
+    [id, giftCardValue, giftCardNotes]
+  );
+  if (!result.rows[0]) return res.status(404).json({ error: "Pending invoice item not found." });
+  res.json({ ok: true, purchase: result.rows[0] });
+});
+
 app.patch("/api/phone-purchases/:id/return", requirePhoneAuth, async (req, res) => {
   const id = Number(req.params.id);
   const reason = String(req.body?.reason || "").trim();
@@ -1314,6 +1346,9 @@ async function migrate() {
       local_sale_price numeric,
       local_sold_at timestamptz,
       local_sale_notes text not null default '',
+      gift_card_value numeric,
+      gift_card_at timestamptz,
+      gift_card_notes text not null default '',
       returned_at timestamptz,
       return_reason text not null default '',
       invoice_added_at timestamptz not null default now(),
@@ -1360,6 +1395,9 @@ async function migrate() {
     alter table phone_purchases add column if not exists local_sale_price numeric;
     alter table phone_purchases add column if not exists local_sold_at timestamptz;
     alter table phone_purchases add column if not exists local_sale_notes text not null default '';
+    alter table phone_purchases add column if not exists gift_card_value numeric;
+    alter table phone_purchases add column if not exists gift_card_at timestamptz;
+    alter table phone_purchases add column if not exists gift_card_notes text not null default '';
     alter table phone_purchases add column if not exists invoice_added_at timestamptz;
     update phone_purchases set invoice_added_at = created_at where invoice_added_at is null;
     alter table phone_purchases alter column invoice_added_at set default now();
@@ -1609,11 +1647,21 @@ async function attachPhonePurchases(invoices) {
      order by coalesce(local_sold_at, invoice_removed_at) desc, created_at desc`,
     [invoiceIds]
   );
+  const giftCards = await pool.query(
+    `select * from phone_purchases
+     where invoice_id = any($1::int[])
+       and invoice_removed_at is not null
+       and returned_at is null
+       and gift_card_at is not null
+     order by gift_card_at desc, created_at desc`,
+    [invoiceIds]
+  );
   return invoices.map((invoice) => ({
     ...invoice,
     purchases: sortPhonePurchases(purchases.rows.filter((purchase) => purchase.invoice_id === invoice.id)),
     returns: sortPhonePurchases(returns.rows.filter((purchase) => purchase.invoice_id === invoice.id)),
     local_sold: localSold.rows.filter((purchase) => purchase.invoice_id === invoice.id),
+    gift_cards: giftCards.rows.filter((purchase) => purchase.invoice_id === invoice.id),
   }));
 }
 
