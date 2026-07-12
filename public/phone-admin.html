@@ -72,27 +72,25 @@
 
             <section class="panel">
               <h2>Device Flow</h2>
-              <div class="form-grid three">
-                <label>Phone or Tablet<select id="deviceType"><option>Phone</option><option>Tablet</option></select></label>
-                <label>Brand<select id="phoneBrand"><option>Apple</option><option>Samsung</option><option>Google</option></select></label>
-                <label>New or Used<select id="conditionType"><option>Used</option><option>New</option></select></label>
+              <div class="purchase-flow">
+                <label class="flow-step hidden">Device<select id="deviceType"><option>Phone</option><option>Tablet</option></select></label>
+                <label id="purchaseBrandWrap" class="flow-step">1. Brand<select id="phoneBrand"><option value="">Choose brand</option><option>Apple</option><option>Samsung</option><option>Google</option></select></label>
+                <label id="purchaseModelWrap" class="flow-step hidden">2. Model<select id="phoneModel"></select></label>
+                <label id="purchaseStorageWrap" class="flow-step hidden">3. Gigabytes<select id="phoneStorage"></select></label>
               </div>
-              <div class="form-grid three">
-                <label id="packagingWrap" class="hidden">Open or Sealed<select id="packaging"><option>Sealed</option><option>Open</option></select></label>
-                <label id="gradeWrap">Grade<select id="grade"><option>Grade A</option><option>Grade B</option><option>Grade C</option><option>Grade D</option><option>Parts</option></select></label>
-                <label>Model<select id="phoneModel"></select></label>
+              <div class="purchase-flow">
+                <label id="purchaseCarrierWrap" class="flow-step hidden">4. Carrier<select id="phoneCarrier"></select></label>
+                <label id="purchaseConditionWrap" class="flow-step hidden">5. New or Used<select id="conditionType"><option value="">Choose condition</option><option>Used</option><option>New</option></select></label>
+                <label id="packagingWrap" class="flow-step hidden">6. Open or Sealed<select id="packaging"><option value="">Choose packaging</option><option>Sealed</option><option>Open</option></select></label>
+                <label id="gradeWrap" class="flow-step hidden">6. Grade<select id="grade"><option value="">Choose grade</option><option>Grade A</option><option>Grade B</option><option>Grade C</option><option>Grade D</option><option>Parts</option></select></label>
+                <label id="purchaseQuantityWrap" class="flow-step hidden">7. Quantity<input id="phoneQuantity" type="number" min="1" value="1"></label>
               </div>
-              <div class="form-grid three">
-                <label>Gigabytes<select id="phoneStorage"></select></label>
-                <label>Carrier<select id="phoneCarrier"></select></label>
-                <label>Quantity<input id="phoneQuantity" type="number" min="1" value="1"></label>
-              </div>
-              <div class="form-grid three">
+              <div class="form-grid three purchase-details hidden" id="purchaseDetailsWrap">
                 <label>Cost Each<input id="phoneCost" type="number" min="0" step="0.01"></label>
                 <label>Purchase Date<input id="phonePurchaseDate" type="date"></label>
                 <input id="phoneProjected" type="hidden">
               </div>
-              <div class="form-grid three">
+              <div class="form-grid three purchase-details hidden" id="purchaseExtrasWrap">
                 <label>IMEI<input id="phoneImei" placeholder="IMEI or serial"></label>
                 <label>Phone Photo<input id="phonePhoto" type="file" accept="image/*"></label>
                 <label>Notes<input id="phoneNotes" placeholder="Damage notes, payment details"></label>

@@ -134,6 +134,7 @@ function handlePriceCheckerChange(event) {
 
 function handleFlowChange(event) {
   const id = event.target.id;
+  clearPurchaseFlowAfter(id);
   if (id === "conditionType" || id === "deviceType" || id === "phoneBrand" || id === "phoneBuyer") {
     toggleConditionFields();
     renderModelOptions();
@@ -146,13 +147,13 @@ function handleFlowChange(event) {
   }
   if (id === "phoneBuyer") renderInvoiceSelect();
   updateProjectedPrice();
+  updatePurchaseFlowVisibility();
 }
 
 function toggleConditionFields() {
   const isNew = $("conditionType").value === "New";
-  $("packagingWrap").classList.toggle("hidden", !isNew);
-  $("gradeWrap").classList.toggle("hidden", isNew);
   togglePurchaseDeductionFields();
+  updatePurchaseFlowVisibility();
 }
 
 function togglePurchaseDeductionFields() {
@@ -160,11 +161,48 @@ function togglePurchaseDeductionFields() {
   $("ktPurchaseDeductions").classList.toggle("hidden", $("phoneBuyer").value !== "KT");
 }
 
+function clearPurchaseFlowAfter(id) {
+  const clears = {
+    deviceType: ["phoneBrand", "phoneModel", "phoneStorage", "phoneCarrier", "conditionType", "packaging", "grade"],
+    phoneBrand: ["phoneModel", "phoneStorage", "phoneCarrier", "conditionType", "packaging", "grade"],
+    phoneModel: ["phoneStorage", "phoneCarrier"],
+    phoneStorage: ["phoneCarrier", "conditionType", "packaging", "grade"],
+    phoneCarrier: ["conditionType", "packaging", "grade"],
+    conditionType: ["packaging", "grade"],
+  };
+  (clears[id] || []).forEach((fieldId) => {
+    if ($(fieldId)) $(fieldId).value = "";
+  });
+}
+
+function updatePurchaseFlowVisibility() {
+  const hasBrand = Boolean($("phoneBrand").value);
+  const hasModel = hasBrand && Boolean($("phoneModel").value);
+  const hasStorage = hasModel && Boolean($("phoneStorage").value);
+  const hasCarrier = hasStorage && Boolean($("phoneCarrier").value);
+  const hasCondition = hasCarrier && Boolean($("conditionType").value);
+  const needsPackaging = $("conditionType").value === "New";
+  const conditionDetailReady = hasCondition && (needsPackaging ? Boolean($("packaging").value) : Boolean($("grade").value));
+  $("purchaseBrandWrap").classList.remove("hidden");
+  $("purchaseModelWrap").classList.toggle("hidden", !hasBrand);
+  $("purchaseStorageWrap").classList.toggle("hidden", !hasModel);
+  $("purchaseCarrierWrap").classList.toggle("hidden", !hasStorage);
+  $("purchaseConditionWrap").classList.toggle("hidden", !hasCarrier);
+  $("packagingWrap").classList.toggle("hidden", !(hasCondition && needsPackaging));
+  $("gradeWrap").classList.toggle("hidden", !(hasCondition && !needsPackaging));
+  $("purchaseQuantityWrap").classList.toggle("hidden", !conditionDetailReady);
+  $("purchaseDetailsWrap").classList.toggle("hidden", !conditionDetailReady);
+  $("purchaseExtrasWrap").classList.toggle("hidden", !conditionDetailReady);
+}
+
 function matchingRows() {
   const deviceType = $("deviceType").value;
   const conditionType = $("conditionType").value;
   const buyer = $("phoneBuyer").value;
-  return atlasPrices.filter((row) => row.buyer === buyer && row.device_type === deviceType && row.condition_type === conditionType && rowBrand(row) === $("phoneBrand").value);
+  return atlasPrices.filter((row) => row.buyer === buyer
+    && row.device_type === deviceType
+    && (!conditionType || row.condition_type === conditionType)
+    && rowBrand(row) === $("phoneBrand").value);
 }
 
 function modelKey(row) {
@@ -175,7 +213,7 @@ function renderModelOptions() {
   const previous = $("phoneModel").value;
   const models = [...new Set([...matchingRows().map(checkerModelName).filter(Boolean), ...fallbackPhoneModels($("deviceType").value, $("phoneBrand").value)])]
     .sort((a, b) => modelSortValue(b) - modelSortValue(a) || a.localeCompare(b));
-  $("phoneModel").innerHTML = models.map((model) => `<option value="${escapeAttr(model)}">${escapeHtml(model)}</option>`).join("")
+  $("phoneModel").innerHTML = `<option value="">Choose model</option>` + models.map((model) => `<option value="${escapeAttr(model)}">${escapeHtml(model)}</option>`).join("")
     || `<option value="">No Atlas models loaded</option>`;
   if (models.includes(previous)) $("phoneModel").value = previous;
 }
@@ -186,7 +224,7 @@ function renderPhoneStorageOptions() {
   const storageOptions = [...new Set([...rows.map((row) => row.storage || "N/A").filter(Boolean), ...fallbackPhoneStorage($("deviceType").value, $("phoneBrand").value, selectedModel)])]
     .sort((a, b) => storageSortValue(a) - storageSortValue(b) || a.localeCompare(b));
   const previous = $("phoneStorage").value;
-  $("phoneStorage").innerHTML = storageOptions.map((storage) => `<option value="${escapeAttr(storage)}">${escapeHtml(storage)}</option>`).join("")
+  $("phoneStorage").innerHTML = `<option value="">Choose gigabytes</option>` + storageOptions.map((storage) => `<option value="${escapeAttr(storage)}">${escapeHtml(storage)}</option>`).join("")
     || `<option value="">Choose model first</option>`;
   if (storageOptions.includes(previous)) $("phoneStorage").value = previous;
 }
@@ -206,7 +244,7 @@ function renderCarrierOptions() {
     return a.localeCompare(b);
   });
   const previous = $("phoneCarrier").value;
-  $("phoneCarrier").innerHTML = carriers.map((carrier) => `<option value="${escapeAttr(carrier)}">${escapeHtml(carrier)}</option>`).join("")
+  $("phoneCarrier").innerHTML = `<option value="">Choose carrier</option>` + carriers.map((carrier) => `<option value="${escapeAttr(carrier)}">${escapeHtml(carrier)}</option>`).join("")
     || `<option value="">Choose model first</option>`;
   if (carriers.includes(previous)) $("phoneCarrier").value = previous;
 }
@@ -1076,6 +1114,7 @@ function applyQuickPhoneFields(parsed) {
   ].filter(Boolean).join(" | ");
   $("phoneNotes").value = notes;
   updateProjectedPrice();
+  updatePurchaseFlowVisibility();
 }
 
 function bestQuickModel(parsed) {
@@ -1130,10 +1169,10 @@ function resetPhonePurchase(clearStatus = true) {
   $("phoneEditNotice").classList.add("hidden");
   $("phoneEditNotice").textContent = "";
   $("deviceType").value = "Phone";
-  $("conditionType").value = "Used";
-  $("packaging").value = "Sealed";
-  $("grade").value = "Grade A";
-  $("phoneBrand").value = "Apple";
+  $("conditionType").value = "";
+  $("packaging").value = "";
+  $("grade").value = "";
+  $("phoneBrand").value = "";
   $("phoneQuantity").value = 1;
   $("phoneCost").value = "";
   $("phoneProjected").value = "";
@@ -1152,6 +1191,7 @@ function resetPhonePurchase(clearStatus = true) {
   renderPhoneStorageOptions();
   renderCarrierOptions();
   updateProjectedPrice();
+  updatePurchaseFlowVisibility();
   if (clearStatus) status("phonePurchaseStatus", "");
 }
 
@@ -1718,6 +1758,7 @@ window.startPhonePurchaseEdit = (id) => {
   $("phoneEditNotice").classList.remove("hidden");
   $("phoneEditNotice").textContent = `Editing ${purchase.model} from invoice #${invoice.id}. Choose a new photo only if you want to replace the old one.`;
   updateProjectedPrice();
+  updatePurchaseFlowVisibility();
   openPhoneTab("purchase");
   status("phonePurchaseStatus", "");
   window.scrollTo({ top: 0, behavior: "smooth" });
