@@ -643,6 +643,7 @@ app.patch("/api/phone-purchases/:id/return", requirePhoneAuth, async (req, res) 
      set invoice_removed_at = now(),
        invoice_removed_reason = 'Returned to ' || pi.buyer,
        returned_at = now(),
+       return_status = 'Returned',
        return_reason = $2
      from phone_invoices pi
      where pp.invoice_id = pi.id
@@ -652,6 +653,24 @@ app.patch("/api/phone-purchases/:id/return", requirePhoneAuth, async (req, res) 
     [id, reason]
   );
   if (!result.rows[0]) return res.status(404).json({ error: "Invoice item not found, or final sale amount is already entered." });
+  res.json({ ok: true, purchase: result.rows[0] });
+});
+
+app.patch("/api/phone-purchases/:id/return-status", requirePhoneAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  const returnStatus = String(req.body?.status || "").trim();
+  const allowedStatuses = ["KT", "Atlas", "Returned", "Sold"];
+  if (!id) return res.status(400).json({ error: "Purchase ID is required." });
+  if (!allowedStatuses.includes(returnStatus)) return res.status(400).json({ error: "Choose KT, Atlas, Returned, or Sold." });
+  const result = await pool.query(
+    `update phone_purchases
+     set return_status = $2
+     where id = $1
+       and returned_at is not null
+     returning *`,
+    [id, returnStatus]
+  );
+  if (!result.rows[0]) return res.status(404).json({ error: "Return item not found." });
   res.json({ ok: true, purchase: result.rows[0] });
 });
 
@@ -1462,6 +1481,7 @@ async function migrate() {
       gift_card_receipt_data_url text not null default '',
       returned_at timestamptz,
       return_reason text not null default '',
+      return_status text not null default 'Returned',
       invoice_added_at timestamptz not null default now(),
       created_at timestamptz not null default now()
     );
@@ -1522,6 +1542,7 @@ async function migrate() {
     alter table phone_purchases add column if not exists photo_data_url text not null default '';
     alter table phone_purchases add column if not exists returned_at timestamptz;
     alter table phone_purchases add column if not exists return_reason text not null default '';
+    alter table phone_purchases add column if not exists return_status text not null default 'Returned';
     alter table phone_purchases add column if not exists local_sale_price numeric;
     alter table phone_purchases add column if not exists local_sold_at timestamptz;
     alter table phone_purchases add column if not exists local_sale_notes text not null default '';

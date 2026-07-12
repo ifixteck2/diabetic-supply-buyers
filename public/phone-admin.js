@@ -1225,7 +1225,8 @@ function renderManualKtReturns() {
     const cost = Number(row.quantity || 0) * Number(row.cost_each || 0);
     const sale = row.sale_price === null || row.sale_price === undefined || row.sale_price === "" ? null : Number(row.sale_price);
     const profit = sale === null ? null : sale - cost;
-    const statusValue = String(row.status || "Holding");
+    const returnStatuses = ["KT", "Atlas", "Returned", "Sold"];
+    const statusValue = returnStatuses.includes(String(row.status || "")) ? String(row.status) : "Returned";
     const statusClass = statusValue.toLowerCase().replace(/[^a-z0-9]+/g, "-");
     return `
       <tr>
@@ -1248,7 +1249,7 @@ function renderManualKtReturns() {
         <td class="return-status-cell">
           <span class="return-status-pill ${statusClass}">${escapeHtml(statusValue)}</span>
           <select id="manualReturnStatus${row.id}">
-            ${["Holding", "Listed", "Sold", "Lost", "Discarded"].map((status) => `<option ${statusValue === status ? "selected" : ""}>${status}</option>`).join("")}
+            ${returnStatuses.map((status) => `<option ${statusValue === status ? "selected" : ""}>${status}</option>`).join("")}
           </select>
         </td>
         <td class="return-sale-cell">
@@ -1302,6 +1303,19 @@ window.saveManualReturnSale = async (id) => {
   });
   if (!result?.ok) return alert(result?.error || "Could not save return sale.");
   await loadManualPhoneReturns();
+  openPhoneTab("ktReturns");
+  return true;
+};
+
+window.savePhoneReturnStatus = async (id) => {
+  const result = await api(`/api/phone-purchases/${id}/return-status`, {
+    method: "PATCH",
+    body: {
+      status: $(`phoneReturnStatus${id}`).value,
+    },
+  });
+  if (!result?.ok) return alert(result?.error || "Could not save return status.");
+  await loadPhoneInvoices();
   openPhoneTab("ktReturns");
   return true;
 };
@@ -1448,6 +1462,9 @@ function renderKtReturnCard(invoice) {
   const totalUnits = returns.reduce((sum, row) => sum + Number(row.quantity || 0), 0);
   const rows = returns.map((row) => {
     const cost = Number(row.quantity || 0) * Number(row.cost_each || 0);
+    const returnStatuses = ["KT", "Atlas", "Returned", "Sold"];
+    const statusValue = returnStatuses.includes(String(row.return_status || "")) ? String(row.return_status) : "Returned";
+    const statusClass = statusValue.toLowerCase().replace(/[^a-z0-9]+/g, "-");
     return `
       <tr>
         <td class="phone-device-cell return-phone-cell">
@@ -1468,7 +1485,11 @@ function renderKtReturnCard(invoice) {
           <em>Total ${money(cost)}</em>
         </td>
         <td class="return-status-cell">
-          <span class="return-status-pill returned">Returned</span>
+          <span class="return-status-pill ${statusClass}">${escapeHtml(statusValue)}</span>
+          <select id="phoneReturnStatus${row.id}">
+            ${returnStatuses.map((status) => `<option ${statusValue === status ? "selected" : ""}>${status}</option>`).join("")}
+          </select>
+          <button class="mini-btn return-status-save" onclick="savePhoneReturnStatus(${row.id})">Save</button>
         </td>
         <td class="return-reason-cell">${escapeHtml(row.return_reason || row.invoice_removed_reason || "Returned")}</td>
       </tr>
