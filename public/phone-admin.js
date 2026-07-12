@@ -1217,21 +1217,38 @@ async function addManualKtReturn() {
 function renderManualKtReturns() {
   if (!manualPhoneReturns.length) return "";
   const totalCost = manualPhoneReturns.reduce((sum, row) => sum + Number(row.quantity || 0) * Number(row.cost_each || 0), 0);
-  const rows = manualPhoneReturns.map((row) => `
-    <tr>
-      <td class="phone-device-cell">
-        <strong>${escapeHtml(row.model)}</strong>
-        <span>${escapeHtml(row.condition || "Returned")}</span>
-        ${row.notes ? `<em>${escapeHtml(row.notes)}</em>` : ""}
-      </td>
-      <td>${escapeHtml(row.old_invoice_label || "Old KT invoice")}</td>
-      <td>${escapeHtml(row.carrier || "")}</td>
-      <td>${row.quantity}</td>
-      <td>${money(row.cost_each)}</td>
-      <td>${escapeHtml(row.reason || "KT return")}</td>
-      <td>${row.returned_at ? new Date(row.returned_at).toLocaleDateString() : ""}</td>
-    </tr>
-  `).join("");
+  const totalSales = manualPhoneReturns.reduce((sum, row) => sum + Number(row.sale_price || 0), 0);
+  const totalLoss = totalSales - totalCost;
+  const rows = manualPhoneReturns.map((row) => {
+    const cost = Number(row.quantity || 0) * Number(row.cost_each || 0);
+    const sale = row.sale_price === null || row.sale_price === undefined || row.sale_price === "" ? null : Number(row.sale_price);
+    const profit = sale === null ? null : sale - cost;
+    return `
+      <tr>
+        <td class="phone-device-cell">
+          <strong>${escapeHtml(row.model)}</strong>
+          <span>${escapeHtml(row.condition || "Returned")}</span>
+          ${row.notes ? `<em>${escapeHtml(row.notes)}</em>` : ""}
+        </td>
+        <td>${escapeHtml(row.old_invoice_label || "Old KT invoice")}</td>
+        <td>${escapeHtml(row.carrier || "")}</td>
+        <td>${row.quantity}</td>
+        <td>${money(row.cost_each)}</td>
+        <td>${escapeHtml(row.reason || "KT return")}</td>
+        <td>${row.returned_at ? new Date(row.returned_at).toLocaleDateString() : ""}</td>
+        <td>
+          <select id="manualReturnStatus${row.id}">
+            ${["Holding", "Listed", "Sold", "Lost", "Discarded"].map((status) => `<option ${String(row.status || "Holding") === status ? "selected" : ""}>${status}</option>`).join("")}
+          </select>
+        </td>
+        <td><input id="manualReturnSale${row.id}" type="number" min="0" step="0.01" value="${sale === null ? "" : sale}"></td>
+        <td><input id="manualReturnSoldAt${row.id}" type="date" value="${row.sold_at ? String(row.sold_at).slice(0, 10) : ""}"></td>
+        <td class="${profit === null || profit >= 0 ? "profit-good" : "profit-bad"}">${profit === null ? "Not Sold" : money(profit)}</td>
+        <td><input id="manualReturnSaleNotes${row.id}" value="${escapeAttr(row.sale_notes || "")}" placeholder="Sale notes"></td>
+        <td><button class="mini-btn" onclick="saveManualReturnSale(${row.id})">Save</button></td>
+      </tr>
+    `;
+  }).join("");
   return `
     <article class="invoice-card phone-invoice-card return-invoice-card">
       <div class="invoice-top">
@@ -1243,14 +1260,34 @@ function renderManualKtReturns() {
       </div>
       <div class="table-wrap">
         <table class="phone-profit-table">
-          <thead><tr><th>Phone</th><th>Old Invoice</th><th>Carrier</th><th>Qty</th><th>Cost Each</th><th>Reason</th><th>Returned</th></tr></thead>
+          <thead><tr><th>Phone</th><th>Old Invoice</th><th>Carrier</th><th>Qty</th><th>Cost Each</th><th>Reason</th><th>Returned</th><th>Status</th><th>Sold For</th><th>Sold Date</th><th>Profit/Loss</th><th>Sale Notes</th><th></th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </div>
-      <div class="sale-summary"><span>Manual Return Cost ${money(totalCost)}</span></div>
+      <div class="sale-summary">
+        <span>Manual Return Cost ${money(totalCost)}</span>
+        <span>Sold Total ${money(totalSales)}</span>
+        <strong class="${totalLoss >= 0 ? "profit-good" : "profit-bad"}">Total Profit/Loss ${money(totalLoss)}</strong>
+      </div>
     </article>
   `;
 }
+
+window.saveManualReturnSale = async (id) => {
+  const result = await api(`/api/phone-manual-returns/${id}/sale`, {
+    method: "PATCH",
+    body: {
+      status: $(`manualReturnStatus${id}`).value,
+      sale_price: $(`manualReturnSale${id}`).value,
+      sold_at: $(`manualReturnSoldAt${id}`).value,
+      sale_notes: $(`manualReturnSaleNotes${id}`).value,
+    },
+  });
+  if (!result?.ok) return alert(result?.error || "Could not save return sale.");
+  await loadManualPhoneReturns();
+  openPhoneTab("ktReturns");
+  return true;
+};
 
 function renderLocallySold() {
   const list = phoneInvoices

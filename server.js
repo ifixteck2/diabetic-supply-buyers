@@ -168,6 +168,30 @@ app.post("/api/phone-manual-returns", requirePhoneAuth, async (req, res) => {
   res.json({ ok: true, return: result.rows[0] });
 });
 
+app.patch("/api/phone-manual-returns/:id/sale", requirePhoneAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  const status = String(req.body?.status || "Holding").trim() || "Holding";
+  const salePrice = req.body?.sale_price === "" || req.body?.sale_price === undefined || req.body?.sale_price === null
+    ? null
+    : Number(req.body.sale_price);
+  const saleDate = req.body?.sold_at || null;
+  const saleNotes = String(req.body?.sale_notes || "").trim();
+  if (!id) return res.status(400).json({ error: "Return ID is required." });
+  if (salePrice !== null && (!Number.isFinite(salePrice) || salePrice < 0)) return res.status(400).json({ error: "Enter a valid sold amount." });
+  const result = await pool.query(
+    `update phone_manual_returns
+     set status = $2,
+       sale_price = $3::numeric,
+       sold_at = case when $3::numeric is not null then coalesce($4::date, current_date) else null end,
+       sale_notes = $5
+     where id = $1
+     returning *`,
+    [id, status, salePrice, saleDate, saleNotes]
+  );
+  if (!result.rows[0]) return res.status(404).json({ error: "Manual return not found." });
+  res.json({ ok: true, return: result.rows[0] });
+});
+
 app.post("/api/phone-invoices", requirePhoneAuth, async (req, res) => {
   const buyer = normalizeBuyer(req.body?.buyer || "");
   const label = String(req.body?.label || "").trim();
@@ -1454,6 +1478,10 @@ async function migrate() {
       cost_each numeric(12,2) not null default 0,
       reason text not null default '',
       notes text not null default '',
+      status text not null default 'Holding',
+      sale_price numeric(12,2),
+      sold_at date,
+      sale_notes text not null default '',
       created_at timestamptz not null default now()
     );
   `);
@@ -1509,6 +1537,10 @@ async function migrate() {
     update phone_purchases set invoice_added_at = created_at where invoice_added_at is null;
     alter table phone_purchases alter column invoice_added_at set default now();
     alter table phone_purchases alter column invoice_added_at set not null;
+    alter table phone_manual_returns add column if not exists status text not null default 'Holding';
+    alter table phone_manual_returns add column if not exists sale_price numeric(12,2);
+    alter table phone_manual_returns add column if not exists sold_at date;
+    alter table phone_manual_returns add column if not exists sale_notes text not null default '';
     alter table phone_invoices add column if not exists sale_price numeric(12,2);
     alter table phone_invoices add column if not exists sale_notes text not null default '';
     alter table phone_invoices add column if not exists status_updated_at timestamptz not null default now();
