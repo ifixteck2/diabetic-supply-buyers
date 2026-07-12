@@ -1445,23 +1445,37 @@ function phoneLineCost(row) {
 function renderKtReturnCard(invoice) {
   const returns = invoice.returns || [];
   const totalCost = returns.reduce((sum, row) => sum + Number(row.quantity || 0) * Number(row.cost_each || 0), 0);
-  const rows = returns.map((row) => `
-    <tr>
-      <td class="phone-device-cell">
-        <strong>${escapeHtml(row.model)}</strong>
-        <span>${escapeHtml(phoneInvoiceItemCondition(row))}</span>
-        ${row.imei ? `<em>IMEI ${escapeHtml(row.imei)}</em>` : ""}
-        ${row.notes ? `<em>${escapeHtml(row.notes)}</em>` : ""}
-      </td>
-      <td>${escapeHtml(row.carrier || "")}</td>
-      <td>${row.quantity}</td>
-      <td>${money(row.cost_each)}</td>
-      <td>${escapeHtml(row.return_reason || row.invoice_removed_reason || "Returned")}</td>
-      <td>${row.returned_at ? new Date(row.returned_at).toLocaleDateString() : ""}</td>
-    </tr>
-  `).join("");
+  const totalUnits = returns.reduce((sum, row) => sum + Number(row.quantity || 0), 0);
+  const rows = returns.map((row) => {
+    const cost = Number(row.quantity || 0) * Number(row.cost_each || 0);
+    return `
+      <tr>
+        <td class="phone-device-cell return-phone-cell">
+          <strong>${escapeHtml(row.model)}</strong>
+          <span>${escapeHtml(phoneInvoiceItemCondition(row))}</span>
+          ${row.carrier ? `<em>${escapeHtml(row.carrier)}</em>` : ""}
+          ${row.imei ? `<em>IMEI ${escapeHtml(row.imei)}</em>` : ""}
+          ${row.notes ? `<em>${escapeHtml(row.notes)}</em>` : ""}
+        </td>
+        <td class="return-source-cell">
+          <strong>${escapeHtml(invoice.label || `${invoice.buyer} Invoice`)}</strong>
+          <em>${escapeHtml(invoice.buyer)} #${invoice.id}</em>
+          <em>Returned ${row.returned_at ? new Date(row.returned_at).toLocaleDateString() : "date not set"}</em>
+        </td>
+        <td class="return-cost-cell">
+          <strong>${row.quantity || 1}x</strong>
+          <em>${money(row.cost_each)} each</em>
+          <em>Total ${money(cost)}</em>
+        </td>
+        <td class="return-status-cell">
+          <span class="return-status-pill returned">Returned</span>
+        </td>
+        <td class="return-reason-cell">${escapeHtml(row.return_reason || row.invoice_removed_reason || "Returned")}</td>
+      </tr>
+    `;
+  }).join("");
   return `
-    <article class="invoice-card phone-invoice-card return-invoice-card">
+    <article class="invoice-card phone-invoice-card return-invoice-card regular-return-card">
       <div class="invoice-top">
         <div class="phone-invoice-title">
           <h3>${escapeHtml(invoice.label || `${invoice.buyer} Invoice`)}</h3>
@@ -1469,13 +1483,18 @@ function renderKtReturnCard(invoice) {
         </div>
         <span class="pill closed">Returns</span>
       </div>
+      <div class="return-summary-grid invoice-return-summary">
+        <div class="return-stat"><span>Buyer</span><strong>${escapeHtml(invoice.buyer)}</strong></div>
+        <div class="return-stat"><span>Returned Items</span><strong>${returns.length}</strong></div>
+        <div class="return-stat"><span>Total Phones</span><strong>${totalUnits}</strong></div>
+        <div class="return-stat"><span>Returned Cost</span><strong>${money(totalCost)}</strong></div>
+      </div>
       <div class="table-wrap">
-        <table class="phone-profit-table">
-          <thead><tr><th>Phone</th><th>Carrier</th><th>Qty</th><th>Cost Each</th><th>Reason</th><th>Returned</th></tr></thead>
+        <table class="phone-profit-table manual-return-table invoice-return-table">
+          <thead><tr><th>Phone</th><th>Source</th><th>Cost</th><th>Status</th><th>Reason</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </div>
-      <div class="sale-summary"><span>Returned Cost ${money(totalCost)}</span></div>
     </article>
   `;
 }
