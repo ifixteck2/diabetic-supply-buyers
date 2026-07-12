@@ -1833,6 +1833,7 @@ function renderPhoneDashboard() {
       `).join("")}</tbody>
     </table>
   `;
+  renderPhoneMoneyDashboard();
 }
 
 function emptyPhoneStats(buyer = "All") {
@@ -1910,6 +1911,168 @@ function addCompletedPhoneLineStats(acc, row, saleValue) {
 
 function phoneLineQuantity(row) {
   return Number(row.quantity || 0);
+}
+
+function renderPhoneMoneyDashboard() {
+  if (!$("phoneMoneyStats") || !$("phoneProfitGraph")) return;
+  const events = getPhoneMoneyEvents();
+  const totalSales = events.reduce((sum, event) => sum + event.sale, 0);
+  const totalCost = events.reduce((sum, event) => sum + event.cost, 0);
+  const totalProfit = events.reduce((sum, event) => sum + event.profit, 0);
+  const totalUnits = events.reduce((sum, event) => sum + event.units, 0);
+  const bestEvent = events.reduce((best, event) => !best || event.profit > best.profit ? event : best, null);
+  const latestEvent = events.reduce((latest, event) => !latest || event.date > latest.date ? event : latest, null);
+  $("phoneMoneyStats").innerHTML = `
+    <div class="stat"><span>Total Money In</span><strong>${money(totalSales)}</strong></div>
+    <div class="stat"><span>Total Cost Sold</span><strong>${money(totalCost)}</strong></div>
+    <div class="stat"><span>Cash Profit</span><strong class="${totalProfit >= 0 ? "profit-good" : "profit-bad"}">${money(totalProfit)}</strong></div>
+    <div class="stat"><span>Completed Units</span><strong>${totalUnits}</strong></div>
+    <div class="stat"><span>Best Profit</span><strong class="${!bestEvent || bestEvent.profit >= 0 ? "profit-good" : "profit-bad"}">${bestEvent ? money(bestEvent.profit) : "$0.00"}</strong></div>
+    <div class="stat"><span>Latest Money Date</span><strong>${latestEvent ? latestEvent.date.toLocaleDateString() : "None"}</strong></div>
+  `;
+  $("phoneProfitGraph").innerHTML = renderPhoneProfitGraph(events);
+}
+
+function getPhoneMoneyEvents() {
+  const events = [];
+  phoneInvoices.forEach((invoice) => {
+    const invoiceSale = invoice.sale_price === null || invoice.sale_price === undefined || invoice.sale_price === "" ? null : Number(invoice.sale_price);
+    if (invoiceSale !== null) {
+      const cost = (invoice.purchases || []).reduce((sum, row) => sum + phoneLineCost(row), 0);
+      events.push({
+        date: eventDate(invoice.sold_at || invoice.closed_at || invoice.status_updated_at || invoice.created_at),
+        label: invoice.label || `${invoice.buyer} Invoice`,
+        type: `${invoice.buyer} invoice`,
+        buyer: invoice.buyer || "",
+        units: (invoice.purchases || []).reduce((sum, row) => sum + phoneLineQuantity(row), 0),
+        sale: invoiceSale,
+        cost,
+        profit: invoiceSale - cost,
+      });
+    }
+    (invoice.local_sold || []).forEach((row) => {
+      const sale = row.local_sale_price === null || row.local_sale_price === undefined || row.local_sale_price === "" ? null : Number(row.local_sale_price);
+      if (sale === null) return;
+      const cost = phoneLineCost(row);
+      events.push({
+        date: eventDate(row.local_sold_at || row.invoice_removed_at || row.created_at),
+        label: row.model || "Local sale",
+        type: "Local sale",
+        buyer: invoice.buyer || row.buyer || "",
+        units: phoneLineQuantity(row),
+        sale,
+        cost,
+        profit: sale - cost,
+      });
+    });
+    (invoice.gift_cards || []).forEach((row) => {
+      const sale = row.gift_card_value === null || row.gift_card_value === undefined || row.gift_card_value === "" ? null : Number(row.gift_card_value);
+      if (sale === null) return;
+      const cost = phoneLineCost(row);
+      events.push({
+        date: eventDate(row.gift_card_at || row.invoice_removed_at || row.created_at),
+        label: row.model || "Apple gift card",
+        type: "Gift card",
+        buyer: invoice.buyer || row.buyer || "",
+        units: phoneLineQuantity(row),
+        sale,
+        cost,
+        profit: sale - cost,
+      });
+    });
+  });
+  manualPhoneReturns.forEach((row) => {
+    const sale = row.sale_price === null || row.sale_price === undefined || row.sale_price === "" ? null : Number(row.sale_price);
+    if (sale === null) return;
+    const cost = phoneLineCost(row);
+    events.push({
+      date: eventDate(row.sold_at || row.returned_at || row.created_at),
+      label: row.model || "Manual return",
+      type: "Return sale",
+      buyer: row.buyer || "KT",
+      units: phoneLineQuantity(row),
+      sale,
+      cost,
+      profit: sale - cost,
+    });
+  });
+  return events.filter((event) => event.date instanceof Date && !Number.isNaN(event.date.getTime()))
+    .sort((a, b) => a.date - b.date);
+}
+
+function eventDate(value) {
+  const date = value ? new Date(value) : new Date();
+  return Number.isNaN(date.getTime()) ? new Date() : date;
+}
+
+function renderPhoneProfitGraph(events) {
+  if (!events.length) return `<div class="empty">No completed phone sales yet.</div>`;
+  const daily = new Map();
+  events.forEach((event) => {
+    const key = event.date.toISOString().slice(0, 10);
+    const current = daily.get(key) || { date: event.date, profit: 0, sale: 0, cost: 0, units: 0, count: 0 };
+    current.profit += event.profit;
+    current.sale += event.sale;
+    current.cost += event.cost;
+    current.units += event.units;
+    current.count += 1;
+    daily.set(key, current);
+  });
+  const points = [...daily.values()].sort((a, b) => a.date - b.date);
+  let runningProfit = 0;
+  const graphPoints = points.map((point) => ({ ...point, runningProfit: runningProfit += point.profit }));
+  const values = graphPoints.flatMap((point) => [point.runningProfit, point.profit, 0]);
+  const minValue = Math.min(...values);
+  const maxValue = Math.max(...values);
+  const range = Math.max(1, maxValue - minValue);
+  const width = 920;
+  const height = 280;
+  const pad = 34;
+  const innerWidth = width - pad * 2;
+  const innerHeight = height - pad * 2;
+  const xFor = (index) => pad + (graphPoints.length === 1 ? innerWidth / 2 : (index / (graphPoints.length - 1)) * innerWidth);
+  const yFor = (value) => pad + (1 - ((value - minValue) / range)) * innerHeight;
+  const zeroY = yFor(0);
+  const linePoints = graphPoints.map((point, index) => `${xFor(index)},${yFor(point.runningProfit)}`).join(" ");
+  const bars = graphPoints.map((point, index) => {
+    const x = xFor(index);
+    const y = yFor(Math.max(point.profit, 0));
+    const barHeight = Math.max(2, Math.abs(yFor(point.profit) - zeroY));
+    const top = point.profit >= 0 ? y : zeroY;
+    return `<rect x="${x - 12}" y="${top}" width="24" height="${barHeight}" rx="5" class="${point.profit >= 0 ? "profit-bar-good" : "profit-bar-bad"}"><title>${point.date.toLocaleDateString()} profit ${money(point.profit)}</title></rect>`;
+  }).join("");
+  const dots = graphPoints.map((point, index) => `<circle cx="${xFor(index)}" cy="${yFor(point.runningProfit)}" r="5"><title>${point.date.toLocaleDateString()} running profit ${money(point.runningProfit)}</title></circle>`).join("");
+  const recentRows = [...events].slice(-8).reverse().map((event) => `
+    <tr>
+      <td>${event.date.toLocaleDateString()}</td>
+      <td><strong>${escapeHtml(event.label)}</strong><em>${escapeHtml(event.type)}${event.buyer ? ` - ${escapeHtml(event.buyer)}` : ""}</em></td>
+      <td>${event.units}</td>
+      <td>${money(event.sale)}</td>
+      <td>${money(event.cost)}</td>
+      <td class="${event.profit >= 0 ? "profit-good" : "profit-bad"}">${money(event.profit)}</td>
+    </tr>
+  `).join("");
+  const finalPoint = graphPoints[graphPoints.length - 1];
+  return `
+    <div class="profit-chart-card">
+      <div class="profit-chart-head">
+        <div><strong>Profit Trend</strong><span>Bars are daily profit. Line is running profit.</span></div>
+        <b class="${finalPoint.runningProfit >= 0 ? "profit-good" : "profit-bad"}">${money(finalPoint.runningProfit)}</b>
+      </div>
+      <svg class="profit-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Phone profit graph">
+        <line x1="${pad}" y1="${zeroY}" x2="${width - pad}" y2="${zeroY}" class="profit-zero-line"></line>
+        ${bars}
+        <polyline points="${linePoints}" class="profit-running-line"></polyline>
+        ${dots}
+      </svg>
+    </div>
+    <div class="table-wrap money-event-wrap">
+      <table class="phone-breakdown-table money-event-table">
+        <thead><tr><th>Date</th><th>Money Event</th><th>Units</th><th>Money In</th><th>Cost</th><th>Profit</th></tr></thead>
+        <tbody>${recentRows}</tbody>
+      </table>
+    </div>
+  `;
 }
 
 window.setPhoneInvoiceStatus = async (id, nextStatus) => {
