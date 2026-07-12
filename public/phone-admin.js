@@ -1219,38 +1219,52 @@ function renderManualKtReturns() {
   const totalCost = manualPhoneReturns.reduce((sum, row) => sum + Number(row.quantity || 0) * Number(row.cost_each || 0), 0);
   const totalSales = manualPhoneReturns.reduce((sum, row) => sum + Number(row.sale_price || 0), 0);
   const totalLoss = totalSales - totalCost;
+  const soldCount = manualPhoneReturns.filter((row) => row.sale_price !== null && row.sale_price !== undefined && row.sale_price !== "").length;
+  const openCount = manualPhoneReturns.length - soldCount;
   const rows = manualPhoneReturns.map((row) => {
     const cost = Number(row.quantity || 0) * Number(row.cost_each || 0);
     const sale = row.sale_price === null || row.sale_price === undefined || row.sale_price === "" ? null : Number(row.sale_price);
     const profit = sale === null ? null : sale - cost;
+    const statusValue = String(row.status || "Holding");
+    const statusClass = statusValue.toLowerCase().replace(/[^a-z0-9]+/g, "-");
     return `
       <tr>
-        <td class="phone-device-cell">
+        <td class="phone-device-cell return-phone-cell">
           <strong>${escapeHtml(row.model)}</strong>
           <span>${escapeHtml(row.condition || "Returned")}</span>
+          ${row.carrier ? `<em>${escapeHtml(row.carrier)}</em>` : ""}
+          ${row.reason ? `<em>Reason: ${escapeHtml(row.reason)}</em>` : ""}
           ${row.notes ? `<em>${escapeHtml(row.notes)}</em>` : ""}
         </td>
-        <td>${escapeHtml(row.old_invoice_label || "Old KT invoice")}</td>
-        <td>${escapeHtml(row.carrier || "")}</td>
-        <td>${row.quantity}</td>
-        <td>${money(row.cost_each)}</td>
-        <td>${escapeHtml(row.reason || "KT return")}</td>
-        <td>${row.returned_at ? new Date(row.returned_at).toLocaleDateString() : ""}</td>
-        <td>
+        <td class="return-source-cell">
+          <strong>${escapeHtml(row.old_invoice_label || "Old KT invoice")}</strong>
+          <em>Returned ${row.returned_at ? new Date(row.returned_at).toLocaleDateString() : "date not set"}</em>
+        </td>
+        <td class="return-cost-cell">
+          <strong>${row.quantity || 1}x</strong>
+          <em>${money(row.cost_each)} each</em>
+          <em>Total ${money(cost)}</em>
+        </td>
+        <td class="return-status-cell">
+          <span class="return-status-pill ${statusClass}">${escapeHtml(statusValue)}</span>
           <select id="manualReturnStatus${row.id}">
-            ${["Holding", "Listed", "Sold", "Lost", "Discarded"].map((status) => `<option ${String(row.status || "Holding") === status ? "selected" : ""}>${status}</option>`).join("")}
+            ${["Holding", "Listed", "Sold", "Lost", "Discarded"].map((status) => `<option ${statusValue === status ? "selected" : ""}>${status}</option>`).join("")}
           </select>
         </td>
-        <td><input id="manualReturnSale${row.id}" type="number" min="0" step="0.01" value="${sale === null ? "" : sale}"></td>
-        <td><input id="manualReturnSoldAt${row.id}" type="date" value="${row.sold_at ? String(row.sold_at).slice(0, 10) : ""}"></td>
-        <td class="${profit === null || profit >= 0 ? "profit-good" : "profit-bad"}">${profit === null ? "Not Sold" : money(profit)}</td>
-        <td><input id="manualReturnSaleNotes${row.id}" value="${escapeAttr(row.sale_notes || "")}" placeholder="Sale notes"></td>
-        <td><button class="mini-btn" onclick="saveManualReturnSale(${row.id})">Save</button></td>
+        <td class="return-sale-cell">
+          <div class="return-inline-fields">
+            <input id="manualReturnSale${row.id}" type="number" min="0" step="0.01" value="${sale === null ? "" : sale}" placeholder="Sold for">
+            <input id="manualReturnSoldAt${row.id}" type="date" value="${row.sold_at ? String(row.sold_at).slice(0, 10) : ""}">
+            <input id="manualReturnSaleNotes${row.id}" value="${escapeAttr(row.sale_notes || "")}" placeholder="Sale notes">
+          </div>
+          <button class="mini-btn" onclick="saveManualReturnSale(${row.id})">Save Sale</button>
+        </td>
+        <td class="${profit === null || profit >= 0 ? "profit-good" : "profit-bad"} return-profit">${profit === null ? "Not Sold" : money(profit)}</td>
       </tr>
     `;
   }).join("");
   return `
-    <article class="invoice-card phone-invoice-card return-invoice-card">
+    <article class="invoice-card phone-invoice-card return-invoice-card manual-return-card">
       <div class="invoice-top">
         <div class="phone-invoice-title">
           <h3>Manual KT Returns</h3>
@@ -1258,16 +1272,19 @@ function renderManualKtReturns() {
         </div>
         <span class="pill closed">Manual</span>
       </div>
+      <div class="return-summary-grid">
+        <div class="return-stat"><span>Total Returns</span><strong>${manualPhoneReturns.length}</strong></div>
+        <div class="return-stat"><span>Still Open</span><strong>${openCount}</strong></div>
+        <div class="return-stat"><span>Sold</span><strong>${soldCount}</strong></div>
+        <div class="return-stat"><span>Total Cost</span><strong>${money(totalCost)}</strong></div>
+        <div class="return-stat"><span>Sold Total</span><strong>${money(totalSales)}</strong></div>
+        <div class="return-stat"><span>Profit / Loss</span><strong class="${totalLoss >= 0 ? "profit-good" : "profit-bad"}">${money(totalLoss)}</strong></div>
+      </div>
       <div class="table-wrap">
-        <table class="phone-profit-table">
-          <thead><tr><th>Phone</th><th>Old Invoice</th><th>Carrier</th><th>Qty</th><th>Cost Each</th><th>Reason</th><th>Returned</th><th>Status</th><th>Sold For</th><th>Sold Date</th><th>Profit/Loss</th><th>Sale Notes</th><th></th></tr></thead>
+        <table class="phone-profit-table manual-return-table">
+          <thead><tr><th>Phone</th><th>Source</th><th>Cost</th><th>Status</th><th>Sale Details</th><th>Profit/Loss</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
-      </div>
-      <div class="sale-summary">
-        <span>Manual Return Cost ${money(totalCost)}</span>
-        <span>Sold Total ${money(totalSales)}</span>
-        <strong class="${totalLoss >= 0 ? "profit-good" : "profit-bad"}">Total Profit/Loss ${money(totalLoss)}</strong>
       </div>
     </article>
   `;
