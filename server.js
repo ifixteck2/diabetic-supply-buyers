@@ -131,6 +131,43 @@ app.get("/api/phone-invoices", requirePhoneAuth, async (req, res) => {
   res.json({ invoices });
 });
 
+app.get("/api/phone-manual-returns", requirePhoneAuth, async (req, res) => {
+  const result = await pool.query(
+    `select * from phone_manual_returns
+     order by returned_at desc, created_at desc
+     limit 500`
+  );
+  res.json({ returns: result.rows });
+});
+
+app.post("/api/phone-manual-returns", requirePhoneAuth, async (req, res) => {
+  const input = req.body || {};
+  const model = String(input.model || "").trim();
+  const quantity = Math.max(1, Number(input.quantity || 1));
+  const costEach = Number(input.cost_each || 0);
+  if (!model) return res.status(400).json({ error: "Enter the returned phone model." });
+  if (!Number.isFinite(quantity) || quantity < 1) return res.status(400).json({ error: "Quantity must be at least 1." });
+  if (!Number.isFinite(costEach) || costEach < 0) return res.status(400).json({ error: "Enter a valid cost." });
+  const result = await pool.query(
+    `insert into phone_manual_returns
+       (buyer, old_invoice_label, returned_at, model, carrier, condition, quantity, cost_each, reason, notes)
+     values ('KT', $1, coalesce($2::date, current_date), $3, $4, $5, $6, $7, $8, $9)
+     returning *`,
+    [
+      String(input.old_invoice_label || "").trim(),
+      input.returned_at || null,
+      model,
+      String(input.carrier || "").trim(),
+      String(input.condition || "").trim() || "Returned",
+      quantity,
+      costEach,
+      String(input.reason || "").trim(),
+      String(input.notes || "").trim(),
+    ]
+  );
+  res.json({ ok: true, return: result.rows[0] });
+});
+
 app.post("/api/phone-invoices", requirePhoneAuth, async (req, res) => {
   const buyer = normalizeBuyer(req.body?.buyer || "");
   const label = String(req.body?.label || "").trim();
@@ -1402,6 +1439,21 @@ async function migrate() {
       returned_at timestamptz,
       return_reason text not null default '',
       invoice_added_at timestamptz not null default now(),
+      created_at timestamptz not null default now()
+    );
+
+    create table if not exists phone_manual_returns (
+      id serial primary key,
+      buyer text not null default 'KT',
+      old_invoice_label text not null default '',
+      returned_at date not null default current_date,
+      model text not null default '',
+      carrier text not null default '',
+      condition text not null default '',
+      quantity integer not null default 1,
+      cost_each numeric(12,2) not null default 0,
+      reason text not null default '',
+      notes text not null default '',
       created_at timestamptz not null default now()
     );
   `);

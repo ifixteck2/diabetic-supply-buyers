@@ -6,12 +6,14 @@ const status = (id, message, type = "ok") => {
 
 let atlasPrices = [];
 let phoneInvoices = [];
+let manualPhoneReturns = [];
 let editingPhonePurchaseId = null;
 
 initPhonePortal();
 
 async function initPhonePortal() {
   $("phonePurchaseDate").value = new Date().toISOString().slice(0, 10);
+  $("manualReturnDate").value = new Date().toISOString().slice(0, 10);
   bindPhoneEvents();
   const me = await api("/api/phone-me", { silent: true });
   if (me?.ok) showPhoneApp();
@@ -31,6 +33,7 @@ function bindPhoneEvents() {
   $("parseQuickPhoneBtn").onclick = () => parseQuickPhoneText(false);
   $("addQuickPhoneBtn").onclick = () => parseQuickPhoneText(true);
   $("moveLatestPhonesBtn").onclick = moveLatestPhones;
+  $("addManualReturnBtn").onclick = addManualKtReturn;
   ["phoneBuyer", "deviceType", "phoneBrand", "conditionType", "packaging", "grade", "phoneModel", "phoneStorage", "phoneCarrier", "ktDeductCrackedBack", "atlasDeductCrackedBack", "atlasDeductCrackedLens", "atlasDeductBattery", "atlasDeductRepair", "atlasDeductFaceId"].forEach((id) => {
     $(id).addEventListener("change", handleFlowChange);
   });
@@ -69,6 +72,7 @@ async function showPhoneApp() {
 async function refreshPhonePortal() {
   await loadAtlasPrices();
   await loadPhoneInvoices();
+  await loadManualPhoneReturns();
 }
 
 async function loadAtlasPrices() {
@@ -87,6 +91,12 @@ async function loadPhoneInvoices() {
   renderInvoiceSelect();
   renderInvoiceLists();
   renderPhoneDashboard();
+}
+
+async function loadManualPhoneReturns() {
+  const result = await api("/api/phone-manual-returns", { silent: true });
+  manualPhoneReturns = result?.returns || [];
+  renderInvoiceLists();
 }
 
 function openPhoneTab(name) {
@@ -1173,7 +1183,73 @@ function renderKtReturns() {
   const list = phoneInvoices
     .filter((invoice) => (invoice.returns || []).length)
     .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-  $("ktReturnsList").innerHTML = list.map(renderKtReturnCard).join("") || `<div class="empty">No returns yet.</div>`;
+  const normalReturns = list.map(renderKtReturnCard).join("");
+  const manualReturns = renderManualKtReturns();
+  $("ktReturnsList").innerHTML = [manualReturns, normalReturns].filter(Boolean).join("") || `<div class="empty">No returns yet.</div>`;
+}
+
+async function addManualKtReturn() {
+  const result = await api("/api/phone-manual-returns", {
+    method: "POST",
+    body: {
+      old_invoice_label: $("manualReturnInvoice").value.trim(),
+      returned_at: $("manualReturnDate").value,
+      model: $("manualReturnModel").value.trim(),
+      carrier: $("manualReturnCarrier").value.trim(),
+      condition: $("manualReturnCondition").value.trim(),
+      quantity: Number($("manualReturnQuantity").value || 1),
+      cost_each: Number($("manualReturnCost").value || 0),
+      reason: $("manualReturnReason").value.trim(),
+      notes: $("manualReturnNotes").value.trim(),
+    },
+  });
+  if (!result?.ok) return status("manualReturnStatus", result?.error || "Could not add manual return.", "bad");
+  ["manualReturnInvoice", "manualReturnModel", "manualReturnCarrier", "manualReturnCondition", "manualReturnCost", "manualReturnReason", "manualReturnNotes"].forEach((id) => {
+    $(id).value = "";
+  });
+  $("manualReturnQuantity").value = "1";
+  $("manualReturnDate").value = new Date().toISOString().slice(0, 10);
+  status("manualReturnStatus", "Manual KT return added.");
+  await loadManualPhoneReturns();
+  openPhoneTab("ktReturns");
+}
+
+function renderManualKtReturns() {
+  if (!manualPhoneReturns.length) return "";
+  const totalCost = manualPhoneReturns.reduce((sum, row) => sum + Number(row.quantity || 0) * Number(row.cost_each || 0), 0);
+  const rows = manualPhoneReturns.map((row) => `
+    <tr>
+      <td class="phone-device-cell">
+        <strong>${escapeHtml(row.model)}</strong>
+        <span>${escapeHtml(row.condition || "Returned")}</span>
+        ${row.notes ? `<em>${escapeHtml(row.notes)}</em>` : ""}
+      </td>
+      <td>${escapeHtml(row.old_invoice_label || "Old KT invoice")}</td>
+      <td>${escapeHtml(row.carrier || "")}</td>
+      <td>${row.quantity}</td>
+      <td>${money(row.cost_each)}</td>
+      <td>${escapeHtml(row.reason || "KT return")}</td>
+      <td>${row.returned_at ? new Date(row.returned_at).toLocaleDateString() : ""}</td>
+    </tr>
+  `).join("");
+  return `
+    <article class="invoice-card phone-invoice-card return-invoice-card">
+      <div class="invoice-top">
+        <div class="phone-invoice-title">
+          <h3>Manual KT Returns</h3>
+          <p>${manualPhoneReturns.length} old return${manualPhoneReturns.length === 1 ? "" : "s"} entered manually</p>
+        </div>
+        <span class="pill closed">Manual</span>
+      </div>
+      <div class="table-wrap">
+        <table class="phone-profit-table">
+          <thead><tr><th>Phone</th><th>Old Invoice</th><th>Carrier</th><th>Qty</th><th>Cost Each</th><th>Reason</th><th>Returned</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      <div class="sale-summary"><span>Manual Return Cost ${money(totalCost)}</span></div>
+    </article>
+  `;
 }
 
 function renderLocallySold() {
