@@ -1920,17 +1920,20 @@ function renderPhoneMoneyDashboard() {
   const totalCost = events.reduce((sum, event) => sum + event.cost, 0);
   const totalProfit = events.reduce((sum, event) => sum + event.profit, 0);
   const totalUnits = events.reduce((sum, event) => sum + event.units, 0);
-  const bestEvent = events.reduce((best, event) => !best || event.profit > best.profit ? event : best, null);
-  const latestEvent = events.reduce((latest, event) => !latest || event.date > latest.date ? event : latest, null);
+  const grossMargin = totalSales ? totalProfit / totalSales * 100 : 0;
+  const sourceRows = buildMoneySourceBreakdown(events);
   $("phoneMoneyStats").innerHTML = `
-    <div class="stat"><span>Total Money In</span><strong>${money(totalSales)}</strong></div>
-    <div class="stat"><span>Total Cost Sold</span><strong>${money(totalCost)}</strong></div>
-    <div class="stat"><span>Cash Profit</span><strong class="${totalProfit >= 0 ? "profit-good" : "profit-bad"}">${money(totalProfit)}</strong></div>
-    <div class="stat"><span>Completed Units</span><strong>${totalUnits}</strong></div>
-    <div class="stat"><span>Best Profit</span><strong class="${!bestEvent || bestEvent.profit >= 0 ? "profit-good" : "profit-bad"}">${bestEvent ? money(bestEvent.profit) : "$0.00"}</strong></div>
-    <div class="stat"><span>Latest Money Date</span><strong>${latestEvent ? latestEvent.date.toLocaleDateString() : "None"}</strong></div>
+    <div class="stat"><span>Gross Receipts</span><strong>${money(totalSales)}</strong></div>
+    <div class="stat"><span>Cost of Goods Sold</span><strong>${money(totalCost)}</strong></div>
+    <div class="stat"><span>Gross Profit</span><strong class="${totalProfit >= 0 ? "profit-good" : "profit-bad"}">${money(totalProfit)}</strong></div>
+    <div class="stat"><span>Gross Margin</span><strong>${grossMargin.toFixed(1)}%</strong></div>
+    <div class="stat"><span>Transactions</span><strong>${events.length}</strong></div>
+    <div class="stat"><span>Units Closed</span><strong>${totalUnits}</strong></div>
   `;
-  $("phoneProfitGraph").innerHTML = renderPhoneProfitGraph(events);
+  $("phoneProfitGraph").innerHTML = `
+    ${renderPhoneProfitGraph(events)}
+    ${renderMoneySourceBreakdown(sourceRows)}
+  `;
 }
 
 function getPhoneMoneyEvents() {
@@ -1942,8 +1945,9 @@ function getPhoneMoneyEvents() {
       events.push({
         date: eventDate(invoice.sold_at || invoice.closed_at || invoice.status_updated_at || invoice.created_at),
         label: invoice.label || `${invoice.buyer} Invoice`,
-        type: `${invoice.buyer} invoice`,
+        type: "Buyer Invoice",
         buyer: invoice.buyer || "",
+        reference: `Invoice #${invoice.id}`,
         units: (invoice.purchases || []).reduce((sum, row) => sum + phoneLineQuantity(row), 0),
         sale: invoiceSale,
         cost,
@@ -1959,6 +1963,7 @@ function getPhoneMoneyEvents() {
         label: row.model || "Local sale",
         type: "Local sale",
         buyer: invoice.buyer || row.buyer || "",
+        reference: `Phone #${row.id}`,
         units: phoneLineQuantity(row),
         sale,
         cost,
@@ -1972,8 +1977,9 @@ function getPhoneMoneyEvents() {
       events.push({
         date: eventDate(row.gift_card_at || row.invoice_removed_at || row.created_at),
         label: row.model || "Apple gift card",
-        type: "Gift card",
+        type: "Apple Gift Card",
         buyer: invoice.buyer || row.buyer || "",
+        reference: `Gift Card Trade #${row.id}`,
         units: phoneLineQuantity(row),
         sale,
         cost,
@@ -1990,6 +1996,7 @@ function getPhoneMoneyEvents() {
       label: row.model || "Manual return",
       type: "Return sale",
       buyer: row.buyer || "KT",
+      reference: `Manual Return #${row.id}`,
       units: phoneLineQuantity(row),
       sale,
       cost,
@@ -2007,20 +2014,8 @@ function eventDate(value) {
 
 function renderPhoneProfitGraph(events) {
   if (!events.length) return `<div class="empty">No completed phone sales yet.</div>`;
-  const daily = new Map();
-  events.forEach((event) => {
-    const key = event.date.toISOString().slice(0, 10);
-    const current = daily.get(key) || { date: event.date, profit: 0, sale: 0, cost: 0, units: 0, count: 0 };
-    current.profit += event.profit;
-    current.sale += event.sale;
-    current.cost += event.cost;
-    current.units += event.units;
-    current.count += 1;
-    daily.set(key, current);
-  });
-  const points = [...daily.values()].sort((a, b) => a.date - b.date);
   let runningProfit = 0;
-  const graphPoints = points.map((point) => ({ ...point, runningProfit: runningProfit += point.profit }));
+  const graphPoints = events.map((event, index) => ({ ...event, transactionNumber: index + 1, runningProfit: runningProfit += event.profit }));
   const values = graphPoints.flatMap((point) => [point.runningProfit, point.profit, 0]);
   const minValue = Math.min(...values);
   const maxValue = Math.max(...values);
@@ -2032,6 +2027,7 @@ function renderPhoneProfitGraph(events) {
   const innerHeight = height - pad * 2;
   const xFor = (index) => pad + (graphPoints.length === 1 ? innerWidth / 2 : (index / (graphPoints.length - 1)) * innerWidth);
   const yFor = (value) => pad + (1 - ((value - minValue) / range)) * innerHeight;
+  const barWidth = Math.max(6, Math.min(24, innerWidth / Math.max(1, graphPoints.length) * 0.55));
   const zeroY = yFor(0);
   const linePoints = graphPoints.map((point, index) => `${xFor(index)},${yFor(point.runningProfit)}`).join(" ");
   const bars = graphPoints.map((point, index) => {
@@ -2039,24 +2035,27 @@ function renderPhoneProfitGraph(events) {
     const y = yFor(Math.max(point.profit, 0));
     const barHeight = Math.max(2, Math.abs(yFor(point.profit) - zeroY));
     const top = point.profit >= 0 ? y : zeroY;
-    return `<rect x="${x - 12}" y="${top}" width="24" height="${barHeight}" rx="5" class="${point.profit >= 0 ? "profit-bar-good" : "profit-bar-bad"}"><title>${point.date.toLocaleDateString()} profit ${money(point.profit)}</title></rect>`;
+    return `<rect x="${x - barWidth / 2}" y="${top}" width="${barWidth}" height="${barHeight}" rx="4" class="${point.profit >= 0 ? "profit-bar-good" : "profit-bar-bad"}"><title>#${point.transactionNumber} ${point.reference || point.type} - ${point.date.toLocaleDateString()} profit ${money(point.profit)}</title></rect>`;
   }).join("");
-  const dots = graphPoints.map((point, index) => `<circle cx="${xFor(index)}" cy="${yFor(point.runningProfit)}" r="5"><title>${point.date.toLocaleDateString()} running profit ${money(point.runningProfit)}</title></circle>`).join("");
-  const recentRows = [...events].slice(-8).reverse().map((event) => `
+  const dots = graphPoints.map((point, index) => `<circle cx="${xFor(index)}" cy="${yFor(point.runningProfit)}" r="5"><title>#${point.transactionNumber} running profit ${money(point.runningProfit)}</title></circle>`).join("");
+  const ledgerRows = [...graphPoints].reverse().map((event) => `
     <tr>
+      <td>${event.transactionNumber}</td>
       <td>${event.date.toLocaleDateString()}</td>
-      <td><strong>${escapeHtml(event.label)}</strong><em>${escapeHtml(event.type)}${event.buyer ? ` - ${escapeHtml(event.buyer)}` : ""}</em></td>
+      <td><strong>${escapeHtml(event.reference || event.type)}</strong><em>${escapeHtml(event.type)}${event.buyer ? ` - ${escapeHtml(event.buyer)}` : ""}</em></td>
+      <td>${escapeHtml(event.label)}</td>
       <td>${event.units}</td>
       <td>${money(event.sale)}</td>
       <td>${money(event.cost)}</td>
       <td class="${event.profit >= 0 ? "profit-good" : "profit-bad"}">${money(event.profit)}</td>
+      <td class="${event.runningProfit >= 0 ? "profit-good" : "profit-bad"}">${money(event.runningProfit)}</td>
     </tr>
   `).join("");
   const finalPoint = graphPoints[graphPoints.length - 1];
   return `
     <div class="profit-chart-card">
       <div class="profit-chart-head">
-        <div><strong>Profit Trend</strong><span>Bars are daily profit. Line is running profit.</span></div>
+        <div><strong>Transaction Profit Trend</strong><span>Each bar is one closed transaction. Gift cards are not combined by date.</span></div>
         <b class="${finalPoint.runningProfit >= 0 ? "profit-good" : "profit-bad"}">${money(finalPoint.runningProfit)}</b>
       </div>
       <svg class="profit-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Phone profit graph">
@@ -2068,8 +2067,48 @@ function renderPhoneProfitGraph(events) {
     </div>
     <div class="table-wrap money-event-wrap">
       <table class="phone-breakdown-table money-event-table">
-        <thead><tr><th>Date</th><th>Money Event</th><th>Units</th><th>Money In</th><th>Cost</th><th>Profit</th></tr></thead>
-        <tbody>${recentRows}</tbody>
+        <thead><tr><th>#</th><th>Date</th><th>Reference</th><th>Item</th><th>Units</th><th>Receipts</th><th>COGS</th><th>Gross Profit</th><th>Running Profit</th></tr></thead>
+        <tbody>${ledgerRows}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+function buildMoneySourceBreakdown(events) {
+  const rows = new Map();
+  events.forEach((event) => {
+    const key = event.type || "Other";
+    const row = rows.get(key) || { type: key, transactions: 0, units: 0, sale: 0, cost: 0, profit: 0 };
+    row.transactions += 1;
+    row.units += event.units;
+    row.sale += event.sale;
+    row.cost += event.cost;
+    row.profit += event.profit;
+    rows.set(key, row);
+  });
+  return [...rows.values()].sort((a, b) => b.profit - a.profit);
+}
+
+function renderMoneySourceBreakdown(rows) {
+  if (!rows.length) return "";
+  return `
+    <div class="table-wrap money-source-wrap">
+      <table class="phone-breakdown-table money-source-table">
+        <thead><tr><th>Source</th><th>Transactions</th><th>Units</th><th>Receipts</th><th>COGS</th><th>Gross Profit</th><th>Margin</th></tr></thead>
+        <tbody>${rows.map((row) => {
+          const margin = row.sale ? row.profit / row.sale * 100 : 0;
+          return `
+            <tr>
+              <td><strong>${escapeHtml(row.type)}</strong></td>
+              <td>${row.transactions}</td>
+              <td>${row.units}</td>
+              <td>${money(row.sale)}</td>
+              <td>${money(row.cost)}</td>
+              <td class="${row.profit >= 0 ? "profit-good" : "profit-bad"}">${money(row.profit)}</td>
+              <td>${margin.toFixed(1)}%</td>
+            </tr>
+          `;
+        }).join("")}</tbody>
       </table>
     </div>
   `;
