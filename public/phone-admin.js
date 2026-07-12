@@ -1804,10 +1804,8 @@ window.openPhoneBuyerPdf = (id) => {
 
 function renderPhoneDashboard() {
   if (!$("phoneDashboardStats") || !$("phoneBuyerBreakdown")) return;
-  const totals = phoneInvoices.reduce((acc, invoice) => addInvoiceStats(acc, invoice), emptyPhoneStats());
-  const buyerStats = ["Atlas", "KT"].map((buyer) => phoneInvoices
-    .filter((invoice) => invoice.buyer === buyer)
-    .reduce((acc, invoice) => addInvoiceStats(acc, invoice), emptyPhoneStats(buyer)));
+  const totals = buildCombinedPhoneStats();
+  const buyerStats = ["Atlas", "KT"].map((buyer) => buildCombinedPhoneStats(buyer));
   $("phoneDashboardStats").innerHTML = `
     <div class="stat"><span>Total Cost</span><strong>${money(totals.cost)}</strong></div>
     <div class="stat"><span>Actual Sales</span><strong>${money(totals.actualSale)}</strong></div>
@@ -1816,16 +1814,17 @@ function renderPhoneDashboard() {
     <div class="stat"><span>Pending Cost</span><strong>${money(totals.pendingCost)}</strong></div>
     <div class="stat"><span>Shipped Cost</span><strong>${money(totals.shippedCost)}</strong></div>
     <div class="stat"><span>Needs Sale Amount</span><strong>${totals.needsSaleAmount}</strong></div>
-    <div class="stat"><span>Actual Profit / Unit</span><strong>${money(totals.units ? totals.actualProfit / totals.units : 0)}</strong></div>
+    <div class="stat"><span>Sold / Traded Units</span><strong>${totals.completedUnits}</strong></div>
   `;
   $("phoneBuyerBreakdown").innerHTML = `
     <table class="phone-breakdown-table">
-      <thead><tr><th>Buyer</th><th>Invoices</th><th>Units</th><th>Cost</th><th>Actual Sales</th><th>Actual Profit</th><th>Needs Sale Amount</th></tr></thead>
+      <thead><tr><th>Buyer</th><th>Invoices</th><th>Total Units</th><th>Sold / Traded</th><th>Cost</th><th>Actual Sales</th><th>Actual Profit</th><th>Needs Sale Amount</th></tr></thead>
       <tbody>${buyerStats.map((row) => `
         <tr>
           <td><strong>${row.buyer}</strong></td>
           <td>${row.invoices}</td>
           <td>${row.units}</td>
+          <td>${row.completedUnits}</td>
           <td>${money(row.cost)}</td>
           <td>${money(row.actualSale)}</td>
           <td class="${row.actualProfit >= 0 ? "profit-good" : "profit-bad"}">${money(row.actualProfit)}</td>
@@ -1837,7 +1836,21 @@ function renderPhoneDashboard() {
 }
 
 function emptyPhoneStats(buyer = "All") {
-  return { buyer, invoices: 0, units: 0, cost: 0, actualSale: 0, actualProfit: 0, pendingCost: 0, shippedCost: 0, needsSaleAmount: 0 };
+  return { buyer, invoices: 0, units: 0, completedUnits: 0, cost: 0, actualSale: 0, actualProfit: 0, pendingCost: 0, shippedCost: 0, needsSaleAmount: 0 };
+}
+
+function buildCombinedPhoneStats(buyer = "All") {
+  const stats = emptyPhoneStats(buyer);
+  phoneInvoices
+    .filter((invoice) => buyer === "All" || invoice.buyer === buyer)
+    .forEach((invoice) => addInvoiceStats(stats, invoice));
+  phoneInvoices
+    .filter((invoice) => buyer === "All" || invoice.buyer === buyer)
+    .forEach((invoice) => addRemovedPhoneStats(stats, invoice));
+  manualPhoneReturns
+    .filter((row) => buyer === "All" || (row.buyer || "KT") === buyer)
+    .forEach((row) => addManualReturnStats(stats, row));
+  return stats;
 }
 
 function addInvoiceStats(acc, invoice) {
@@ -1854,8 +1867,49 @@ function addInvoiceStats(acc, invoice) {
   if (salePrice !== null) {
     acc.actualSale += salePrice;
     acc.actualProfit += salePrice - cost;
+    acc.completedUnits += units;
   }
   return acc;
+}
+
+function addRemovedPhoneStats(acc, invoice) {
+  (invoice.local_sold || []).forEach((row) => addCompletedPhoneLineStats(acc, row, row.local_sale_price));
+  (invoice.gift_cards || []).forEach((row) => addCompletedPhoneLineStats(acc, row, row.gift_card_value));
+  (invoice.returns || []).forEach((row) => {
+    acc.units += phoneLineQuantity(row);
+    acc.cost += phoneLineCost(row);
+  });
+  return acc;
+}
+
+function addManualReturnStats(acc, row) {
+  const cost = phoneLineCost(row);
+  const sale = row.sale_price === null || row.sale_price === undefined || row.sale_price === "" ? null : Number(row.sale_price);
+  acc.units += phoneLineQuantity(row);
+  acc.cost += cost;
+  if (sale !== null) {
+    acc.actualSale += sale;
+    acc.actualProfit += sale - cost;
+    acc.completedUnits += phoneLineQuantity(row);
+  }
+  return acc;
+}
+
+function addCompletedPhoneLineStats(acc, row, saleValue) {
+  const cost = phoneLineCost(row);
+  const sale = saleValue === null || saleValue === undefined || saleValue === "" ? null : Number(saleValue);
+  acc.units += phoneLineQuantity(row);
+  acc.cost += cost;
+  if (sale !== null) {
+    acc.actualSale += sale;
+    acc.actualProfit += sale - cost;
+    acc.completedUnits += phoneLineQuantity(row);
+  }
+  return acc;
+}
+
+function phoneLineQuantity(row) {
+  return Number(row.quantity || 0);
 }
 
 window.setPhoneInvoiceStatus = async (id, nextStatus) => {
