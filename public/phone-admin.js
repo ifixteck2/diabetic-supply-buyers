@@ -1463,18 +1463,22 @@ function renderGiftCards() {
     $("giftCardsList").innerHTML = `<div class="empty">No Apple gift card trade-ins yet.</div>`;
     return;
   }
+  const cardNumbers = new Map([...rows].sort((a, b) => new Date(a.gift_card_at || a.invoice_removed_at || a.created_at || 0) - new Date(b.gift_card_at || b.invoice_removed_at || b.created_at || 0)).map((row, index) => [row.id, index + 1]));
   const totalCost = rows.reduce((sum, row) => sum + phoneLineCost(row), 0);
   const totalValue = rows.reduce((sum, row) => sum + Number(row.gift_card_value || 0), 0);
   const totalProfit = totalValue - totalCost;
+  const newestDate = rows[0]?.gift_card_at ? new Date(rows[0].gift_card_at).toLocaleDateString() : "None";
   const body = rows.map((row) => {
     const cost = phoneLineCost(row);
     const value = Number(row.gift_card_value || 0);
     const profit = value - cost;
+    const cardNumber = cardNumbers.get(row.id) || "";
     const cardPhotoId = `giftCardPhoto${row.id}`;
     const receiptPhotoId = `giftCardReceipt${row.id}`;
     const receiptIsPdf = isPdfDataUrl(row.gift_card_receipt_data_url) || /\.pdf$/i.test(row.gift_card_receipt_file_name || "");
     return `
       <tr>
+        <td><strong class="gift-card-number">#${cardNumber}</strong></td>
         <td class="phone-device-cell">
           <strong>${escapeHtml(row.model)}</strong>
           <span>${escapeHtml(phoneInvoiceItemCondition(row))}</span>
@@ -1511,16 +1515,18 @@ function renderGiftCards() {
         </div>
         <span class="pill sold">Gift Cards</span>
       </div>
+      <div class="gift-card-summary">
+        <span><small>Total Cards</small><b>${rows.length}</b></span>
+        <span><small>Total Phones Cost</small><b>${money(totalCost)}</b></span>
+        <span><small>Gift Card Value</small><b>${money(totalValue)}</b></span>
+        <span><small>Profit</small><b class="${totalProfit >= 0 ? "profit-good" : "profit-bad"}">${money(totalProfit)}</b></span>
+        <span><small>Latest Card</small><b>${newestDate}</b></span>
+      </div>
       <div class="table-wrap">
-        <table class="phone-profit-table">
-          <thead><tr><th>Phone Traded In</th><th>Buyer</th><th>From Invoice</th><th>Qty</th><th>Cost</th><th>Gift Card Value</th><th>Profit</th><th>Date</th><th>Card Info</th></tr></thead>
+        <table class="phone-profit-table gift-card-table">
+          <thead><tr><th>GC #</th><th>Phone Traded In</th><th>Source</th><th>From Invoice</th><th>Qty</th><th>Cost</th><th>Gift Card Value</th><th>Profit</th><th>Date</th><th>Card Info</th></tr></thead>
           <tbody>${body}</tbody>
         </table>
-      </div>
-      <div class="sale-summary">
-        <span>Total Phones Cost ${money(totalCost)}</span>
-        <span>Gift Card Value ${money(totalValue)}</span>
-        <strong class="${totalProfit >= 0 ? "profit-good" : "profit-bad"}">Profit ${money(totalProfit)}</strong>
       </div>
     </article>
   `;
