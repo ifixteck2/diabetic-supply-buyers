@@ -527,27 +527,33 @@ function atlasDeductionAmountFromText(value) {
   return Number(text.match(/\$?(\d+(?:\.\d+)?)/)?.[1] || 0);
 }
 
-function imageFileToDataUrl(file) {
+function imageFileToDataUrl(file, options = {}) {
+  const max = options.max || 1200;
+  const quality = options.quality || 0.78;
+  const label = options.label || "phone photo";
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onerror = () => reject(new Error("Could not read phone photo."));
+    reader.onerror = () => reject(new Error(`Could not read ${label}.`));
     reader.onload = () => {
       const img = new Image();
-      img.onerror = () => reject(new Error("Could not load phone photo."));
+      img.onerror = () => reject(new Error(`Could not load ${label}.`));
       img.onload = () => {
-        const max = 1200;
         const scale = Math.min(1, max / Math.max(img.width, img.height));
         const canvas = document.createElement("canvas");
         canvas.width = Math.max(1, Math.round(img.width * scale));
         canvas.height = Math.max(1, Math.round(img.height * scale));
         const ctx = canvas.getContext("2d");
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        resolve({ file_name: file.name, data_url: canvas.toDataURL("image/jpeg", 0.78) });
+        resolve({ file_name: file.name, data_url: canvas.toDataURL("image/jpeg", quality) });
       };
       img.src = reader.result;
     };
     reader.readAsDataURL(file);
   });
+}
+
+function giftCardImageToDataUrl(file) {
+  return imageFileToDataUrl(file, { max: 2400, quality: 0.94, label: "gift card image" });
 }
 
 function updateProjectedPrice() {
@@ -2324,8 +2330,8 @@ window.saveGiftCardDetails = async (id) => {
   const result = await api(`/api/phone-purchases/${id}/gift-card-details`, {
     method: "PATCH",
     body: {
-      gift_card_photo: cardFile ? await imageFileToDataUrl(cardFile) : null,
-      receipt_photo: receiptFile && !receiptIsPdf ? await imageFileToDataUrl(receiptFile) : null,
+      gift_card_photo: cardFile ? await giftCardImageToDataUrl(cardFile) : null,
+      receipt_photo: receiptFile && !receiptIsPdf ? await giftCardImageToDataUrl(receiptFile) : null,
     },
   });
   if (!result?.ok) {
