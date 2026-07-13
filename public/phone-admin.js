@@ -1209,7 +1209,33 @@ function renderInvoiceGroup(id, buyer, view) {
     if (invoice.buyer !== buyer) return false;
     return view === "Pending" ? invoice.status === "Pending" : invoice.status !== "Pending";
   });
-  $(id).innerHTML = list.map(renderPhoneInvoiceCard).join("") || `<div class="empty">No ${buyer} ${view.toLowerCase()} invoices yet.</div>`;
+  const summary = view === "Pending" && list.length ? renderPendingBuyerSummary(buyer, list) : "";
+  $(id).innerHTML = summary + (list.map(renderPhoneInvoiceCard).join("") || `<div class="empty">No ${buyer} ${view.toLowerCase()} invoices yet.</div>`);
+}
+
+function renderPendingBuyerSummary(buyer, invoices) {
+  const purchases = invoices.flatMap((invoice) => invoice.purchases || []);
+  const totalCost = purchases.reduce((sum, row) => sum + phoneLineCost(row), 0);
+  const totalUnits = purchases.reduce((sum, row) => sum + phoneLineQuantity(row), 0);
+  const newestDate = purchases.reduce((latest, row) => {
+    const time = new Date(row.invoice_added_at || row.purchase_date || row.created_at || 0).getTime();
+    return Math.max(latest, Number.isNaN(time) ? 0 : time);
+  }, 0);
+  return `
+    <article class="pending-page-summary">
+      <div>
+        <span>${escapeHtml(buyer)} Pending</span>
+        <strong>${money(totalCost)}</strong>
+        <em>${totalUnits} phone${totalUnits === 1 ? "" : "s"} across ${invoices.length} pending invoice${invoices.length === 1 ? "" : "s"}</em>
+      </div>
+      <div class="pending-page-metrics">
+        <span><small>Invoices</small><b>${invoices.length}</b></span>
+        <span><small>Phones</small><b>${totalUnits}</b></span>
+        <span><small>Avg Cost</small><b>${money(totalUnits ? totalCost / totalUnits : 0)}</b></span>
+        <span><small>Newest Add</small><b>${newestDate ? new Date(newestDate).toLocaleDateString() : "None"}</b></span>
+      </div>
+    </article>
+  `;
 }
 
 function renderPastInvoices() {
@@ -1621,13 +1647,15 @@ function renderPhoneInvoiceCard(invoice) {
   itemNumber = 1;
   const pendingRows = purchases.map((row) => {
     const itemLabel = phoneInvoiceItemNumber(row, itemNumber);
+    const lineCost = phoneLineCost(row);
     itemNumber += phoneInvoiceQuantity(row);
     return `
     <tr class="pending-phone-row">
-      <td>${escapeHtml(itemLabel)}</td>
+      <td><strong>${escapeHtml(itemLabel)}</strong></td>
       <td class="phone-device-cell">
         <strong>${escapeHtml(row.model)}</strong>
         <span>${escapeHtml(phoneInvoiceItemCondition(row))}</span>
+        <em>${escapeHtml(row.device_type || "Phone")} purchase${row.purchase_date ? ` - Bought ${new Date(row.purchase_date).toLocaleDateString()}` : ""}</em>
         ${row.imei ? `<em>IMEI ${escapeHtml(row.imei)}</em>` : ""}
         ${row.notes ? `<em>${escapeHtml(row.notes)}</em>` : ""}
         ${row.photo_data_url ? `<button class="phone-photo-link" onclick="openPhonePhoto(${row.id})">View photo</button>` : ""}
@@ -1635,6 +1663,7 @@ function renderPhoneInvoiceCard(invoice) {
       <td>${escapeHtml(row.carrier || "")}</td>
       <td>${row.quantity}</td>
       <td>${money(row.cost_each)}</td>
+      <td>${money(lineCost)}</td>
       <td>${phoneAddedDate(row)}</td>
       <td><div class="phone-row-actions"><button class="mini-btn" onclick="startPhonePurchaseEdit(${row.id})">Edit</button>${canRemove ? `<button class="mini-btn" onclick="movePhonePurchaseToInvoice(${row.id})">Move</button>` : ""}${canRemove ? `<button class="mini-btn" onclick="movePhonePurchaseToGiftCard(${row.id})">Move to GC</button>` : ""}${canReturn ? `<button class="mini-btn warning" onclick="returnPhonePurchaseToKt(${row.id})">Return</button>` : ""}${canRemove ? `<button class="mini-btn danger" onclick="removePhonePurchaseFromInvoice(${row.id})">Locally Sold</button>` : ""}</div></td>
     </tr>
@@ -1653,17 +1682,25 @@ function renderPhoneInvoiceCard(invoice) {
       </div>
     </div>
   `;
+  const averageCost = units ? totalCost / units : 0;
+  const invoiceCreated = new Date(invoice.created_at).toLocaleDateString();
+  const newestAdded = purchases.reduce((latest, row) => {
+    const time = new Date(row.invoice_added_at || row.purchase_date || row.created_at || 0).getTime();
+    return Math.max(latest, Number.isNaN(time) ? 0 : time);
+  }, 0);
   return `
     <article class="invoice-card phone-invoice-card ${isPending ? "phone-invoice-compact" : ""}">
       <div class="invoice-top">
         <div class="phone-invoice-title">
           <h3>${escapeHtml(invoice.label || `${invoice.buyer} Invoice`)}</h3>
-          <p>#${invoice.id} - ${escapeHtml(invoice.buyer)} - ${new Date(invoice.created_at).toLocaleDateString()} - ${units} phone${units === 1 ? "" : "s"} total</p>
+          <p>#${invoice.id} - ${escapeHtml(invoice.buyer)} - Created ${invoiceCreated} - ${units} phone${units === 1 ? "" : "s"} total</p>
         </div>
         ${isPending ? `
           <div class="pending-invoice-metrics">
-            <span><small>Cost</small><b>${money(totalCost)}</b></span>
+            <span><small>Total Cost</small><b>${money(totalCost)}</b></span>
             <span><small>Phones</small><b>${units}</b></span>
+            <span><small>Avg Cost</small><b>${money(averageCost)}</b></span>
+            <span><small>Newest Add</small><b>${newestAdded ? new Date(newestAdded).toLocaleDateString() : "None"}</b></span>
           </div>
         ` : ""}
         <span class="pill ${invoice.status?.toLowerCase()}">${escapeHtml(invoice.status)}</span>
@@ -1671,8 +1708,8 @@ function renderPhoneInvoiceCard(invoice) {
       ${isPending ? `
         <div class="table-wrap pending-table-wrap">
           <table class="phone-profit-table pending-phone-table">
-            <thead><tr><th>Item #</th><th>Phone</th><th>Carrier</th><th>Qty</th><th>Cost</th><th>Added</th><th></th></tr></thead>
-            <tbody>${pendingRows || `<tr><td colspan="7">No purchases added.</td></tr>`}</tbody>
+            <thead><tr><th>Item #</th><th>Phone Details</th><th>Carrier</th><th>Qty</th><th>Unit Cost</th><th>Line Cost</th><th>Added</th><th>Actions</th></tr></thead>
+            <tbody>${pendingRows || `<tr><td colspan="8">No purchases added.</td></tr>`}</tbody>
           </table>
         </div>
       ` : `
