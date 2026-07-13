@@ -14,6 +14,7 @@ initPhonePortal();
 async function initPhonePortal() {
   $("phonePurchaseDate").value = new Date().toISOString().slice(0, 10);
   $("manualReturnDate").value = new Date().toISOString().slice(0, 10);
+  $("manualGiftCardDate").value = new Date().toISOString().slice(0, 10);
   bindPhoneEvents();
   const me = await api("/api/phone-me", { silent: true });
   if (me?.ok) showPhoneApp();
@@ -34,6 +35,7 @@ function bindPhoneEvents() {
   $("addQuickPhoneBtn").onclick = () => parseQuickPhoneText(true);
   $("moveLatestPhonesBtn").onclick = moveLatestPhones;
   $("addManualReturnBtn").onclick = addManualKtReturn;
+  $("addManualGiftCardBtn").onclick = addManualGiftCard;
   ["phoneBuyer", "deviceType", "phoneBrand", "conditionType", "packaging", "grade", "phoneModel", "phoneStorage", "phoneCarrier", "ktDeductCrackedBack", "atlasDeductCrackedBack", "atlasDeductCrackedLens", "atlasDeductBattery", "atlasDeductRepair", "atlasDeductFaceId"].forEach((id) => {
     $(id).addEventListener("change", handleFlowChange);
   });
@@ -1516,6 +1518,26 @@ function renderGiftCards() {
       </div>
     </article>
   `;
+}
+
+async function addManualGiftCard() {
+  const result = await api("/api/phone-gift-cards", {
+    method: "POST",
+    body: {
+      model: $("manualGiftCardModel").value.trim(),
+      cost_each: Number($("manualGiftCardCost").value || 0),
+      gift_card_value: Number($("manualGiftCardValue").value || 0),
+      gift_card_at: $("manualGiftCardDate").value,
+    },
+  });
+  if (!result?.ok) return status("manualGiftCardStatus", result?.error || "Could not add gift card.", "bad");
+  $("manualGiftCardModel").value = "";
+  $("manualGiftCardCost").value = "";
+  $("manualGiftCardValue").value = "";
+  $("manualGiftCardDate").value = new Date().toISOString().slice(0, 10);
+  status("manualGiftCardStatus", "Gift card added.");
+  await loadPhoneInvoices();
+  openPhoneTab("giftCards");
 }
 
 function phoneLineCost(row) {

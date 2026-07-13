@@ -588,6 +588,48 @@ app.patch("/api/phone-purchases/:id/gift-card", requirePhoneAuth, async (req, re
   res.json({ ok: true, purchase: result.rows[0] });
 });
 
+app.post("/api/phone-gift-cards", requirePhoneAuth, async (req, res) => {
+  const input = req.body || {};
+  const model = String(input.model || "").trim();
+  const costEach = Number(input.cost_each || 0);
+  const giftCardValue = Number(input.gift_card_value || 0);
+  const giftCardAt = input.gift_card_at || new Date().toISOString().slice(0, 10);
+  if (!model) return res.status(400).json({ error: "Enter the phone model." });
+  if (!Number.isFinite(costEach) || costEach < 0) return res.status(400).json({ error: "Enter the phone cost." });
+  if (!Number.isFinite(giftCardValue) || giftCardValue < 0) return res.status(400).json({ error: "Enter the gift card value." });
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    const existing = await client.query(
+      "select * from phone_invoices where buyer = 'Apple GC' and label = 'Manual Gift Cards' order by id asc limit 1"
+    );
+    let invoice = existing.rows[0];
+    if (!invoice) {
+      const invoiceResult = await client.query(
+        `insert into phone_invoices (buyer, label, notes, status, status_updated_at, closed_at)
+         values ('Apple GC', 'Manual Gift Cards', 'Direct Apple gift card trade-ins', 'Closed', now(), now())
+         returning *`
+      );
+      invoice = invoiceResult.rows[0];
+    }
+    const purchase = await client.query(
+      `insert into phone_purchases
+       (invoice_id, buyer, purchase_date, device_type, condition_type, model, carrier, quantity, cost_each, invoice_removed_at, invoice_removed_reason, gift_card_value, gift_card_at, gift_card_notes, notes)
+       values ($1,'Apple GC',$2,'Phone','Used',$3,'Apple Trade-In',1,$4,now(),'Apple gift card trade-in',$5,$2::date,'Manual gift card entry','Direct gift card entry')
+       returning *`,
+      [invoice.id, giftCardAt, model, costEach, giftCardValue]
+    );
+    await client.query("commit");
+    res.json({ ok: true, purchase: purchase.rows[0] });
+  } catch (error) {
+    await client.query("rollback");
+    console.error("Could not add manual phone gift card.", error);
+    res.status(500).json({ error: "Could not add gift card." });
+  } finally {
+    client.release();
+  }
+});
+
 app.patch("/api/phone-purchases/:id/gift-card-details", requirePhoneAuth, async (req, res) => {
   const id = Number(req.params.id);
   const giftCardPhoto = req.body?.gift_card_photo || null;
