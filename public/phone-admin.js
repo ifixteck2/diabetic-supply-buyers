@@ -1537,6 +1537,7 @@ async function addManualGiftCard() {
     method: "POST",
     body: {
       model: $("manualGiftCardModel").value.trim(),
+      quantity: Number($("manualGiftCardQuantity").value || 1),
       cost_each: Number($("manualGiftCardCost").value || 0),
       gift_card_value: Number($("manualGiftCardValue").value || 0),
       gift_card_at: $("manualGiftCardDate").value,
@@ -1544,10 +1545,11 @@ async function addManualGiftCard() {
   });
   if (!result?.ok) return status("manualGiftCardStatus", result?.error || "Could not add gift card.", "bad");
   $("manualGiftCardModel").value = "";
+  $("manualGiftCardQuantity").value = "1";
   $("manualGiftCardCost").value = "";
   $("manualGiftCardValue").value = "";
   $("manualGiftCardDate").value = new Date().toISOString().slice(0, 10);
-  status("manualGiftCardStatus", "Gift card added.");
+  status("manualGiftCardStatus", `${result.count || 1} gift card${Number(result.count || 1) === 1 ? "" : "s"} added.`);
   await loadPhoneInvoices();
   openPhoneTab("giftCards");
 }

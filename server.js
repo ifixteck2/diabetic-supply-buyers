@@ -591,10 +591,12 @@ app.patch("/api/phone-purchases/:id/gift-card", requirePhoneAuth, async (req, re
 app.post("/api/phone-gift-cards", requirePhoneAuth, async (req, res) => {
   const input = req.body || {};
   const model = String(input.model || "").trim();
+  const quantity = Number(input.quantity || 1);
   const costEach = Number(input.cost_each || 0);
   const giftCardValue = Number(input.gift_card_value || 0);
   const giftCardAt = input.gift_card_at || new Date().toISOString().slice(0, 10);
   if (!model) return res.status(400).json({ error: "Enter the phone model." });
+  if (!Number.isInteger(quantity) || quantity < 1 || quantity > 100) return res.status(400).json({ error: "Quantity must be between 1 and 100." });
   if (!Number.isFinite(costEach) || costEach < 0) return res.status(400).json({ error: "Enter the phone cost." });
   if (!Number.isFinite(giftCardValue) || giftCardValue < 0) return res.status(400).json({ error: "Enter the gift card value." });
   const client = await pool.connect();
@@ -612,15 +614,19 @@ app.post("/api/phone-gift-cards", requirePhoneAuth, async (req, res) => {
       );
       invoice = invoiceResult.rows[0];
     }
-    const purchase = await client.query(
-      `insert into phone_purchases
-       (invoice_id, buyer, purchase_date, device_type, condition_type, model, carrier, quantity, cost_each, invoice_removed_at, invoice_removed_reason, gift_card_value, gift_card_at, gift_card_notes, notes)
-       values ($1,'Apple GC',$2,'Phone','Used',$3,'Apple Trade-In',1,$4,now(),'Apple gift card trade-in',$5,$2::date,'Manual gift card entry','Direct gift card entry')
-       returning *`,
-      [invoice.id, giftCardAt, model, costEach, giftCardValue]
-    );
+    const purchases = [];
+    for (let index = 0; index < quantity; index += 1) {
+      const purchase = await client.query(
+        `insert into phone_purchases
+         (invoice_id, buyer, purchase_date, device_type, condition_type, model, carrier, quantity, cost_each, invoice_removed_at, invoice_removed_reason, gift_card_value, gift_card_at, gift_card_notes, notes)
+         values ($1,'Apple GC',$2,'Phone','Used',$3,'Apple Trade-In',1,$4,now(),'Apple gift card trade-in',$5,$2::date,'Manual gift card entry','Direct gift card entry')
+         returning *`,
+        [invoice.id, giftCardAt, model, costEach, giftCardValue]
+      );
+      purchases.push(purchase.rows[0]);
+    }
     await client.query("commit");
-    res.json({ ok: true, purchase: purchase.rows[0] });
+    res.json({ ok: true, count: purchases.length, purchases });
   } catch (error) {
     await client.query("rollback");
     console.error("Could not add manual phone gift card.", error);
