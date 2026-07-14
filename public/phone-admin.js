@@ -1491,16 +1491,17 @@ function renderLocallySoldCard(invoice) {
 
 function renderGiftCards() {
   const rows = phoneInvoices.flatMap((invoice) => (invoice.gift_cards || []).map((row) => ({ ...row, invoice })))
-    .sort((a, b) => new Date(b.gift_card_at || b.invoice_removed_at || b.created_at || 0) - new Date(a.gift_card_at || a.invoice_removed_at || a.created_at || 0));
+    .sort((a, b) => new Date(a.gift_card_at || a.invoice_removed_at || a.created_at || 0) - new Date(b.gift_card_at || b.invoice_removed_at || b.created_at || 0) || Number(a.id || 0) - Number(b.id || 0));
   if (!rows.length) {
     $("giftCardsList").innerHTML = `${renderAppleTradeInReference()}<div class="empty">No Apple gift card trade-ins yet.</div>`;
     return;
   }
-  const cardNumbers = new Map([...rows].sort((a, b) => new Date(a.gift_card_at || a.invoice_removed_at || a.created_at || 0) - new Date(b.gift_card_at || b.invoice_removed_at || b.created_at || 0)).map((row, index) => [row.id, index + 1]));
+  const cardNumbers = new Map(rows.map((row, index) => [row.id, index + 1]));
   const totalCost = rows.reduce((sum, row) => sum + phoneLineCost(row), 0);
   const totalValue = rows.reduce((sum, row) => sum + Number(row.gift_card_value || 0), 0);
   const totalProfit = totalValue - totalCost;
-  const newestDate = rows[0]?.gift_card_at ? new Date(rows[0].gift_card_at).toLocaleDateString() : "None";
+  const newest = rows[rows.length - 1];
+  const newestDate = newest?.gift_card_at ? new Date(newest.gift_card_at).toLocaleDateString() : "None";
   const body = rows.map((row) => {
     const cost = phoneLineCost(row);
     const value = Number(row.gift_card_value || 0);
