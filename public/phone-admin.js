@@ -389,6 +389,40 @@ const APPLE_FALLBACK_MODELS = [
   "iPhone 13",
 ];
 
+const APPLE_TRADE_IN_VALUES = [
+  { model: "iPhone 17 Pro Max", value: null, note: "Not eligible yet" },
+  { model: "iPhone 17 Pro", value: null, note: "Not eligible yet" },
+  { model: "iPhone 17 Air", value: null, note: "Not eligible yet" },
+  { model: "iPhone 17", value: null, note: "Not eligible yet" },
+  { model: "iPhone 16 Pro Max", value: 670 },
+  { model: "iPhone 16 Pro", value: 550 },
+  { model: "iPhone 16 Plus", value: 450 },
+  { model: "iPhone 16e", value: null, note: "Not eligible yet" },
+  { model: "iPhone 16", value: 430 },
+  { model: "iPhone 15 Pro Max", value: 470 },
+  { model: "iPhone 15 Pro", value: 400 },
+  { model: "iPhone 15 Plus", value: 330 },
+  { model: "iPhone 15", value: 310 },
+  { model: "iPhone 14 Pro Max", value: 370 },
+  { model: "iPhone 14 Pro", value: 300 },
+  { model: "iPhone 14 Plus", value: 240 },
+  { model: "iPhone 14", value: 220 },
+  { model: "iPhone 13 Pro Max", value: 320 },
+  { model: "iPhone 13 Pro", value: 250 },
+  { model: "iPhone 13 mini", value: 170 },
+  { model: "iPhone 13", value: 200 },
+  { model: "iPhone 12 Pro Max", value: 230 },
+  { model: "iPhone 12 Pro", value: 170 },
+  { model: "iPhone 12 mini", value: 100 },
+  { model: "iPhone 12", value: 140 },
+  { model: "iPhone 11 Pro Max", value: 160 },
+  { model: "iPhone 11 Pro", value: 130 },
+  { model: "iPhone 11", value: 100 },
+  { model: "iPhone SE (3rd Gen)", value: 80 },
+  { model: "iPhone SE (2nd Gen)", value: 50 },
+  { model: "iPhone 8", value: 40 },
+];
+
 function fallbackPhoneModels(deviceType, brand) {
   if (deviceType !== "Phone" || brand !== "Apple") return [];
   return APPLE_FALLBACK_MODELS;
@@ -1460,7 +1494,7 @@ function renderGiftCards() {
   const rows = phoneInvoices.flatMap((invoice) => (invoice.gift_cards || []).map((row) => ({ ...row, invoice })))
     .sort((a, b) => new Date(b.gift_card_at || b.invoice_removed_at || b.created_at || 0) - new Date(a.gift_card_at || a.invoice_removed_at || a.created_at || 0));
   if (!rows.length) {
-    $("giftCardsList").innerHTML = `<div class="empty">No Apple gift card trade-ins yet.</div>`;
+    $("giftCardsList").innerHTML = `${renderAppleTradeInReference()}<div class="empty">No Apple gift card trade-ins yet.</div>`;
     return;
   }
   const cardNumbers = new Map([...rows].sort((a, b) => new Date(a.gift_card_at || a.invoice_removed_at || a.created_at || 0) - new Date(b.gift_card_at || b.invoice_removed_at || b.created_at || 0)).map((row, index) => [row.id, index + 1]));
@@ -1476,6 +1510,9 @@ function renderGiftCards() {
     const cardPhotoId = `giftCardPhoto${row.id}`;
     const receiptPhotoId = `giftCardReceipt${row.id}`;
     const receiptIsPdf = isPdfDataUrl(row.gift_card_receipt_data_url) || /\.pdf$/i.test(row.gift_card_receipt_file_name || "");
+    const appleTrade = appleTradeInForModel(row.model);
+    const appleDelta = appleTrade && appleTrade.value !== null ? value - appleTrade.value : null;
+    const appleDeltaLabel = appleDelta === null ? "" : `<em class="${appleDelta >= 0 ? "profit-good" : "profit-bad"}">${appleDelta >= 0 ? "+" : ""}${money(appleDelta)} vs Apple</em>`;
     return `
       <tr>
         <td><strong class="gift-card-number">#${cardNumber}</strong></td>
@@ -1490,6 +1527,7 @@ function renderGiftCards() {
         <td>${row.quantity}</td>
         <td>${money(cost)}</td>
         <td>${money(value)}</td>
+        <td class="apple-estimate-cell">${renderAppleTradeInValue(appleTrade)}${appleDeltaLabel}</td>
         <td class="${profit >= 0 ? "profit-good" : "profit-bad"}">${money(profit)}</td>
         <td>${row.gift_card_at ? new Date(row.gift_card_at).toLocaleDateString() : ""}</td>
         <td>
@@ -1522,14 +1560,64 @@ function renderGiftCards() {
         <span><small>Profit</small><b class="${totalProfit >= 0 ? "profit-good" : "profit-bad"}">${money(totalProfit)}</b></span>
         <span><small>Latest Card</small><b>${newestDate}</b></span>
       </div>
+      ${renderAppleTradeInReference()}
       <div class="table-wrap">
         <table class="phone-profit-table gift-card-table">
-          <thead><tr><th>GC #</th><th>Phone Traded In</th><th>Source</th><th>From Invoice</th><th>Qty</th><th>Cost</th><th>Gift Card Value</th><th>Profit</th><th>Date</th><th>Card Info</th></tr></thead>
+          <thead><tr><th>GC #</th><th>Phone Traded In</th><th>Source</th><th>From Invoice</th><th>Qty</th><th>Cost</th><th>Gift Card Value</th><th>Apple Est.</th><th>Profit</th><th>Date</th><th>Card Info</th></tr></thead>
           <tbody>${body}</tbody>
         </table>
       </div>
     </article>
   `;
+}
+
+function renderAppleTradeInReference() {
+  const rows = APPLE_TRADE_IN_VALUES.map((row) => `
+    <tr>
+      <td>${escapeHtml(row.model)}</td>
+      <td>${row.value === null ? `<span class="trade-na">${escapeHtml(row.note || "Not eligible")}</span>` : money(row.value)}</td>
+    </tr>
+  `).join("");
+  return `
+    <details class="apple-trade-reference" open>
+      <summary>Apple iPhone Trade-In Reference</summary>
+      <p>Apple values are listed as up-to amounts and can change by condition, configuration, and eligibility.</p>
+      <div class="table-wrap apple-trade-wrap">
+        <table class="apple-trade-table">
+          <thead><tr><th>iPhone Model</th><th>Apple Trade-In</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </details>
+  `;
+}
+
+function appleTradeInForModel(model) {
+  const key = appleTradeKey(model);
+  if (!key) return null;
+  return [...APPLE_TRADE_IN_VALUES]
+    .sort((a, b) => appleTradeKey(b.model).length - appleTradeKey(a.model).length)
+    .find((row) => key.includes(appleTradeKey(row.model))) || null;
+}
+
+function appleTradeKey(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/\bapple\b/g, "")
+    .replace(/\biphone\b/g, "")
+    .replace(/\b\d+\s*(gb|tb)\b/g, "")
+    .replace(/\b(unlocked|locked|carrier|at&t|clean|grade|new|sealed|open|used|parts)\b/g, "")
+    .replace(/[()]/g, "")
+    .replace(/\b3rd\b/g, "third")
+    .replace(/\b2nd\b/g, "second")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function renderAppleTradeInValue(row) {
+  if (!row) return `<span class="trade-na">N/A</span>`;
+  if (row.value === null) return `<span class="trade-na">${escapeHtml(row.note || "Not eligible")}</span>`;
+  return `<strong>${money(row.value)}</strong>`;
 }
 
 async function addManualGiftCard() {
