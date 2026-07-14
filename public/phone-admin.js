@@ -1967,6 +1967,7 @@ function buildCombinedPhoneStats(buyer = "All") {
 }
 
 function addInvoiceStats(acc, invoice) {
+  if (isManualGiftCardInvoice(invoice)) return acc;
   const purchases = invoice.purchases || [];
   const cost = purchases.reduce((sum, row) => sum + Number(row.quantity || 0) * Number(row.cost_each || 0), 0);
   const units = purchases.reduce((sum, row) => sum + Number(row.quantity || 0), 0);
@@ -1983,6 +1984,10 @@ function addInvoiceStats(acc, invoice) {
     acc.completedUnits += units;
   }
   return acc;
+}
+
+function isManualGiftCardInvoice(invoice) {
+  return invoice?.buyer === "Apple GC" && invoice?.label === "Manual Gift Cards";
 }
 
 function addRemovedPhoneStats(acc, invoice) {
@@ -2052,7 +2057,7 @@ function getPhoneMoneyEvents() {
   const events = [];
   phoneInvoices.forEach((invoice) => {
     const invoiceSale = invoice.sale_price === null || invoice.sale_price === undefined || invoice.sale_price === "" ? null : Number(invoice.sale_price);
-    if (invoiceSale !== null) {
+    if (invoiceSale !== null && !isManualGiftCardInvoice(invoice)) {
       const cost = (invoice.purchases || []).reduce((sum, row) => sum + phoneLineCost(row), 0);
       events.push({
         date: eventDate(invoice.sold_at || invoice.closed_at || invoice.status_updated_at || invoice.created_at),
