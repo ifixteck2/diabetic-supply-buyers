@@ -186,9 +186,19 @@
           <section id="giftCardsPhoneTab" class="tab-panel hidden">
             <section class="panel gift-card-entry-panel">
               <div class="panel-head"><div><h2>Add Gift Card</h2><p>Add Apple trade-in gift cards directly.</p></div></div>
-              <div class="form-grid five">
+              <div class="form-grid three">
                 <label>Phone Model<input id="manualGiftCardModel" placeholder="iPhone 15 Pro 256GB"></label>
                 <label>Quantity<input id="manualGiftCardQuantity" type="number" min="1" value="1"></label>
+                <label>Location<input id="manualGiftCardLocation" list="giftCardLocationOptions" placeholder="Apple Store, online, etc."></label>
+                <datalist id="giftCardLocationOptions">
+                  <option value="Apple Store"></option>
+                  <option value="Apple Online"></option>
+                  <option value="Best Buy"></option>
+                  <option value="Target"></option>
+                  <option value="Walmart"></option>
+                </datalist>
+              </div>
+              <div class="form-grid three">
                 <label>Phone Cost Each<input id="manualGiftCardCost" type="number" min="0" step="0.01"></label>
                 <label>Gift Card Value Each<input id="manualGiftCardValue" type="number" min="0" step="0.01"></label>
                 <label>Date<input id="manualGiftCardDate" type="date"></label>

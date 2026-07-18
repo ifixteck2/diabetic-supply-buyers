@@ -562,6 +562,7 @@ app.patch("/api/phone-purchases/:id/gift-card", requirePhoneAuth, async (req, re
     ? null
     : Number(req.body.gift_card_value);
   const giftCardNotes = String(req.body?.gift_card_notes || "Apple trade-in gift card").trim();
+  const giftCardLocation = String(req.body?.gift_card_location || "").trim();
   if (!id) return res.status(400).json({ error: "Purchase ID is required." });
   if (giftCardValue === null || !Number.isFinite(giftCardValue) || giftCardValue < 0) {
     return res.status(400).json({ error: "Enter the Apple gift card value." });
@@ -573,6 +574,7 @@ app.patch("/api/phone-purchases/:id/gift-card", requirePhoneAuth, async (req, re
        gift_card_value = $2::numeric,
        gift_card_at = now(),
        gift_card_notes = $3,
+       gift_card_location = $4,
        local_sale_price = null,
        local_sold_at = null,
        local_sale_notes = ''
@@ -581,8 +583,8 @@ app.patch("/api/phone-purchases/:id/gift-card", requirePhoneAuth, async (req, re
        and pp.id = $1
        and pi.status = 'Pending'
        and pp.invoice_removed_at is null
-     returning pp.*`,
-    [id, giftCardValue, giftCardNotes]
+    returning pp.*`,
+    [id, giftCardValue, giftCardNotes, giftCardLocation]
   );
   if (!result.rows[0]) return res.status(404).json({ error: "Pending invoice item not found." });
   res.json({ ok: true, purchase: result.rows[0] });
@@ -595,6 +597,7 @@ app.post("/api/phone-gift-cards", requirePhoneAuth, async (req, res) => {
   const costEach = Number(input.cost_each || 0);
   const giftCardValue = Number(input.gift_card_value || 0);
   const giftCardAt = input.gift_card_at || new Date().toISOString().slice(0, 10);
+  const giftCardLocation = String(input.gift_card_location || "").trim();
   if (!model) return res.status(400).json({ error: "Enter the phone model." });
   if (!Number.isInteger(quantity) || quantity < 1 || quantity > 100) return res.status(400).json({ error: "Quantity must be between 1 and 100." });
   if (!Number.isFinite(costEach) || costEach < 0) return res.status(400).json({ error: "Enter the phone cost." });
@@ -618,10 +621,10 @@ app.post("/api/phone-gift-cards", requirePhoneAuth, async (req, res) => {
     for (let index = 0; index < quantity; index += 1) {
       const purchase = await client.query(
         `insert into phone_purchases
-         (invoice_id, buyer, purchase_date, device_type, condition_type, model, carrier, quantity, cost_each, invoice_removed_at, invoice_removed_reason, gift_card_value, gift_card_at, gift_card_notes, notes)
-         values ($1,'Apple GC',$2,'Phone','Used',$3,'Apple Trade-In',1,$4,now(),'Apple gift card trade-in',$5,$2::date,'Manual gift card entry','Direct gift card entry')
+         (invoice_id, buyer, purchase_date, device_type, condition_type, model, carrier, quantity, cost_each, invoice_removed_at, invoice_removed_reason, gift_card_value, gift_card_at, gift_card_notes, gift_card_location, notes)
+         values ($1,'Apple GC',$2,'Phone','Used',$3,'Apple Trade-In',1,$4,now(),'Apple gift card trade-in',$5,$2::date,'Manual gift card entry',$6,'Direct gift card entry')
          returning *`,
-        [invoice.id, giftCardAt, model, costEach, giftCardValue]
+        [invoice.id, giftCardAt, model, costEach, giftCardValue, giftCardLocation]
       );
       purchases.push(purchase.rows[0]);
     }
@@ -1522,6 +1525,7 @@ async function migrate() {
       gift_card_value numeric,
       gift_card_at timestamptz,
       gift_card_notes text not null default '',
+      gift_card_location text not null default '',
       gift_card_number text not null default '',
       gift_card_photo_file_name text not null default '',
       gift_card_photo_data_url text not null default '',
@@ -1597,6 +1601,7 @@ async function migrate() {
     alter table phone_purchases add column if not exists gift_card_value numeric;
     alter table phone_purchases add column if not exists gift_card_at timestamptz;
     alter table phone_purchases add column if not exists gift_card_notes text not null default '';
+    alter table phone_purchases add column if not exists gift_card_location text not null default '';
     alter table phone_purchases add column if not exists gift_card_number text not null default '';
     alter table phone_purchases add column if not exists gift_card_photo_file_name text not null default '';
     alter table phone_purchases add column if not exists gift_card_photo_data_url text not null default '';

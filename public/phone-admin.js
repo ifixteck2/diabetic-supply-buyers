@@ -1531,6 +1531,7 @@ function renderGiftCards() {
           ${row.notes ? `<em>${escapeHtml(row.notes)}</em>` : ""}
         </td>
         <td>${escapeHtml(row.invoice?.buyer || row.buyer || "")}</td>
+        <td>${escapeHtml(row.gift_card_location || "")}</td>
         <td>${escapeHtml(row.invoice?.label || `Invoice #${row.invoice_id}`)}</td>
         <td>${row.quantity}</td>
         <td>${money(cost)}</td>
@@ -1571,7 +1572,7 @@ function renderGiftCards() {
       ${renderAppleTradeInReference()}
       <div class="table-wrap">
         <table class="phone-profit-table gift-card-table">
-          <thead><tr><th>GC #</th><th>Phone Traded In</th><th>Source</th><th>From Invoice</th><th>Qty</th><th>Cost</th><th>Gift Card Value</th><th>Apple Est.</th><th>Profit</th><th>Date</th><th>Card Info</th></tr></thead>
+          <thead><tr><th>GC #</th><th>Phone Traded In</th><th>Source</th><th>Location</th><th>From Invoice</th><th>Qty</th><th>Cost</th><th>Gift Card Value</th><th>Apple Est.</th><th>Profit</th><th>Date</th><th>Card Info</th></tr></thead>
           <tbody>${body}</tbody>
         </table>
       </div>
@@ -1637,11 +1638,13 @@ async function addManualGiftCard() {
       cost_each: Number($("manualGiftCardCost").value || 0),
       gift_card_value: Number($("manualGiftCardValue").value || 0),
       gift_card_at: $("manualGiftCardDate").value,
+      gift_card_location: $("manualGiftCardLocation").value.trim(),
     },
   });
   if (!result?.ok) return status("manualGiftCardStatus", result?.error || "Could not add gift card.", "bad");
   $("manualGiftCardModel").value = "";
   $("manualGiftCardQuantity").value = "1";
+  $("manualGiftCardLocation").value = "";
   $("manualGiftCardCost").value = "";
   $("manualGiftCardValue").value = "";
   $("manualGiftCardDate").value = new Date().toISOString().slice(0, 10);
@@ -2417,11 +2420,14 @@ window.movePhonePurchaseToGiftCard = async (id) => {
     alert("Enter the Apple gift card value.");
     return false;
   }
+  const locationInput = prompt("Gift card location? Example: Apple Store, Apple Online, Best Buy");
+  if (locationInput === null) return false;
   const result = await api(`/api/phone-purchases/${id}/gift-card`, {
     method: "PATCH",
     body: {
       gift_card_value: cleanValue,
       gift_card_notes: "Apple trade-in gift card",
+      gift_card_location: locationInput.trim(),
     },
   });
   if (!result?.ok) {
