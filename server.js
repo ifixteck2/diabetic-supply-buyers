@@ -298,10 +298,11 @@ app.post("/api/phone-purchases", requirePhoneAuth, async (req, res) => {
       buyer
     );
     if (matchedProjected) projectedSellEach = matchedProjected;
+    const invoiceItemStart = await nextPhoneInvoiceItemStart(client, invoice.id);
     const purchase = await client.query(
       `insert into phone_purchases
-       (invoice_id, buyer, purchase_date, device_type, condition_type, packaging, grade, model, carrier, quantity, cost_each, projected_sell_each, imei, photo_file_name, photo_data_url, notes)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+       (invoice_id, buyer, purchase_date, device_type, condition_type, packaging, grade, model, carrier, quantity, cost_each, projected_sell_each, imei, photo_file_name, photo_data_url, notes, invoice_item_start)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
        returning *`,
       [
         invoice.id,
@@ -320,6 +321,7 @@ app.post("/api/phone-purchases", requirePhoneAuth, async (req, res) => {
         String(input.photo?.file_name || "").slice(0, 160),
         isAllowedPhotoDataUrl(input.photo?.data_url) ? String(input.photo.data_url) : "",
         String(input.notes || "").trim(),
+        invoiceItemStart,
       ]
     );
     await client.query("commit");
@@ -359,15 +361,17 @@ app.post("/api/phone-purchases/move-latest", requirePhoneAuth, async (req, res) 
     for (const row of latest.rows) {
       const purchaseForBuyer = { ...row, buyer };
       const projectedSellEach = findPhonePrice(purchaseForBuyer, priceRows, buyer) || Number(row.projected_sell_each || 0);
+      const invoiceItemStart = await nextPhoneInvoiceItemStart(client, targetInvoice.id);
       const updated = await client.query(
         `update phone_purchases
          set invoice_id = $1,
            buyer = $2,
            projected_sell_each = $3,
-           invoice_added_at = now()
-         where id = $4
+           invoice_added_at = now(),
+           invoice_item_start = $4
+         where id = $5
          returning *`,
-        [targetInvoice.id, buyer, projectedSellEach, row.id]
+        [targetInvoice.id, buyer, projectedSellEach, invoiceItemStart, row.id]
       );
       moved.push(updated.rows[0]);
     }
@@ -430,6 +434,9 @@ app.patch("/api/phone-purchases/:id", requirePhoneAuth, async (req, res) => {
     const photoDataUrl = hasNewPhoto && isAllowedPhotoDataUrl(input.photo?.data_url)
       ? String(input.photo.data_url)
       : existing.rows[0].photo_data_url;
+    const invoiceItemStart = Number(existing.rows[0].invoice_id) === Number(invoice.id)
+      ? Number(existing.rows[0].invoice_item_start || 0) || await nextPhoneInvoiceItemStart(client, invoice.id)
+      : await nextPhoneInvoiceItemStart(client, invoice.id);
     const result = await client.query(
       `update phone_purchases
        set invoice_id = $1,
@@ -448,8 +455,9 @@ app.patch("/api/phone-purchases/:id", requirePhoneAuth, async (req, res) => {
          photo_file_name = $14,
          photo_data_url = $15,
          notes = $16,
-         invoice_added_at = case when invoice_id <> $1 then now() else invoice_added_at end
-       where id = $17
+         invoice_added_at = case when invoice_id <> $1 then now() else invoice_added_at end,
+         invoice_item_start = $17
+       where id = $18
        returning *`,
       [
         invoice.id,
@@ -468,6 +476,7 @@ app.patch("/api/phone-purchases/:id", requirePhoneAuth, async (req, res) => {
         photoFileName,
         photoDataUrl,
         String(input.notes || "").trim(),
+        invoiceItemStart,
         id,
       ]
     );
@@ -505,15 +514,17 @@ app.patch("/api/phone-purchases/:id/move-invoice", requirePhoneAuth, async (req,
     }
     const priceRows = invoice.buyer === "KT" ? await getKtPrices() : await getAtlasPrices();
     const projectedSellEach = findPhonePrice({ ...purchase, buyer: invoice.buyer }, priceRows, invoice.buyer) || Number(purchase.projected_sell_each || 0);
+    const invoiceItemStart = await nextPhoneInvoiceItemStart(client, invoice.id);
     const moved = await client.query(
       `update phone_purchases
        set invoice_id = $1,
          buyer = $2,
          projected_sell_each = $3,
-         invoice_added_at = now()
-       where id = $4
+         invoice_added_at = now(),
+         invoice_item_start = $4
+       where id = $5
        returning *`,
-      [invoice.id, invoice.buyer, projectedSellEach, id]
+      [invoice.id, invoice.buyer, projectedSellEach, invoiceItemStart, id]
     );
     await client.query("commit");
     res.json({ ok: true, invoice, purchase: moved.rows[0] });
@@ -619,12 +630,13 @@ app.post("/api/phone-gift-cards", requirePhoneAuth, async (req, res) => {
     }
     const purchases = [];
     for (let index = 0; index < quantity; index += 1) {
+      const invoiceItemStart = await nextPhoneInvoiceItemStart(client, invoice.id);
       const purchase = await client.query(
         `insert into phone_purchases
-         (invoice_id, buyer, purchase_date, device_type, condition_type, model, carrier, quantity, cost_each, invoice_removed_at, invoice_removed_reason, gift_card_value, gift_card_at, gift_card_notes, gift_card_location, notes)
-         values ($1,'Apple GC',$2,'Phone','Used',$3,'Apple Trade-In',1,$4,now(),'Apple gift card trade-in',$5,$2::date,'Manual gift card entry',$6,'Direct gift card entry')
+         (invoice_id, buyer, purchase_date, device_type, condition_type, model, carrier, quantity, cost_each, invoice_removed_at, invoice_removed_reason, gift_card_value, gift_card_at, gift_card_notes, gift_card_location, notes, invoice_item_start)
+         values ($1,'Apple GC',$2,'Phone','Used',$3,'Apple Trade-In',1,$4,now(),'Apple gift card trade-in',$5,$2::date,'Manual gift card entry',$6,'Direct gift card entry',$7)
          returning *`,
-        [invoice.id, giftCardAt, model, costEach, giftCardValue, giftCardLocation]
+        [invoice.id, giftCardAt, model, costEach, giftCardValue, giftCardLocation, invoiceItemStart]
       );
       purchases.push(purchase.rows[0]);
     }
@@ -1534,6 +1546,7 @@ async function migrate() {
       returned_at timestamptz,
       return_reason text not null default '',
       return_status text not null default 'Returned',
+      invoice_item_start integer,
       invoice_added_at timestamptz not null default now(),
       created_at timestamptz not null default now()
     );
@@ -1607,8 +1620,23 @@ async function migrate() {
     alter table phone_purchases add column if not exists gift_card_photo_data_url text not null default '';
     alter table phone_purchases add column if not exists gift_card_receipt_file_name text not null default '';
     alter table phone_purchases add column if not exists gift_card_receipt_data_url text not null default '';
+    alter table phone_purchases add column if not exists invoice_item_start integer;
     alter table phone_purchases add column if not exists invoice_added_at timestamptz;
     update phone_purchases set invoice_added_at = created_at where invoice_added_at is null;
+    with ordered_phone_items as (
+      select id,
+        1 + coalesce(sum(greatest(quantity, 1)) over (
+          partition by invoice_id
+          order by purchase_date asc, invoice_added_at asc, created_at asc, id asc
+          rows between unbounded preceding and 1 preceding
+        ), 0)::integer as item_start
+      from phone_purchases
+      where invoice_item_start is null or invoice_item_start < 1
+    )
+    update phone_purchases pp
+       set invoice_item_start = ordered_phone_items.item_start
+      from ordered_phone_items
+     where pp.id = ordered_phone_items.id;
     alter table phone_purchases alter column invoice_added_at set default now();
     alter table phone_purchases alter column invoice_added_at set not null;
     alter table phone_manual_returns add column if not exists status text not null default 'Holding';
@@ -1888,6 +1916,16 @@ function sortPhonePurchases(purchases) {
     if (addedCompare !== 0) return addedCompare;
     return Number(a.id || 0) - Number(b.id || 0);
   });
+}
+
+async function nextPhoneInvoiceItemStart(client, invoiceId) {
+  const result = await client.query(
+    `select coalesce(max(coalesce(invoice_item_start, 1) + greatest(quantity, 1)), 1)::integer as next_item
+       from phone_purchases
+      where invoice_id = $1`,
+    [invoiceId]
+  );
+  return Number(result.rows[0]?.next_item || 1);
 }
 
 function phoneModelSortValue(model) {

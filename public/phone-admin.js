@@ -1515,6 +1515,7 @@ function renderGiftCards() {
     const value = Number(row.gift_card_value || 0);
     const profit = value - cost;
     const cardNumber = cardNumbers.get(row.id) || "";
+    const invoiceItemLabel = phoneInvoiceItemNumber(row, cardNumber);
     const cardPhotoId = `giftCardPhoto${row.id}`;
     const receiptPhotoId = `giftCardReceipt${row.id}`;
     const receiptIsPdf = isPdfDataUrl(row.gift_card_receipt_data_url) || /\.pdf$/i.test(row.gift_card_receipt_file_name || "");
@@ -1524,6 +1525,7 @@ function renderGiftCards() {
     return `
       <tr>
         <td><strong class="gift-card-number">#${cardNumber}</strong></td>
+        <td><strong>${escapeHtml(invoiceItemLabel)}</strong></td>
         <td class="phone-device-cell">
           <strong>${escapeHtml(row.model)}</strong>
           <span>${escapeHtml(phoneInvoiceItemCondition(row))}</span>
@@ -1572,7 +1574,7 @@ function renderGiftCards() {
       ${renderAppleTradeInReference()}
       <div class="table-wrap">
         <table class="phone-profit-table gift-card-table">
-          <thead><tr><th>GC #</th><th>Phone Traded In</th><th>Source</th><th>Location</th><th>From Invoice</th><th>Qty</th><th>Cost</th><th>Gift Card Value</th><th>Apple Est.</th><th>Profit</th><th>Date</th><th>Card Info</th></tr></thead>
+          <thead><tr><th>GC #</th><th>Invoice Item #</th><th>Phone Traded In</th><th>Source</th><th>Location</th><th>From Invoice</th><th>Qty</th><th>Cost</th><th>Gift Card Value</th><th>Apple Est.</th><th>Profit</th><th>Date</th><th>Card Info</th></tr></thead>
           <tbody>${body}</tbody>
         </table>
       </div>
@@ -1973,7 +1975,8 @@ function phoneInvoiceQuantity(row) {
 
 function phoneInvoiceItemNumber(row, start) {
   const quantity = phoneInvoiceQuantity(row);
-  return quantity > 1 ? `${start}-${start + quantity - 1}` : String(start);
+  const itemStart = Number(row.invoice_item_start || start || 1);
+  return quantity > 1 ? `${itemStart}-${itemStart + quantity - 1}` : String(itemStart);
 }
 
 function phoneAddedDate(row) {
