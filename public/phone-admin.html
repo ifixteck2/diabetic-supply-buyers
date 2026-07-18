@@ -62,7 +62,10 @@
               <div class="panel-head">
                 <div><h2>Quick Add</h2><p>Type a phone line and add it to the selected invoice.</p></div>
               </div>
-              <label>Phone Text<textarea id="quickPhoneText" rows="4" placeholder="1x 17 pro max 256GB unlocked grade A $880&#10;1x 17 pro 512GB locked grade A $600"></textarea></label>
+              <label>Phone Text<textarea id="quickPhoneText" rows="4" placeholder="1x 17 pro max 256GB unlocked grade A $880 IMEI 123456789012345&#10;1x 17 pro 512GB locked grade A $600"></textarea></label>
+              <div class="form-grid quick-phone-extra">
+                <label>IMEI / Serial<input id="quickPhoneImei" placeholder="Optional for one phone"></label>
+              </div>
               <div class="actions">
                 <button class="btn secondary" id="parseQuickPhoneBtn">Fill Flow</button>
                 <button class="btn phone-btn" id="addQuickPhoneBtn">Add From Text</button>

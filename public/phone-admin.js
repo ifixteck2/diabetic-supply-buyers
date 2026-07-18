@@ -677,6 +677,7 @@ async function parseQuickPhoneText(saveAfterParse) {
   const entries = quickPhoneEntries();
   if (saveAfterParse && entries.length > 1) return addQuickPhoneLines(entries);
   const parsed = parseQuickPhoneLine(entries[0] || "");
+  applyQuickImeiFallback(parsed, entries.length);
   if (!parsed.modelText) {
     return status("quickPhoneStatus", "Type at least a model, like iPhone 17 256GB unlocked grade C.", "bad");
   }
@@ -688,6 +689,7 @@ async function parseQuickPhoneText(saveAfterParse) {
   await savePhonePurchase();
   status("quickPhoneStatus", `Added ${escapeHtml(parsed.modelText)} to the selected invoice.`);
   $("quickPhoneText").value = "";
+  $("quickPhoneImei").value = "";
   return null;
 }
 
@@ -700,6 +702,11 @@ function quickPhoneLines() {
 
 function quickPhoneEntries() {
   return splitQuickPhoneEntries($("quickPhoneText").value);
+}
+
+function applyQuickImeiFallback(parsed, entryCount) {
+  const quickImei = $("quickPhoneImei")?.value.trim() || "";
+  if (entryCount === 1 && quickImei && !parsed.imei) parsed.imei = quickImei;
 }
 
 async function addQuickPhoneLines(entries) {
@@ -722,6 +729,7 @@ async function addQuickPhoneLines(entries) {
   } else {
     status("quickPhoneStatus", `Added ${added} phones to the selected invoice.`);
     $("quickPhoneText").value = "";
+    $("quickPhoneImei").value = "";
   }
   resetPhonePurchase(false);
   return null;
