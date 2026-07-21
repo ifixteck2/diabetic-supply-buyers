@@ -3042,7 +3042,10 @@ function defaultPhoneInvoiceLabel(buyer) {
 function createPhoneInvoiceHtml(invoice, priceOverrides = {}) {
   const purchases = invoice.purchases || [];
   const invoiceLines = phoneInvoiceLinesWithPrices(purchases, priceOverrides);
-  const totalSale = invoiceLines.reduce((sum, row) => sum + Number(row.line_total || 0), 0);
+  const hasLinePrices = invoiceLines.some((row) => row.unit_price !== null);
+  const actualSale = invoice.sale_price === null || invoice.sale_price === undefined || invoice.sale_price === "" ? null : Number(invoice.sale_price);
+  const totalSale = actualSale !== null ? actualSale : invoiceLines.reduce((sum, row) => sum + Number(row.line_total || 0), 0);
+  const showTotal = actualSale !== null || hasLinePrices;
   const buyerName = invoice.buyer === "KT" ? "KT CORP" : invoice.buyer === "Atlas" ? "Atlas" : invoice.buyer || "Buyer";
   const invoiceDate = invoice.created_at ? new Date(invoice.created_at).toLocaleDateString("en-US") : new Date().toLocaleDateString("en-US");
   const rows = invoiceLines.map((row) => `
@@ -3052,10 +3055,11 @@ function createPhoneInvoiceHtml(invoice, priceOverrides = {}) {
       <td>${escapeHtml(row.carrier || "")}</td>
       <td>${escapeHtml(row.condition)}</td>
       <td>${Number(row.quantity || 0)}</td>
-      <td class="num">${moneyText(row.unit_price)}</td>
-      <td class="num">${moneyText(row.line_total)}</td>
+      ${hasLinePrices ? `<td class="num">${row.unit_price === null ? "" : moneyText(row.unit_price)}</td><td class="num">${row.line_total === null ? "" : moneyText(row.line_total)}</td>` : ""}
     </tr>
   `).join("");
+  const priceHeaders = hasLinePrices ? `<th class="num">Unit Price</th><th class="num">Line Total</th>` : "";
+  const emptyColspan = hasLinePrices ? 7 : 5;
   return `<!doctype html>
 <html><head><meta charset="utf-8"><title>Buyer Invoice - ${escapeHtml(invoice.label)}</title>
 <style>
@@ -3065,9 +3069,9 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f5f7f8;color:#132126;mar
 <main class="page">
 <header><div class="brand"><h1>Invoice</h1><p>${escapeHtml(invoice.label || "Phone Invoice")}</p></div><div class="meta"><strong>Invoice #${invoice.id}</strong><p>Date: ${invoiceDate}</p><p>Status: ${escapeHtml(invoice.status)}</p></div></header>
 <section class="blocks"><div class="block"><h2>From</h2><strong>iFixTeck LLC</strong><p>1612 Lucerne Ave</p><p>Lake Worth, FL 33460</p></div><div class="block"><h2>Bill To</h2><strong>${escapeHtml(buyerName)}</strong><p>${escapeHtml(invoice.buyer)} buyer invoice</p></div></section>
-<table><thead><tr><th>Item #</th><th>Model</th><th>Carrier</th><th>Condition</th><th>Qty</th><th class="num">Unit Price</th><th class="num">Line Total</th></tr></thead><tbody>${rows || `<tr><td colspan="7">No purchases added.</td></tr>`}</tbody></table>
-<section class="total"><div class="total-box"><span>Total Due</span><strong>${moneyText(totalSale)}</strong></div></section>
-<p class="note">Thank you for your business. Pricing is listed as the buyer sell price for this invoice.</p>
+<table><thead><tr><th>Item #</th><th>Model</th><th>Carrier</th><th>Condition</th><th>Qty</th>${priceHeaders}</tr></thead><tbody>${rows || `<tr><td colspan="${emptyColspan}">No purchases added.</td></tr>`}</tbody></table>
+${showTotal ? `<section class="total"><div class="total-box"><span>Total Due</span><strong>${moneyText(totalSale)}</strong></div></section>` : ""}
+<p class="note">Thank you for your business.</p>
 </main>
 </body></html>`;
 }
@@ -3089,25 +3093,27 @@ function phoneInvoiceLinesWithPrices(purchases, priceOverrides) {
   let itemNumber = 1;
   return purchases.flatMap((row) => {
     const quantity = Math.max(1, Number(row.quantity || 1));
+    const itemStart = Number(row.invoice_item_start || itemNumber || 1);
     const overridePrices = Array.isArray(priceOverrides[row.id]) ? priceOverrides[row.id] : [];
     const condition = row.condition_type === "New" ? "NEW" : "USED";
     if (overridePrices.length > 1 || quantity > 1) {
+      itemNumber = itemStart + quantity;
       return Array.from({ length: quantity }, (_, index) => {
-        const unitPrice = Number(overridePrices[index] ?? row.projected_sell_each ?? 0);
+        const unitPrice = overridePrices[index] === undefined ? null : Number(overridePrices[index]);
         return {
-          item_number: String(itemNumber++),
+          item_number: String(itemStart + index),
           model: quantity > 1 ? `${row.model} (${index + 1} of ${quantity})` : row.model,
           carrier: row.carrier || "",
           condition,
           quantity: 1,
           unit_price: unitPrice,
-          line_total: unitPrice,
+          line_total: unitPrice === null ? null : unitPrice,
         };
       });
     }
-    const unitPrice = Number(overridePrices[0] ?? row.projected_sell_each ?? 0);
-    const lineItemNumber = quantity > 1 ? `${itemNumber}-${itemNumber + quantity - 1}` : String(itemNumber);
-    itemNumber += quantity;
+    const unitPrice = overridePrices[0] === undefined ? null : Number(overridePrices[0]);
+    const lineItemNumber = quantity > 1 ? `${itemStart}-${itemStart + quantity - 1}` : String(itemStart);
+    itemNumber = itemStart + quantity;
     return [{
       item_number: lineItemNumber,
       model: row.model,
@@ -3115,7 +3121,7 @@ function phoneInvoiceLinesWithPrices(purchases, priceOverrides) {
       condition,
       quantity,
       unit_price: unitPrice,
-      line_total: unitPrice * quantity,
+      line_total: unitPrice === null ? null : unitPrice * quantity,
     }];
   });
 }
