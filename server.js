@@ -616,18 +616,7 @@ app.post("/api/phone-gift-cards", requirePhoneAuth, async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query("begin");
-    const existing = await client.query(
-      "select * from phone_invoices where buyer = 'Apple GC' and label = 'Manual Gift Cards' order by id asc limit 1"
-    );
-    let invoice = existing.rows[0];
-    if (!invoice) {
-      const invoiceResult = await client.query(
-        `insert into phone_invoices (buyer, label, notes, status, status_updated_at, closed_at)
-         values ('Apple GC', 'Manual Gift Cards', 'Direct Apple gift card trade-ins', 'Closed', now(), now())
-         returning *`
-      );
-      invoice = invoiceResult.rows[0];
-    }
+    const invoice = await getOrCreateWeeklyGiftCardInvoice(client, giftCardAt);
     const purchases = [];
     for (let index = 0; index < quantity; index += 1) {
       const invoiceItemStart = await nextPhoneInvoiceItemStart(client, invoice.id);
@@ -1774,6 +1763,38 @@ async function getOrCreatePendingPhoneInvoice(client, buyer) {
     [buyer, defaultPhoneInvoiceLabel(buyer)]
   );
   return created.rows[0];
+}
+
+async function getOrCreateWeeklyGiftCardInvoice(client, giftCardAt) {
+  const weekEnding = giftCardWeekEndingDate(giftCardAt);
+  const label = `Gift Cards Week Ending ${weekEnding}`;
+  const existing = await client.query(
+    "select * from phone_invoices where buyer = 'Apple GC' and label = $1 order by id asc limit 1",
+    [label]
+  );
+  if (existing.rows[0]) return existing.rows[0];
+  const created = await client.query(
+    `insert into phone_invoices (buyer, label, notes, status, status_updated_at, closed_at)
+     values ('Apple GC', $1, $2, 'Closed', now(), $3::date)
+     returning *`,
+    [label, `Weekly Apple gift card closeout ending ${weekEnding}`, weekEnding]
+  );
+  return created.rows[0];
+}
+
+function giftCardWeekEndingDate(value) {
+  const text = String(value || "");
+  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  const date = match
+    ? new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
+    : new Date(value || Date.now());
+  if (Number.isNaN(date.getTime())) return new Date().toISOString().slice(0, 10);
+  date.setHours(0, 0, 0, 0);
+  date.setDate(date.getDate() + ((7 - date.getDay()) % 7));
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 async function getOrCreateActiveBatch(client) {

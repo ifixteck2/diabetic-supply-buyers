@@ -1510,7 +1510,38 @@ function renderGiftCards() {
   const totalProfit = totalValue - totalCost;
   const newest = rows[rows.length - 1];
   const newestDate = newest?.gift_card_at ? new Date(newest.gift_card_at).toLocaleDateString() : "None";
-  const body = rows.map((row) => {
+  const body = renderGiftCardRows(rows, cardNumbers);
+  const weeklyReports = renderGiftCardWeeklyReports(rows, cardNumbers);
+  $("giftCardsList").innerHTML = `
+    <article class="invoice-card phone-invoice-card gift-card-card">
+      <div class="invoice-top">
+        <div class="phone-invoice-title">
+          <h3>Apple Gift Cards</h3>
+          <p>${rows.length} trade-in${rows.length === 1 ? "" : "s"} tracked for iPhone 18 season</p>
+        </div>
+        <span class="pill sold">Gift Cards</span>
+      </div>
+      <div class="gift-card-summary">
+        <span><small>Total Cards</small><b>${rows.length}</b></span>
+        <span><small>Total Phones Cost</small><b>${money(totalCost)}</b></span>
+        <span><small>Gift Card Value</small><b>${money(totalValue)}</b></span>
+        <span><small>Profit</small><b class="${totalProfit >= 0 ? "profit-good" : "profit-bad"}">${money(totalProfit)}</b></span>
+        <span><small>Latest Card</small><b>${newestDate}</b></span>
+      </div>
+      ${weeklyReports}
+      ${renderAppleTradeInReference()}
+      <div class="table-wrap">
+        <table class="phone-profit-table gift-card-table">
+          <thead><tr><th>GC #</th><th>Invoice Item #</th><th>Phone Traded In</th><th>Source</th><th>Location</th><th>From Invoice</th><th>Qty</th><th>Cost</th><th>Gift Card Value</th><th>Apple Est.</th><th>Profit</th><th>Date</th><th>Card Info</th></tr></thead>
+          <tbody>${body}</tbody>
+        </table>
+      </div>
+    </article>
+  `;
+}
+
+function renderGiftCardRows(rows, cardNumbers, options = {}) {
+  return rows.map((row) => {
     const cost = phoneLineCost(row);
     const value = Number(row.gift_card_value || 0);
     const profit = value - cost;
@@ -1547,39 +1578,107 @@ function renderGiftCards() {
               ${row.gift_card_photo_data_url ? `<button class="gift-card-thumb" onclick="openGiftCardImage(${row.id}, 'card')" title="View gift card"><img src="${escapeAttr(row.gift_card_photo_data_url)}" alt="Gift card"></button>` : `<span class="gift-card-empty">No card photo</span>`}
               ${row.gift_card_receipt_data_url ? (receiptIsPdf ? `<button class="gift-card-thumb gift-card-pdf" onclick="openGiftCardImage(${row.id}, 'receipt')" title="View receipt PDF">PDF<br>Receipt</button>` : `<button class="gift-card-thumb" onclick="openGiftCardImage(${row.id}, 'receipt')" title="View receipt"><img src="${escapeAttr(row.gift_card_receipt_data_url)}" alt="Receipt"></button>`) : `<span class="gift-card-empty">No receipt</span>`}
             </div>
-            <label class="mini-file">Card<input id="${cardPhotoId}" type="file" accept="image/*"></label>
+            ${options.readonly ? "" : `<label class="mini-file">Card<input id="${cardPhotoId}" type="file" accept="image/*"></label>
             <label class="mini-file">Receipt<input id="${receiptPhotoId}" type="file" accept="image/*,.pdf,application/pdf"></label>
-            <button class="mini-btn" onclick="saveGiftCardDetails(${row.id})">Save</button>
+            <button class="mini-btn" onclick="saveGiftCardDetails(${row.id})">Save</button>`}
           </div>
         </td>
       </tr>
     `;
   }).join("");
-  $("giftCardsList").innerHTML = `
-    <article class="invoice-card phone-invoice-card gift-card-card">
-      <div class="invoice-top">
-        <div class="phone-invoice-title">
-          <h3>Apple Gift Cards</h3>
-          <p>${rows.length} trade-in${rows.length === 1 ? "" : "s"} tracked for iPhone 18 season</p>
+}
+
+function renderGiftCardWeeklyReports(rows, cardNumbers) {
+  const reports = buildGiftCardWeeklyReports(rows);
+  if (!reports.length) return "";
+  return `
+    <section class="gift-card-weekly-reports">
+      <div class="gift-card-weekly-head">
+        <div>
+          <h4>Weekly Closeout Reports</h4>
+          <p>Each report ends Sunday and stays as its own gift-card accounting period.</p>
         </div>
-        <span class="pill sold">Gift Cards</span>
+        <span>${reports.length} week${reports.length === 1 ? "" : "s"}</span>
       </div>
-      <div class="gift-card-summary">
-        <span><small>Total Cards</small><b>${rows.length}</b></span>
-        <span><small>Total Phones Cost</small><b>${money(totalCost)}</b></span>
-        <span><small>Gift Card Value</small><b>${money(totalValue)}</b></span>
-        <span><small>Profit</small><b class="${totalProfit >= 0 ? "profit-good" : "profit-bad"}">${money(totalProfit)}</b></span>
-        <span><small>Latest Card</small><b>${newestDate}</b></span>
-      </div>
-      ${renderAppleTradeInReference()}
-      <div class="table-wrap">
-        <table class="phone-profit-table gift-card-table">
-          <thead><tr><th>GC #</th><th>Invoice Item #</th><th>Phone Traded In</th><th>Source</th><th>Location</th><th>From Invoice</th><th>Qty</th><th>Cost</th><th>Gift Card Value</th><th>Apple Est.</th><th>Profit</th><th>Date</th><th>Card Info</th></tr></thead>
-          <tbody>${body}</tbody>
-        </table>
-      </div>
-    </article>
+      ${reports.map((report, index) => `
+        <details class="gift-card-week-report" ${index === 0 ? "open" : ""}>
+          <summary>
+            <strong>Week Ending ${formatDate(report.weekEnding)}</strong>
+            <span>${report.rows.length} card${report.rows.length === 1 ? "" : "s"} - Value ${money(report.value)} - Profit ${money(report.profit)}</span>
+          </summary>
+          <div class="gift-card-week-stats">
+            <span><small>Period</small><b>${formatDate(report.weekStart)} - ${formatDate(report.weekEnding)}</b></span>
+            <span><small>Total Cards</small><b>${report.rows.length}</b></span>
+            <span><small>Total Cost</small><b>${money(report.cost)}</b></span>
+            <span><small>Gift Card Value</small><b>${money(report.value)}</b></span>
+            <span><small>Profit</small><b class="${report.profit >= 0 ? "profit-good" : "profit-bad"}">${money(report.profit)}</b></span>
+          </div>
+          <div class="table-wrap">
+            <table class="phone-profit-table gift-card-table">
+              <thead><tr><th>GC #</th><th>Invoice Item #</th><th>Phone Traded In</th><th>Source</th><th>Location</th><th>From Invoice</th><th>Qty</th><th>Cost</th><th>Gift Card Value</th><th>Apple Est.</th><th>Profit</th><th>Date</th><th>Card Info</th></tr></thead>
+              <tbody>${renderGiftCardRows(report.rows, cardNumbers, { readonly: true })}</tbody>
+            </table>
+          </div>
+        </details>
+      `).join("")}
+    </section>
   `;
+}
+
+function buildGiftCardWeeklyReports(rows) {
+  const groups = new Map();
+  rows.forEach((row) => {
+    const end = giftCardWeekEnding(row.gift_card_at || row.invoice_removed_at || row.created_at);
+    const key = localDateKey(end);
+    const report = groups.get(key) || {
+      weekEnding: end,
+      weekStart: addDays(end, -6),
+      rows: [],
+      cost: 0,
+      value: 0,
+      profit: 0,
+    };
+    const cost = phoneLineCost(row);
+    const value = Number(row.gift_card_value || 0);
+    report.rows.push(row);
+    report.cost += cost;
+    report.value += value;
+    report.profit += value - cost;
+    groups.set(key, report);
+  });
+  return [...groups.values()]
+    .map((report) => ({ ...report, rows: [...report.rows].sort((a, b) => giftCardReportDate(a) - giftCardReportDate(b) || Number(a.id || 0) - Number(b.id || 0)) }))
+    .sort((a, b) => b.weekEnding - a.weekEnding);
+}
+
+function giftCardWeekEnding(value) {
+  const date = giftCardReportDate({ gift_card_at: value });
+  date.setDate(date.getDate() + ((7 - date.getDay()) % 7));
+  return date;
+}
+
+function giftCardReportDate(row) {
+  const value = row?.gift_card_at || row?.invoice_removed_at || row?.created_at || new Date();
+  const text = String(value || "");
+  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  const date = match ? new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3])) : new Date(value);
+  if (Number.isNaN(date.getTime())) return new Date();
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
+function addDays(date, days) {
+  const copy = new Date(date);
+  copy.setDate(copy.getDate() + days);
+  return copy;
+}
+
+function localDateKey(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function formatDate(date) {
+  return date instanceof Date ? date.toLocaleDateString() : new Date(date).toLocaleDateString();
 }
 
 function renderAppleTradeInReference() {
@@ -2091,7 +2190,7 @@ function addInvoiceStats(acc, invoice) {
 }
 
 function isManualGiftCardInvoice(invoice) {
-  return invoice?.buyer === "Apple GC" && invoice?.label === "Manual Gift Cards";
+  return invoice?.buyer === "Apple GC" && (invoice?.label === "Manual Gift Cards" || /^Gift Cards Week Ending/i.test(invoice?.label || ""));
 }
 
 function addRemovedPhoneStats(acc, invoice) {
