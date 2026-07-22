@@ -640,6 +640,68 @@ app.post("/api/phone-gift-cards", requirePhoneAuth, async (req, res) => {
   }
 });
 
+app.post("/api/phone-gift-cards/closeout", requirePhoneAuth, async (req, res) => {
+  const input = req.body || {};
+  const requestedLabel = String(input.label || "").trim();
+  const requestedNotes = String(input.notes || "").trim();
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    const openCards = await client.query(
+      `select *
+         from phone_purchases
+        where gift_card_at is not null
+          and returned_at is null
+          and gift_card_closeout_invoice_id is null
+        order by gift_card_at asc, created_at asc, id asc`
+    );
+    if (!openCards.rows.length) {
+      await client.query("rollback");
+      return res.status(400).json({ error: "There are no open gift cards to close out." });
+    }
+    const totalCost = openCards.rows.reduce((sum, row) => sum + Number(row.quantity || 0) * Number(row.cost_each || 0), 0);
+    const totalValue = openCards.rows.reduce((sum, row) => sum + Number(row.gift_card_value || 0), 0);
+    const today = new Date().toISOString().slice(0, 10);
+    const label = requestedLabel || `Gift Card Closeout ${today}`;
+    const notes = [
+      requestedNotes || "Manual gift card closeout batch",
+      `${openCards.rows.length} gift card${openCards.rows.length === 1 ? "" : "s"}`,
+      `Cost ${moneyText(totalCost)}`,
+      `Value ${moneyText(totalValue)}`,
+      `Profit ${moneyText(totalValue - totalCost)}`,
+    ].join(" | ");
+    const invoiceResult = await client.query(
+      `insert into phone_invoices (buyer, label, notes, status, sale_price, status_updated_at, closed_at)
+       values ('Apple GC', $1, $2, 'Closed', $3::numeric, now(), now())
+       returning *`,
+      [label, notes, totalValue]
+    );
+    const invoice = invoiceResult.rows[0];
+    const updated = await client.query(
+      `update phone_purchases
+          set gift_card_closeout_invoice_id = $1
+        where id = any($2::int[])
+        returning *`,
+      [invoice.id, openCards.rows.map((row) => row.id)]
+    );
+    await client.query("commit");
+    res.json({
+      ok: true,
+      invoice,
+      count: updated.rows.length,
+      total_cost: totalCost,
+      total_value: totalValue,
+      profit: totalValue - totalCost,
+    });
+  } catch (error) {
+    await client.query("rollback");
+    console.error("Could not close out gift cards.", error);
+    res.status(500).json({ error: "Could not close out gift cards." });
+  } finally {
+    client.release();
+  }
+});
+
 app.patch("/api/phone-purchases/:id/gift-card-details", requirePhoneAuth, async (req, res) => {
   const id = Number(req.params.id);
   const giftCardPhoto = req.body?.gift_card_photo || null;
@@ -1528,6 +1590,7 @@ async function migrate() {
       gift_card_notes text not null default '',
       gift_card_location text not null default '',
       gift_card_number text not null default '',
+      gift_card_closeout_invoice_id integer references phone_invoices(id) on delete set null,
       gift_card_photo_file_name text not null default '',
       gift_card_photo_data_url text not null default '',
       gift_card_receipt_file_name text not null default '',
@@ -1605,6 +1668,7 @@ async function migrate() {
     alter table phone_purchases add column if not exists gift_card_notes text not null default '';
     alter table phone_purchases add column if not exists gift_card_location text not null default '';
     alter table phone_purchases add column if not exists gift_card_number text not null default '';
+    alter table phone_purchases add column if not exists gift_card_closeout_invoice_id integer references phone_invoices(id) on delete set null;
     alter table phone_purchases add column if not exists gift_card_photo_file_name text not null default '';
     alter table phone_purchases add column if not exists gift_card_photo_data_url text not null default '';
     alter table phone_purchases add column if not exists gift_card_receipt_file_name text not null default '';

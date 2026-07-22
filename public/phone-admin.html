@@ -206,6 +206,18 @@
               <div class="actions"><button class="btn phone-btn" id="addManualGiftCardBtn">Add Gift Card</button></div>
               <div id="manualGiftCardStatus"></div>
             </section>
+            <section class="panel gift-card-closeout-panel">
+              <div class="panel-head">
+                <div><h2>Gift Card Closeout</h2><p>Close all current gift cards into one tracking invoice, then start a fresh batch.</p></div>
+              </div>
+              <div id="giftCardCloseoutSummary" class="gift-card-closeout-summary"></div>
+              <div class="form-grid two">
+                <label>Closeout Name<input id="giftCardCloseoutLabel" placeholder="Example: Gift Cards Hold Batch July"></label>
+                <label>Closeout Note<input id="giftCardCloseoutNotes" placeholder="Example: Holding until iPhone 18 launch"></label>
+              </div>
+              <div class="actions"><button class="btn phone-btn" id="closeGiftCardBatchBtn">Close Out Current Gift Cards</button></div>
+              <div id="giftCardCloseoutStatus"></div>
+            </section>
             <section class="panel gift-card-list-panel"><div class="panel-head"><div><h2>Gift Cards</h2><p>Apple trade-ins tracked until you use the cards.</p></div></div><div id="giftCardsList" class="invoice-list"></div></section>
           </section>
           <section id="ktReturnsPhoneTab" class="tab-panel hidden">

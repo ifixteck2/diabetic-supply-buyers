@@ -36,6 +36,7 @@ function bindPhoneEvents() {
   $("moveLatestPhonesBtn").onclick = moveLatestPhones;
   $("addManualReturnBtn").onclick = addManualKtReturn;
   $("addManualGiftCardBtn").onclick = addManualGiftCard;
+  $("closeGiftCardBatchBtn").onclick = closeCurrentGiftCardBatch;
   ["phoneBuyer", "deviceType", "phoneBrand", "conditionType", "packaging", "grade", "phoneModel", "phoneStorage", "phoneCarrier", "ktDeductCrackedBack", "atlasDeductCrackedBack", "atlasDeductCrackedLens", "atlasDeductBattery", "atlasDeductRepair", "atlasDeductFaceId"].forEach((id) => {
     $(id).addEventListener("change", handleFlowChange);
   });
@@ -1500,6 +1501,7 @@ function renderLocallySoldCard(invoice) {
 function renderGiftCards() {
   const rows = phoneInvoices.flatMap((invoice) => (invoice.gift_cards || []).map((row) => ({ ...row, invoice })))
     .sort((a, b) => new Date(a.gift_card_at || a.invoice_removed_at || a.created_at || 0) - new Date(b.gift_card_at || b.invoice_removed_at || b.created_at || 0) || Number(a.id || 0) - Number(b.id || 0));
+  renderGiftCardCloseoutSummary(rows);
   if (!rows.length) {
     $("giftCardsList").innerHTML = `${renderAppleTradeInReference()}<div class="empty">No Apple gift card trade-ins yet.</div>`;
     return;
@@ -1511,6 +1513,7 @@ function renderGiftCards() {
   const newest = rows[rows.length - 1];
   const newestDate = newest?.gift_card_at ? new Date(newest.gift_card_at).toLocaleDateString() : "None";
   const body = renderGiftCardRows(rows, cardNumbers);
+  const closeoutReports = renderGiftCardCloseoutReports(rows, cardNumbers);
   const weeklyReports = renderGiftCardWeeklyReports(rows, cardNumbers);
   $("giftCardsList").innerHTML = `
     <article class="invoice-card phone-invoice-card gift-card-card">
@@ -1528,6 +1531,7 @@ function renderGiftCards() {
         <span><small>Profit</small><b class="${totalProfit >= 0 ? "profit-good" : "profit-bad"}">${money(totalProfit)}</b></span>
         <span><small>Latest Card</small><b>${newestDate}</b></span>
       </div>
+      ${closeoutReports}
       ${weeklyReports}
       ${renderAppleTradeInReference()}
       <div class="table-wrap">
@@ -1538,6 +1542,23 @@ function renderGiftCards() {
       </div>
     </article>
   `;
+}
+
+function renderGiftCardCloseoutSummary(rows) {
+  if (!$("giftCardCloseoutSummary")) return;
+  const openRows = rows.filter((row) => !row.gift_card_closeout_invoice_id);
+  const totalCost = openRows.reduce((sum, row) => sum + phoneLineCost(row), 0);
+  const totalValue = openRows.reduce((sum, row) => sum + Number(row.gift_card_value || 0), 0);
+  const totalProfit = totalValue - totalCost;
+  $("giftCardCloseoutSummary").innerHTML = openRows.length ? `
+    <div class="gift-card-closeout-grid">
+      <span><small>Current Open Cards</small><b>${openRows.length}</b></span>
+      <span><small>Total Phones Cost</small><b>${money(totalCost)}</b></span>
+      <span><small>Gift Card Value</small><b>${money(totalValue)}</b></span>
+      <span><small>Profit</small><b class="${totalProfit >= 0 ? "profit-good" : "profit-bad"}">${money(totalProfit)}</b></span>
+    </div>
+  ` : `<div class="empty">No open gift cards to close out. New gift cards will start the next batch.</div>`;
+  $("closeGiftCardBatchBtn").disabled = !openRows.length;
 }
 
 function renderGiftCardRows(rows, cardNumbers, options = {}) {
@@ -1586,6 +1607,76 @@ function renderGiftCardRows(rows, cardNumbers, options = {}) {
       </tr>
     `;
   }).join("");
+}
+
+function renderGiftCardCloseoutReports(rows, cardNumbers) {
+  const reports = buildGiftCardCloseoutReports(rows);
+  if (!reports.length) return "";
+  return `
+    <section class="gift-card-closeout-reports">
+      <div class="gift-card-weekly-head">
+        <div>
+          <h4>Gift Card Closeout Invoices</h4>
+          <p>Manual batches for holding gift cards until you use them.</p>
+        </div>
+        <span>${reports.length} batch${reports.length === 1 ? "" : "es"}</span>
+      </div>
+      ${reports.map((report, index) => `
+        <details class="gift-card-week-report gift-card-closeout-report" ${index === 0 ? "open" : ""}>
+          <summary>
+            <strong>${escapeHtml(report.label)}</strong>
+            <span>${report.rows.length} card${report.rows.length === 1 ? "" : "s"} - Value ${money(report.value)} - Profit ${money(report.profit)}</span>
+          </summary>
+          <div class="gift-card-week-stats">
+            <span><small>Status</small><b>${escapeHtml(report.closed ? "Closed" : "Current Open Batch")}</b></span>
+            <span><small>Total Cards</small><b>${report.rows.length}</b></span>
+            <span><small>Total Cost</small><b>${money(report.cost)}</b></span>
+            <span><small>Gift Card Value</small><b>${money(report.value)}</b></span>
+            <span><small>Profit</small><b class="${report.profit >= 0 ? "profit-good" : "profit-bad"}">${money(report.profit)}</b></span>
+          </div>
+          <div class="table-wrap">
+            <table class="phone-profit-table gift-card-table">
+              <thead><tr><th>GC #</th><th>Invoice Item #</th><th>Phone Traded In</th><th>Source</th><th>Location</th><th>From Invoice</th><th>Qty</th><th>Cost</th><th>Gift Card Value</th><th>Apple Est.</th><th>Profit</th><th>Date</th><th>Card Info</th></tr></thead>
+              <tbody>${renderGiftCardRows(report.rows, cardNumbers, { readonly: true })}</tbody>
+            </table>
+          </div>
+        </details>
+      `).join("")}
+    </section>
+  `;
+}
+
+function buildGiftCardCloseoutReports(rows) {
+  const closeoutInvoices = new Map(phoneInvoices.filter((invoice) => invoice.buyer === "Apple GC").map((invoice) => [Number(invoice.id), invoice]));
+  const groups = new Map();
+  rows.forEach((row) => {
+    const closeoutId = Number(row.gift_card_closeout_invoice_id || 0);
+    const key = closeoutId ? `closed-${closeoutId}` : "open";
+    const invoice = closeoutInvoices.get(closeoutId);
+    const report = groups.get(key) || {
+      key,
+      label: closeoutId ? invoice?.label || `Gift Card Closeout #${closeoutId}` : "Current Open Batch",
+      closed: Boolean(closeoutId),
+      closedAt: invoice?.closed_at || invoice?.created_at || "",
+      rows: [],
+      cost: 0,
+      value: 0,
+      profit: 0,
+    };
+    const cost = phoneLineCost(row);
+    const value = Number(row.gift_card_value || 0);
+    report.rows.push(row);
+    report.cost += cost;
+    report.value += value;
+    report.profit += value - cost;
+    groups.set(key, report);
+  });
+  return [...groups.values()]
+    .map((report) => ({ ...report, rows: [...report.rows].sort((a, b) => giftCardReportDate(a) - giftCardReportDate(b) || Number(a.id || 0) - Number(b.id || 0)) }))
+    .sort((a, b) => {
+      if (a.closed !== b.closed) return a.closed ? 1 : -1;
+      return new Date(b.closedAt || 0) - new Date(a.closedAt || 0);
+    });
 }
 
 function renderGiftCardWeeklyReports(rows, cardNumbers) {
@@ -1750,6 +1841,33 @@ async function addManualGiftCard() {
   $("manualGiftCardValue").value = "";
   $("manualGiftCardDate").value = new Date().toISOString().slice(0, 10);
   status("manualGiftCardStatus", `${result.count || 1} gift card${Number(result.count || 1) === 1 ? "" : "s"} added.`);
+  await loadPhoneInvoices();
+  openPhoneTab("giftCards");
+}
+
+async function closeCurrentGiftCardBatch() {
+  const rows = phoneInvoices.flatMap((invoice) => invoice.gift_cards || []);
+  const openRows = rows.filter((row) => !row.gift_card_closeout_invoice_id);
+  if (!openRows.length) {
+    status("giftCardCloseoutStatus", "There are no open gift cards to close out.", "bad");
+    return;
+  }
+  const totalValue = openRows.reduce((sum, row) => sum + Number(row.gift_card_value || 0), 0);
+  const label = $("giftCardCloseoutLabel").value.trim();
+  const notes = $("giftCardCloseoutNotes").value.trim();
+  if (!confirm(`Close out ${openRows.length} gift card${openRows.length === 1 ? "" : "s"} totaling ${money(totalValue)} into one invoice?`)) return;
+  status("giftCardCloseoutStatus", "Closing out current gift cards...");
+  const result = await api("/api/phone-gift-cards/closeout", {
+    method: "POST",
+    body: { label, notes },
+  });
+  if (!result?.ok) {
+    status("giftCardCloseoutStatus", result?.error || "Could not close out gift cards.", "bad");
+    return;
+  }
+  $("giftCardCloseoutLabel").value = "";
+  $("giftCardCloseoutNotes").value = "";
+  status("giftCardCloseoutStatus", `Closed ${result.count} gift card${Number(result.count || 0) === 1 ? "" : "s"} into ${escapeHtml(result.invoice?.label || "a Gift Card invoice")}.`);
   await loadPhoneInvoices();
   openPhoneTab("giftCards");
 }
@@ -2190,7 +2308,7 @@ function addInvoiceStats(acc, invoice) {
 }
 
 function isManualGiftCardInvoice(invoice) {
-  return invoice?.buyer === "Apple GC" && (invoice?.label === "Manual Gift Cards" || /^Gift Cards Week Ending/i.test(invoice?.label || ""));
+  return invoice?.buyer === "Apple GC";
 }
 
 function addRemovedPhoneStats(acc, invoice) {
