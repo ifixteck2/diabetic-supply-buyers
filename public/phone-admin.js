@@ -1562,14 +1562,15 @@ function renderGiftCardCloseoutSummary(rows) {
 }
 
 function renderGiftCardRows(rows, cardNumbers, options = {}) {
+  const fieldContext = String(options.context || "main").replace(/[^a-z0-9_-]/gi, "");
   return rows.map((row) => {
     const cost = phoneLineCost(row);
     const value = Number(row.gift_card_value || 0);
     const profit = value - cost;
     const cardNumber = cardNumbers.get(row.id) || "";
     const invoiceItemLabel = phoneInvoiceItemNumber(row, cardNumber);
-    const cardPhotoId = `giftCardPhoto${row.id}`;
-    const receiptPhotoId = `giftCardReceipt${row.id}`;
+    const cardPhotoId = `giftCardPhoto${row.id}_${fieldContext}`;
+    const receiptPhotoId = `giftCardReceipt${row.id}_${fieldContext}`;
     const receiptIsPdf = isPdfDataUrl(row.gift_card_receipt_data_url) || /\.pdf$/i.test(row.gift_card_receipt_file_name || "");
     const appleTrade = appleTradeInForModel(row.model);
     const appleDelta = appleTrade && appleTrade.value !== null ? value - appleTrade.value : null;
@@ -1601,7 +1602,7 @@ function renderGiftCardRows(rows, cardNumbers, options = {}) {
             </div>
             ${options.readonly ? "" : `<label class="mini-file">Card<input id="${cardPhotoId}" type="file" accept="image/*"></label>
             <label class="mini-file">Receipt<input id="${receiptPhotoId}" type="file" accept="image/*,.pdf,application/pdf"></label>
-            <button class="mini-btn" onclick="saveGiftCardDetails(${row.id})">Save</button>`}
+            <button class="mini-btn" onclick="saveGiftCardDetails(${row.id}, '${escapeAttr(fieldContext)}')">Save</button>`}
           </div>
         </td>
       </tr>
@@ -1637,7 +1638,7 @@ function renderGiftCardCloseoutReports(rows, cardNumbers) {
           <div class="table-wrap">
             <table class="phone-profit-table gift-card-table">
               <thead><tr><th>GC #</th><th>Invoice Item #</th><th>Phone Traded In</th><th>Source</th><th>Location</th><th>From Invoice</th><th>Qty</th><th>Cost</th><th>Gift Card Value</th><th>Apple Est.</th><th>Profit</th><th>Date</th><th>Card Info</th></tr></thead>
-              <tbody>${renderGiftCardRows(report.rows, cardNumbers, { readonly: true })}</tbody>
+              <tbody>${renderGiftCardRows(report.rows, cardNumbers, { context: `closeout-${report.key}` })}</tbody>
             </table>
           </div>
         </details>
@@ -1707,7 +1708,7 @@ function renderGiftCardWeeklyReports(rows, cardNumbers) {
           <div class="table-wrap">
             <table class="phone-profit-table gift-card-table">
               <thead><tr><th>GC #</th><th>Invoice Item #</th><th>Phone Traded In</th><th>Source</th><th>Location</th><th>From Invoice</th><th>Qty</th><th>Cost</th><th>Gift Card Value</th><th>Apple Est.</th><th>Profit</th><th>Date</th><th>Card Info</th></tr></thead>
-              <tbody>${renderGiftCardRows(report.rows, cardNumbers, { readonly: true })}</tbody>
+              <tbody>${renderGiftCardRows(report.rows, cardNumbers, { context: `week-${localDateKey(report.weekEnding)}` })}</tbody>
             </table>
           </div>
         </details>
@@ -2658,9 +2659,10 @@ window.movePhonePurchaseToGiftCard = async (id) => {
   return true;
 };
 
-window.saveGiftCardDetails = async (id) => {
-  const cardFile = $(`giftCardPhoto${id}`)?.files?.[0] || null;
-  const receiptFile = $(`giftCardReceipt${id}`)?.files?.[0] || null;
+window.saveGiftCardDetails = async (id, context = "main") => {
+  const fieldContext = String(context || "main").replace(/[^a-z0-9_-]/gi, "");
+  const cardFile = $(`giftCardPhoto${id}_${fieldContext}`)?.files?.[0] || null;
+  const receiptFile = $(`giftCardReceipt${id}_${fieldContext}`)?.files?.[0] || null;
   const receiptIsPdf = receiptFile && isPdfFile(receiptFile);
   const result = await api(`/api/phone-purchases/${id}/gift-card-details`, {
     method: "PATCH",
