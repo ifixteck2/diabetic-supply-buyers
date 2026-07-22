@@ -1635,6 +1635,7 @@ function renderGiftCardCloseoutReports(rows, cardNumbers) {
             <span><small>Gift Card Value</small><b>${money(report.value)}</b></span>
             <span><small>Profit</small><b class="${report.profit >= 0 ? "profit-good" : "profit-bad"}">${money(report.profit)}</b></span>
           </div>
+          ${report.closed && report.invoiceId ? `<div class="gift-card-closeout-actions"><button class="mini-btn" onclick="openGiftCardCloseoutInvoice(${report.invoiceId})">Gift Card Invoice</button></div>` : ""}
           <div class="table-wrap">
             <table class="phone-profit-table gift-card-table">
               <thead><tr><th>GC #</th><th>Invoice Item #</th><th>Phone Traded In</th><th>Source</th><th>Location</th><th>From Invoice</th><th>Qty</th><th>Cost</th><th>Gift Card Value</th><th>Apple Est.</th><th>Profit</th><th>Date</th><th>Card Info</th></tr></thead>
@@ -1656,6 +1657,7 @@ function buildGiftCardCloseoutReports(rows) {
     const invoice = closeoutInvoices.get(closeoutId);
     const report = groups.get(key) || {
       key,
+      invoiceId: closeoutId || null,
       label: closeoutId ? invoice?.label || `Gift Card Closeout #${closeoutId}` : "Current Open Batch",
       closed: Boolean(closeoutId),
       closedAt: invoice?.closed_at || invoice?.created_at || "",
@@ -2730,6 +2732,12 @@ window.openGiftCardImage = (id, kind) => {
     : `<img src="${escapeAttr(src)}" alt="${label} photo">`;
   viewer.innerHTML = `<div class="photo-viewer-backdrop" onclick="this.parentElement.remove()"></div><div class="photo-viewer-panel"><button class="photo-viewer-close" onclick="this.closest('.photo-viewer').remove()">Close</button>${media}<p>${escapeHtml(label)} - ${escapeHtml(row.model || "Phone")}</p></div>`;
   document.body.appendChild(viewer);
+};
+
+window.openGiftCardCloseoutInvoice = (id) => {
+  if (!id) return false;
+  window.open(`/api/phone-gift-card-closeouts/${id}/html`, "_blank");
+  return true;
 };
 
 window.returnPhonePurchaseToKt = async (id) => {

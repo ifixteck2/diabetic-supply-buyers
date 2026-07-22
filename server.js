@@ -799,6 +799,31 @@ app.get("/api/phone-invoices/:id/html", requirePhoneAuth, async (req, res) => {
   res.send(createPhoneInvoiceHtml(invoice, parsePhoneInvoicePriceOverrides(req.query.prices)));
 });
 
+app.get("/api/phone-gift-card-closeouts/:id/html", requirePhoneAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!id) return res.status(400).send("Gift card closeout invoice ID is required.");
+  const invoiceResult = await pool.query("select * from phone_invoices where id = $1 and buyer = 'Apple GC'", [id]);
+  const invoice = invoiceResult.rows[0];
+  if (!invoice) return res.status(404).send("Gift card closeout invoice not found.");
+  const purchases = await pool.query(
+    `select ranked.*,
+        source_invoice.buyer as source_buyer,
+        source_invoice.label as source_label
+       from (
+        select pp.*,
+          row_number() over (order by pp.gift_card_at asc nulls last, pp.created_at asc, pp.id asc) as gift_card_number
+         from phone_purchases pp
+         where pp.gift_card_at is not null
+       ) ranked
+       left join phone_invoices source_invoice on source_invoice.id = ranked.invoice_id
+      where ranked.gift_card_closeout_invoice_id = $1
+      order by ranked.gift_card_at asc nulls last, ranked.created_at asc, ranked.id asc`,
+    [id]
+  );
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.send(createGiftCardCloseoutInvoiceHtml(invoice, purchases.rows));
+});
+
 app.get("/api/customers/lookup", requireAuth, async (req, res) => {
   const phone = normalizePhone(req.query.phone || "");
   if (!phone) return res.status(400).json({ error: "Phone number is required." });
@@ -3138,6 +3163,84 @@ ${showTotal ? `<section class="total"><div class="total-box"><span>Total Due</sp
 <p class="note">Thank you for your business.</p>
 </main>
 </body></html>`;
+}
+
+function createGiftCardCloseoutInvoiceHtml(invoice, purchases = []) {
+  const invoiceDate = invoice.closed_at || invoice.created_at ? new Date(invoice.closed_at || invoice.created_at).toLocaleDateString("en-US") : new Date().toLocaleDateString("en-US");
+  const totalCost = purchases.reduce((sum, row) => sum + Number(row.quantity || 0) * Number(row.cost_each || 0), 0);
+  const totalValue = purchases.reduce((sum, row) => sum + Number(row.gift_card_value || 0), 0);
+  const totalProfit = totalValue - totalCost;
+  const rows = purchases.map((row, index) => {
+    const cost = Number(row.quantity || 0) * Number(row.cost_each || 0);
+    const value = Number(row.gift_card_value || 0);
+    const profit = value - cost;
+    const cardNumber = Number(row.gift_card_number || index + 1);
+    return `
+      <tr>
+        <td><strong>#${cardNumber}</strong></td>
+        <td>${escapeHtml(giftCardInvoiceItemNumber(row, index + 1))}</td>
+        <td class="item">${escapeHtml(row.model || "Phone")}</td>
+        <td>${escapeHtml(row.gift_card_location || "")}</td>
+        <td>${escapeHtml(row.source_buyer || row.buyer || "")}</td>
+        <td>${escapeHtml(row.source_label || `Invoice #${row.invoice_id || ""}`)}</td>
+        <td class="num">${moneyText(cost)}</td>
+        <td class="num">${moneyText(value)}</td>
+        <td class="num ${profit >= 0 ? "good" : "bad"}">${moneyText(profit)}</td>
+        <td>${row.gift_card_at ? new Date(row.gift_card_at).toLocaleDateString("en-US") : ""}</td>
+      </tr>
+    `;
+  }).join("");
+  const mediaSections = purchases.map((row, index) => {
+    const cardNumber = Number(row.gift_card_number || index + 1);
+    return `
+      <section class="media-card">
+        <div class="media-title">
+          <div><strong>Gift Card #${cardNumber}</strong><span>${escapeHtml(row.model || "Phone")}</span></div>
+          <em>${escapeHtml(row.gift_card_location || "No location saved")}</em>
+        </div>
+        <div class="media-grid">
+          ${giftCardInvoiceMediaBlock("Gift Card Picture", row.gift_card_photo_data_url, row.gift_card_photo_file_name)}
+          ${giftCardInvoiceMediaBlock("Receipt", row.gift_card_receipt_data_url, row.gift_card_receipt_file_name)}
+        </div>
+      </section>
+    `;
+  }).join("");
+  return `<!doctype html>
+<html><head><meta charset="utf-8"><title>Gift Card Invoice - ${escapeHtml(invoice.label || `#${invoice.id}`)}</title>
+<style>
+body{font-family:Arial,Helvetica,sans-serif;background:#f4f7f8;color:#132126;margin:0}.page{max-width:1120px;margin:28px auto;background:#fff;padding:42px;box-shadow:0 18px 50px rgba(19,33,38,.12)}.printbar{max-width:1120px;margin:24px auto 0;text-align:right}.printbar button{background:#0f5e69;color:white;border:0;border-radius:6px;padding:11px 16px;font-weight:700;cursor:pointer}header{display:flex;justify-content:space-between;gap:24px;border-bottom:3px solid #0f5e69;padding-bottom:22px}.brand h1{font-size:34px;line-height:1;margin:0;color:#0f5e69;letter-spacing:0}.brand p,.meta p,.block p{margin:4px 0;color:#465a61}.meta{text-align:right}.meta strong{display:block;font-size:15px;color:#132126;margin-bottom:6px}.blocks{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:28px 0}.block{border:1px solid #d9e4e7;border-radius:8px;padding:16px}.block h2,.media-title em{font-size:12px;text-transform:uppercase;letter-spacing:0;margin:0 0 10px;color:#0f5e69}.summary{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:22px 0}.summary span{border:1px solid #d9e4e7;border-radius:8px;padding:14px}.summary small{display:block;text-transform:uppercase;color:#60757b;font-size:11px}.summary b{font-size:22px;color:#132126}table{border-collapse:collapse;width:100%;margin-top:8px}th,td{border-bottom:1px solid #e0e7e9;padding:11px 9px;text-align:left;vertical-align:top}th{background:#eef4f5;color:#28464f;text-transform:uppercase;font-size:11px;letter-spacing:0}.item{font-weight:700;color:#132126}.num{text-align:right}.good{color:#12724d}.bad{color:#ad2929}.media-section-title{margin:34px 0 12px;color:#0f5e69}.media-card{border:1px solid #d9e4e7;border-radius:8px;padding:16px;margin:14px 0;break-inside:avoid}.media-title{display:flex;justify-content:space-between;gap:16px;margin-bottom:12px}.media-title strong,.media-title span{display:block}.media-title span{color:#546971;margin-top:3px}.media-title em{font-style:normal;margin:0}.media-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}.media-box{background:#f8fbfb;border:1px solid #e0e7e9;border-radius:8px;min-height:180px;padding:12px}.media-box h3{margin:0 0 10px;font-size:13px;text-transform:uppercase;color:#28464f}.media-box img{display:block;max-width:100%;max-height:420px;object-fit:contain;margin:auto}.pdf-box{height:420px}.pdf-box iframe{width:100%;height:360px;border:0;background:white}.pdf-link{display:inline-block;margin-top:8px;color:#0f5e69;font-weight:700}.empty-media{display:flex;align-items:center;justify-content:center;min-height:130px;color:#71858b;border:1px dashed #c8d7db;border-radius:7px}@media(max-width:800px){.page{margin:0;padding:22px}.printbar{margin:12px}.blocks,header,.summary,.media-grid{display:block}.summary span{display:block;margin-bottom:10px}.meta{text-align:left;margin-top:18px}table{font-size:12px;display:block;overflow-x:auto}th,td{padding:8px 6px}.media-box{margin-bottom:12px}}@media print{body{background:white}.printbar{display:none}.page{box-shadow:none;margin:0;max-width:none;padding:22px}.block,.summary span,.media-card{break-inside:avoid}.pdf-link{display:block}.pdf-box iframe{height:260px}}
+</style></head><body>
+<div class="printbar"><button onclick="window.print()">Print / Save PDF</button></div>
+<main class="page">
+<header><div class="brand"><h1>Gift Card Invoice</h1><p>${escapeHtml(invoice.label || "Gift Card Closeout")}</p></div><div class="meta"><strong>Invoice #${invoice.id}</strong><p>Date: ${invoiceDate}</p><p>Status: ${escapeHtml(invoice.status || "Closed")}</p></div></header>
+<section class="blocks"><div class="block"><h2>Company</h2><strong>iFixTeck LLC</strong><p>1612 Lucerne Ave</p><p>Lake Worth, FL 33460</p></div><div class="block"><h2>Batch</h2><strong>Apple Gift Cards</strong><p>${escapeHtml(invoice.notes || "Gift card closeout batch")}</p></div></section>
+<section class="summary"><span><small>Total Cards</small><b>${purchases.length}</b></span><span><small>Total Phones Cost</small><b>${moneyText(totalCost)}</b></span><span><small>Gift Card Value</small><b>${moneyText(totalValue)}</b></span><span><small>Profit</small><b class="${totalProfit >= 0 ? "good" : "bad"}">${moneyText(totalProfit)}</b></span></section>
+<table><thead><tr><th>GC #</th><th>Item #</th><th>Phone</th><th>Location</th><th>Source</th><th>From Invoice</th><th class="num">Cost</th><th class="num">Value</th><th class="num">Profit</th><th>Date</th></tr></thead><tbody>${rows || `<tr><td colspan="10">No gift cards in this closeout.</td></tr>`}</tbody></table>
+<h2 class="media-section-title">Saved Pictures & Receipts</h2>
+${mediaSections || `<div class="empty-media">No saved pictures or receipts for this closeout.</div>`}
+</main>
+</body></html>`;
+}
+
+function giftCardInvoiceMediaBlock(title, dataUrl, fileName) {
+  const safeTitle = escapeHtml(title);
+  if (!dataUrl) return `<div class="media-box"><h3>${safeTitle}</h3><div class="empty-media">Not uploaded</div></div>`;
+  const safeSrc = escapeHtml(dataUrl);
+  const safeFileName = escapeHtml(fileName || title);
+  if (isPdfDataUrl(dataUrl) || /\.pdf$/i.test(String(fileName || ""))) {
+    return `<div class="media-box pdf-box"><h3>${safeTitle}</h3><iframe src="${safeSrc}" title="${safeTitle} PDF"></iframe><a class="pdf-link" href="${safeSrc}" target="_blank" rel="noopener">${safeFileName}</a></div>`;
+  }
+  return `<div class="media-box"><h3>${safeTitle}</h3><img src="${safeSrc}" alt="${safeTitle}"></div>`;
+}
+
+function giftCardInvoiceItemNumber(row, fallback) {
+  const quantity = Math.max(1, Number(row.quantity || 1));
+  const start = Number(row.invoice_item_start || fallback || 1);
+  return quantity > 1 ? `${start}-${start + quantity - 1}` : String(start);
+}
+
+function isPdfDataUrl(value) {
+  return String(value || "").startsWith("data:application/pdf");
 }
 
 function parsePhoneInvoicePriceOverrides(raw) {
