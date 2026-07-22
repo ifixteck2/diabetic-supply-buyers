@@ -1507,12 +1507,13 @@ function renderGiftCards() {
     return;
   }
   const cardNumbers = new Map(rows.map((row, index) => [row.id, index + 1]));
+  const openRows = rows.filter((row) => !row.gift_card_closeout_invoice_id);
   const totalCost = rows.reduce((sum, row) => sum + phoneLineCost(row), 0);
   const totalValue = rows.reduce((sum, row) => sum + Number(row.gift_card_value || 0), 0);
   const totalProfit = totalValue - totalCost;
   const newest = rows[rows.length - 1];
   const newestDate = newest?.gift_card_at ? new Date(newest.gift_card_at).toLocaleDateString() : "None";
-  const body = renderGiftCardRows(rows, cardNumbers);
+  const body = renderGiftCardRows(openRows, cardNumbers);
   const closeoutReports = renderGiftCardCloseoutReports(rows, cardNumbers);
   const weeklyReports = renderGiftCardWeeklyReports(rows, cardNumbers);
   $("giftCardsList").innerHTML = `
@@ -1534,11 +1535,16 @@ function renderGiftCards() {
       ${closeoutReports}
       ${weeklyReports}
       ${renderAppleTradeInReference()}
-      <div class="table-wrap">
-        <table class="phone-profit-table gift-card-table">
-          <thead><tr><th>GC #</th><th>Invoice Item #</th><th>Phone Traded In</th><th>Source</th><th>Location</th><th>From Invoice</th><th>Qty</th><th>Cost</th><th>Gift Card Value</th><th>Apple Est.</th><th>Profit</th><th>Date</th><th>Card Info</th></tr></thead>
-          <tbody>${body}</tbody>
-        </table>
+      <div class="gift-card-open-list">
+        <h4>Current Open Gift Cards</h4>
+        ${openRows.length ? `
+          <div class="table-wrap">
+            <table class="phone-profit-table gift-card-table">
+              <thead><tr><th>GC #</th><th>Invoice Item #</th><th>Phone Traded In</th><th>Source</th><th>Location</th><th>From Invoice</th><th>Qty</th><th>Cost</th><th>Gift Card Value</th><th>Apple Est.</th><th>Profit</th><th>Date</th><th>Card Info</th></tr></thead>
+              <tbody>${body}</tbody>
+            </table>
+          </div>
+        ` : `<div class="empty">No open gift cards. Closed cards are inside their closeout invoices above.</div>`}
       </div>
     </article>
   `;
@@ -1623,10 +1629,10 @@ function renderGiftCardCloseoutReports(rows, cardNumbers) {
         <span>${reports.length} batch${reports.length === 1 ? "" : "es"}</span>
       </div>
       ${reports.map((report, index) => `
-        <details class="gift-card-week-report gift-card-closeout-report" ${index === 0 ? "open" : ""}>
+        <details class="gift-card-week-report gift-card-closeout-report" ${report.closed ? "" : "open"}>
           <summary>
             <strong>${escapeHtml(report.label)}</strong>
-            <span>${report.rows.length} card${report.rows.length === 1 ? "" : "s"} - Value ${money(report.value)} - Profit ${money(report.profit)}</span>
+            <span>${report.rows.length} card${report.rows.length === 1 ? "" : "s"} - Value ${money(report.value)} - Profit ${money(report.profit)} - Click to view cards</span>
           </summary>
           <div class="gift-card-week-stats">
             <span><small>Status</small><b>${escapeHtml(report.closed ? "Closed" : "Current Open Batch")}</b></span>
@@ -1695,7 +1701,7 @@ function renderGiftCardWeeklyReports(rows, cardNumbers) {
         <span>${reports.length} week${reports.length === 1 ? "" : "s"}</span>
       </div>
       ${reports.map((report, index) => `
-        <details class="gift-card-week-report" ${index === 0 ? "open" : ""}>
+        <details class="gift-card-week-report">
           <summary>
             <strong>Week Ending ${formatDate(report.weekEnding)}</strong>
             <span>${report.rows.length} card${report.rows.length === 1 ? "" : "s"} - Value ${money(report.value)} - Profit ${money(report.profit)}</span>
