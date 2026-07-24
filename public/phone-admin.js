@@ -7,6 +7,7 @@ const status = (id, message, type = "ok") => {
 let atlasPrices = [];
 let phoneInvoices = [];
 let manualPhoneReturns = [];
+let phoneOnlineOrders = [];
 let editingPhonePurchaseId = null;
 
 initPhonePortal();
@@ -15,6 +16,7 @@ async function initPhonePortal() {
   $("phonePurchaseDate").value = localTodayInput();
   $("manualReturnDate").value = localTodayInput();
   $("manualGiftCardDate").value = localTodayInput();
+  $("onlineOrderDate").value = localTodayInput();
   bindPhoneEvents();
   const me = await api("/api/phone-me", { silent: true });
   if (me?.ok) showPhoneApp();
@@ -37,6 +39,10 @@ function bindPhoneEvents() {
   $("addManualReturnBtn").onclick = addManualKtReturn;
   $("addManualGiftCardBtn").onclick = addManualGiftCard;
   $("closeGiftCardBatchBtn").onclick = closeCurrentGiftCardBatch;
+  $("saveOnlineOrderBtn").onclick = saveOnlineOrder;
+  $("onlineOrdersBackBtn").onclick = () => closeOnlineOrdersPage("dashboard");
+  $("onlineOrdersRefreshBtn").onclick = loadPhoneOnlineOrders;
+  $("onlineOrderProvider").addEventListener("change", toggleOnlineOrderProvider);
   ["phoneBuyer", "deviceType", "phoneBrand", "conditionType", "packaging", "grade", "phoneModel", "phoneStorage", "phoneCarrier", "ktDeductCrackedBack", "atlasDeductCrackedBack", "atlasDeductCrackedLens", "atlasDeductBattery", "atlasDeductRepair", "atlasDeductFaceId"].forEach((id) => {
     $(id).addEventListener("change", handleFlowChange);
   });
@@ -76,6 +82,7 @@ async function refreshPhonePortal() {
   await loadAtlasPrices();
   await loadPhoneInvoices();
   await loadManualPhoneReturns();
+  await loadPhoneOnlineOrders();
 }
 
 async function loadAtlasPrices() {
@@ -102,7 +109,19 @@ async function loadManualPhoneReturns() {
   renderInvoiceLists();
 }
 
+async function loadPhoneOnlineOrders() {
+  const result = await api("/api/phone-online-orders", { silent: true });
+  phoneOnlineOrders = result?.orders || [];
+  renderOnlineOrders();
+}
+
 function openPhoneTab(name) {
+  if (name === "onlineOrders") {
+    openOnlineOrdersPage();
+    return;
+  }
+  $("onlineOrdersPage").classList.add("hidden");
+  document.querySelector(".admin-shell").classList.remove("hidden");
   const titles = {
     dashboard: "Dashboard",
     purchase: "Add Purchase",
@@ -113,12 +132,26 @@ function openPhoneTab(name) {
     giftCards: "Gift Cards",
     ktReturns: "Returns",
     pastInvoices: "Past Invoices",
+    onlineOrders: "Online Orders",
   };
   document.querySelectorAll("[data-phone-tab]").forEach((button) => button.classList.toggle("active", button.dataset.phoneTab === name));
   document.querySelectorAll(".tab-panel").forEach((panel) => panel.classList.add("hidden"));
   $(`${name}PhoneTab`).classList.remove("hidden");
   $("phonePageTitle").textContent = titles[name] || "Phone Portal";
   renderInvoiceLists();
+}
+
+function openOnlineOrdersPage() {
+  document.querySelector(".admin-shell").classList.add("hidden");
+  $("onlineOrdersPage").classList.remove("hidden");
+  document.querySelectorAll("[data-phone-tab]").forEach((button) => button.classList.toggle("active", button.dataset.phoneTab === "onlineOrders"));
+  renderOnlineOrders();
+}
+
+function closeOnlineOrdersPage(tabName = "dashboard") {
+  $("onlineOrdersPage").classList.add("hidden");
+  document.querySelector(".admin-shell").classList.remove("hidden");
+  openPhoneTab(tabName);
 }
 
 function handlePriceCheckerChange(event) {
@@ -1234,7 +1267,7 @@ function resetPhonePurchase(clearStatus = true) {
   $("atlasDeductBattery").checked = false;
   $("atlasDeductRepair").checked = false;
   $("atlasDeductFaceId").checked = false;
-  $("phonePurchaseDate").value = new Date().toISOString().slice(0, 10);
+  $("phonePurchaseDate").value = localTodayInput();
   $("phoneNotes").value = "";
   toggleConditionFields();
   renderModelOptions();
@@ -1252,6 +1285,94 @@ function renderInvoiceLists() {
   renderGiftCards();
   renderKtReturns();
   renderPastInvoices();
+}
+
+function toggleOnlineOrderProvider() {
+  const isOther = $("onlineOrderProvider").value === "Other";
+  $("onlineOrderOtherProviderWrap").classList.toggle("hidden", !isOther);
+}
+
+async function saveOnlineOrder() {
+  const provider = $("onlineOrderProvider").value === "Other" ? $("onlineOrderOtherProvider").value.trim() : $("onlineOrderProvider").value;
+  const result = await api("/api/phone-online-orders", {
+    method: "POST",
+    body: {
+      provider,
+      order_number: $("onlineOrderNumber").value.trim(),
+      order_date: $("onlineOrderDate").value,
+      shipping_address: $("onlineOrderAddress").value.trim(),
+      cc_used: $("onlineOrderCard").value.trim(),
+      cost: Number($("onlineOrderCost").value || 0),
+      email: $("onlineOrderEmail").value.trim(),
+      tracking_info: $("onlineOrderTracking").value.trim(),
+    },
+  });
+  if (!result?.ok) return status("onlineOrderStatus", result?.error || "Could not save online order.", "bad");
+  ["onlineOrderOtherProvider", "onlineOrderNumber", "onlineOrderAddress", "onlineOrderCard", "onlineOrderCost", "onlineOrderEmail", "onlineOrderTracking"].forEach((id) => { $(id).value = ""; });
+  $("onlineOrderProvider").value = "Boost Mobile";
+  $("onlineOrderDate").value = localTodayInput();
+  toggleOnlineOrderProvider();
+  status("onlineOrderStatus", "Online order added.");
+  await loadPhoneOnlineOrders();
+}
+
+function renderOnlineOrders() {
+  if (!$("onlineOrderStats")) return;
+  const ordered = phoneOnlineOrders.filter((order) => order.status === "Ordered");
+  const stock = phoneOnlineOrders.filter((order) => order.status === "Received");
+  const completed = phoneOnlineOrders.filter((order) => order.status === "Sold Local" || order.status === "Gift Card");
+  const orderedCost = ordered.reduce((sum, order) => sum + Number(order.cost || 0), 0);
+  const stockCost = stock.reduce((sum, order) => sum + Number(order.cost || 0), 0);
+  const completedCost = completed.reduce((sum, order) => sum + Number(order.cost || 0), 0);
+  const localSales = completed.reduce((sum, order) => sum + Number(order.local_sale_price || 0), 0);
+  const giftCards = completed.reduce((sum, order) => sum + Number(order.gift_card_value || 0), 0);
+  const completedValue = localSales + giftCards;
+  $("onlineOrderStats").innerHTML = `
+    <div class="stat"><span>Ordered</span><strong>${ordered.length}</strong><em>${money(orderedCost)} pending</em></div>
+    <div class="stat"><span>In Stock</span><strong>${stock.length}</strong><em>${money(stockCost)} cost</em></div>
+    <div class="stat"><span>Completed</span><strong>${completed.length}</strong><em>${money(completedCost)} cost</em></div>
+    <div class="stat"><span>Money Back</span><strong>${money(completedValue)}</strong><em>Local sales + gift cards</em></div>
+    <div class="stat"><span>Profit</span><strong class="${completedValue - completedCost >= 0 ? "profit-good" : "profit-bad"}">${money(completedValue - completedCost)}</strong><em>Completed only</em></div>
+  `;
+  $("onlineOrdersPlacedList").innerHTML = ordered.map(renderOnlineOrderCard).join("") || `<div class="empty">No open online orders.</div>`;
+  $("onlineOrdersStockList").innerHTML = stock.map(renderOnlineOrderCard).join("") || `<div class="empty">No received online orders in stock.</div>`;
+  $("onlineOrdersCompletedList").innerHTML = completed.map(renderOnlineOrderCard).join("") || `<div class="empty">No completed online orders yet.</div>`;
+}
+
+function renderOnlineOrderCard(order) {
+  const value = order.status === "Sold Local" ? Number(order.local_sale_price || 0) : order.status === "Gift Card" ? Number(order.gift_card_value || 0) : null;
+  const profit = value === null ? null : value - Number(order.cost || 0);
+  return `
+    <article class="online-order-card ${escapeAttr(order.status || "Ordered").toLowerCase().replace(/\s+/g, "-")}">
+      <div class="online-order-main">
+        <div>
+          <span class="online-provider">${escapeHtml(order.provider || "Online Order")}</span>
+          <h3>${escapeHtml(order.order_number || `Order #${order.id}`)}</h3>
+          <p>${order.order_date ? formatDate(order.order_date) : ""} - ${escapeHtml(order.email || "No email saved")}</p>
+        </div>
+        <span class="pill ${onlineOrderStatusClass(order.status)}">${escapeHtml(order.status || "Ordered")}</span>
+      </div>
+      <div class="online-order-grid">
+        <span><small>Cost</small><b>${money(order.cost)}</b></span>
+        <span><small>CC Used</small><b>${escapeHtml(order.cc_used || "")}</b></span>
+        <span><small>Tracking / Received</small><b>${escapeHtml(order.tracking_info || order.received_info || "")}</b></span>
+        <span><small>Profit</small><b class="${profit === null || profit >= 0 ? "profit-good" : "profit-bad"}">${profit === null ? "-" : money(profit)}</b></span>
+      </div>
+      <div class="online-order-address">${escapeHtml(order.shipping_address || "No shipping address saved")}</div>
+      ${order.status === "Gift Card" ? `<div class="online-order-result">Gift Card: ${money(order.gift_card_value)}${order.gift_card_location ? ` - ${escapeHtml(order.gift_card_location)}` : ""}</div>` : ""}
+      ${order.status === "Sold Local" ? `<div class="online-order-result">Sold Local: ${money(order.local_sale_price)}${order.local_sale_notes ? ` - ${escapeHtml(order.local_sale_notes)}` : ""}</div>` : ""}
+      <div class="phone-row-actions online-order-actions">
+        ${order.status === "Ordered" ? `<button class="mini-btn" onclick="markOnlineOrderReceived(${order.id})">Received</button>` : ""}
+        ${order.status === "Received" ? `<button class="mini-btn danger" onclick="sellOnlineOrderLocal(${order.id})">Sell Local</button><button class="mini-btn" onclick="moveOnlineOrderToGiftCard(${order.id})">Move to Gift Cards</button>` : ""}
+      </div>
+    </article>
+  `;
+}
+
+function onlineOrderStatusClass(statusText) {
+  if (statusText === "Received") return "shipped";
+  if (statusText === "Sold Local" || statusText === "Gift Card") return "sold";
+  return "pending";
 }
 
 function renderInvoiceGroup(id, buyer, view) {
@@ -2671,6 +2792,77 @@ window.movePhonePurchaseToGiftCard = async (id) => {
   }
   await loadPhoneInvoices();
   openPhoneTab("giftCards");
+  return true;
+};
+
+window.markOnlineOrderReceived = async (id) => {
+  const existing = phoneOnlineOrders.find((order) => Number(order.id) === Number(id));
+  const trackingInput = prompt("Tracking / what did you receive?", existing?.tracking_info || "");
+  if (trackingInput === null) return false;
+  const result = await api(`/api/phone-online-orders/${id}/received`, {
+    method: "PATCH",
+    body: {
+      tracking_info: trackingInput.trim(),
+      received_info: trackingInput.trim(),
+    },
+  });
+  if (!result?.ok) return alert(result?.error || "Could not mark this order received.");
+  await loadPhoneOnlineOrders();
+  return true;
+};
+
+window.sellOnlineOrderLocal = async (id) => {
+  const saleInput = prompt("Amount sold locally?");
+  if (saleInput === null) return false;
+  const cleanSale = String(saleInput || "").replace(/[$,\s]/g, "");
+  if (!cleanSale || Number.isNaN(Number(cleanSale)) || Number(cleanSale) < 0) {
+    alert("Enter a valid local sale amount.");
+    return false;
+  }
+  const notesInput = prompt("Sale notes? Example: Facebook, cash, buyer name", "");
+  if (notesInput === null) return false;
+  const result = await api(`/api/phone-online-orders/${id}/local-sale`, {
+    method: "PATCH",
+    body: {
+      sale_price: cleanSale,
+      sale_notes: notesInput.trim(),
+    },
+  });
+  if (!result?.ok) return alert(result?.error || "Could not mark this online order sold locally.");
+  await loadPhoneOnlineOrders();
+  return true;
+};
+
+window.moveOnlineOrderToGiftCard = async (id) => {
+  const modelInput = prompt("Phone model for the gift card record? Example: iPhone 16 Pro Max 256GB");
+  if (modelInput === null) return false;
+  if (!modelInput.trim()) {
+    alert("Enter the phone model.");
+    return false;
+  }
+  const valueInput = prompt("Apple gift card value?");
+  if (valueInput === null) return false;
+  const cleanValue = String(valueInput || "").replace(/[$,\s]/g, "");
+  if (!cleanValue || Number.isNaN(Number(cleanValue)) || Number(cleanValue) < 0) {
+    alert("Enter the Apple gift card value.");
+    return false;
+  }
+  const locationInput = prompt("Gift card location? Example: Apple Store, Apple Online, Best Buy");
+  if (locationInput === null) return false;
+  const notesInput = prompt("Gift card notes? Optional.", "");
+  if (notesInput === null) return false;
+  const result = await api(`/api/phone-online-orders/${id}/gift-card`, {
+    method: "PATCH",
+    body: {
+      model: modelInput.trim(),
+      gift_card_value: cleanValue,
+      gift_card_location: locationInput.trim(),
+      gift_card_notes: notesInput.trim(),
+    },
+  });
+  if (!result?.ok) return alert(result?.error || "Could not move this online order to gift cards.");
+  await loadPhoneOnlineOrders();
+  await loadPhoneInvoices();
   return true;
 };
 

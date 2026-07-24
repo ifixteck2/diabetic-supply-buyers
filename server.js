@@ -192,6 +192,158 @@ app.patch("/api/phone-manual-returns/:id/sale", requirePhoneAuth, async (req, re
   res.json({ ok: true, return: result.rows[0] });
 });
 
+app.get("/api/phone-online-orders", requirePhoneAuth, async (req, res) => {
+  const result = await pool.query(
+    `select * from phone_online_orders
+     order by
+       case status when 'Ordered' then 1 when 'Received' then 2 else 3 end,
+       coalesce(received_at, local_sold_at, gift_card_at, created_at) desc,
+       order_date desc,
+       id desc
+     limit 1000`
+  );
+  res.json({ orders: result.rows });
+});
+
+app.post("/api/phone-online-orders", requirePhoneAuth, async (req, res) => {
+  const input = req.body || {};
+  const provider = String(input.provider || "").trim();
+  const orderNumber = String(input.order_number || "").trim();
+  const cost = Number(input.cost || 0);
+  if (!provider) return res.status(400).json({ error: "Choose or enter the provider." });
+  if (!orderNumber) return res.status(400).json({ error: "Enter the order number." });
+  if (!Number.isFinite(cost) || cost < 0) return res.status(400).json({ error: "Enter a valid cost." });
+  const result = await pool.query(
+    `insert into phone_online_orders
+       (provider, order_number, order_date, shipping_address, cc_used, cost, email, tracking_info)
+     values ($1, $2, coalesce($3::date, current_date), $4, $5, $6::numeric, $7, $8)
+     returning *`,
+    [
+      provider,
+      orderNumber,
+      String(input.order_date || "").trim() || null,
+      String(input.shipping_address || "").trim(),
+      String(input.cc_used || "").trim(),
+      cost,
+      String(input.email || "").trim(),
+      String(input.tracking_info || "").trim(),
+    ]
+  );
+  res.json({ ok: true, order: result.rows[0] });
+});
+
+app.patch("/api/phone-online-orders/:id/received", requirePhoneAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!id) return res.status(400).json({ error: "Order ID is required." });
+  const trackingInfo = String(req.body?.tracking_info || "").trim();
+  const receivedInfo = String(req.body?.received_info || "").trim();
+  const result = await pool.query(
+    `update phone_online_orders
+     set status = 'Received',
+       tracking_info = coalesce(nullif($2,''), tracking_info),
+       received_info = coalesce(nullif($3,''), received_info),
+       received_at = coalesce(received_at, now()),
+       updated_at = now()
+     where id = $1
+       and status = 'Ordered'
+     returning *`,
+    [id, trackingInfo, receivedInfo]
+  );
+  if (!result.rows[0]) return res.status(404).json({ error: "Open online order not found." });
+  res.json({ ok: true, order: result.rows[0] });
+});
+
+app.patch("/api/phone-online-orders/:id/local-sale", requirePhoneAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  const salePrice = req.body?.sale_price === "" || req.body?.sale_price === undefined || req.body?.sale_price === null
+    ? null
+    : Number(req.body.sale_price);
+  const saleNotes = String(req.body?.sale_notes || "").trim();
+  if (!id) return res.status(400).json({ error: "Order ID is required." });
+  if (salePrice === null || !Number.isFinite(salePrice) || salePrice < 0) return res.status(400).json({ error: "Enter a valid local sale amount." });
+  const result = await pool.query(
+    `update phone_online_orders
+     set status = 'Sold Local',
+       local_sale_price = $2::numeric,
+       local_sold_at = now(),
+       local_sale_notes = $3,
+       updated_at = now()
+     where id = $1
+       and status = 'Received'
+     returning *`,
+    [id, salePrice, saleNotes]
+  );
+  if (!result.rows[0]) return res.status(404).json({ error: "Received online order not found." });
+  res.json({ ok: true, order: result.rows[0] });
+});
+
+app.patch("/api/phone-online-orders/:id/gift-card", requirePhoneAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  const giftCardValue = req.body?.gift_card_value === "" || req.body?.gift_card_value === undefined || req.body?.gift_card_value === null
+    ? null
+    : Number(req.body.gift_card_value);
+  const model = String(req.body?.model || "").trim();
+  const giftCardLocation = String(req.body?.gift_card_location || "").trim();
+  const giftCardNotes = String(req.body?.gift_card_notes || "Apple trade-in gift card").trim();
+  if (!id) return res.status(400).json({ error: "Order ID is required." });
+  if (!model) return res.status(400).json({ error: "Enter the phone model for the gift card record." });
+  if (giftCardValue === null || !Number.isFinite(giftCardValue) || giftCardValue < 0) return res.status(400).json({ error: "Enter the Apple gift card value." });
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    const orderResult = await client.query(
+      "select * from phone_online_orders where id = $1 and status = 'Received' for update",
+      [id]
+    );
+    const order = orderResult.rows[0];
+    if (!order) {
+      await client.query("rollback");
+      return res.status(404).json({ error: "Received online order not found." });
+    }
+    const giftCardAt = localDateInTimeZone();
+    const invoice = await getOrCreateWeeklyGiftCardInvoice(client, giftCardAt);
+    const invoiceItemStart = await nextPhoneInvoiceItemStart(client, invoice.id);
+    const purchase = await client.query(
+      `insert into phone_purchases
+       (invoice_id, buyer, purchase_date, device_type, condition_type, model, carrier, quantity, cost_each, invoice_removed_at, invoice_removed_reason, gift_card_value, gift_card_at, gift_card_notes, gift_card_location, notes, invoice_item_start)
+       values ($1,'Apple GC',$2,'Phone','Used',$3,'Online Order',1,$4,now(),'Apple gift card trade-in',$5,($2::date + time '12:00'),$6,$7,$8,$9)
+       returning *`,
+      [
+        invoice.id,
+        giftCardAt,
+        model,
+        Number(order.cost || 0),
+        giftCardValue,
+        giftCardNotes || "Apple trade-in gift card",
+        giftCardLocation,
+        `Online order ${order.provider || ""} ${order.order_number || ""}`.trim(),
+        invoiceItemStart,
+      ]
+    );
+    const result = await client.query(
+      `update phone_online_orders
+       set status = 'Gift Card',
+         gift_card_value = $2::numeric,
+         gift_card_location = $3,
+         gift_card_notes = $4,
+         gift_card_at = now(),
+         gift_card_phone_purchase_id = $5,
+         updated_at = now()
+       where id = $1
+       returning *`,
+      [id, giftCardValue, giftCardLocation, giftCardNotes, purchase.rows[0].id]
+    );
+    await client.query("commit");
+    res.json({ ok: true, order: result.rows[0], purchase: purchase.rows[0] });
+  } catch (error) {
+    await client.query("rollback");
+    console.error("Could not move online order to gift card.", error);
+    res.status(500).json({ error: "Could not move this online order to gift cards." });
+  } finally {
+    client.release();
+  }
+});
+
 app.post("/api/phone-invoices", requirePhoneAuth, async (req, res) => {
   const buyer = normalizeBuyer(req.body?.buyer || "");
   const label = String(req.body?.label || "").trim();
@@ -1646,6 +1798,31 @@ async function migrate() {
       sale_notes text not null default '',
       created_at timestamptz not null default now()
     );
+
+    create table if not exists phone_online_orders (
+      id serial primary key,
+      provider text not null default '',
+      order_number text not null default '',
+      order_date date not null default current_date,
+      shipping_address text not null default '',
+      cc_used text not null default '',
+      cost numeric(12,2) not null default 0,
+      email text not null default '',
+      tracking_info text not null default '',
+      received_info text not null default '',
+      status text not null default 'Ordered',
+      received_at timestamptz,
+      local_sale_price numeric(12,2),
+      local_sold_at timestamptz,
+      local_sale_notes text not null default '',
+      gift_card_value numeric(12,2),
+      gift_card_at timestamptz,
+      gift_card_location text not null default '',
+      gift_card_notes text not null default '',
+      gift_card_phone_purchase_id integer references phone_purchases(id) on delete set null,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
   `);
 
   await pool.query(`
@@ -1721,6 +1898,26 @@ async function migrate() {
     alter table phone_manual_returns add column if not exists sale_price numeric(12,2);
     alter table phone_manual_returns add column if not exists sold_at date;
     alter table phone_manual_returns add column if not exists sale_notes text not null default '';
+    alter table phone_online_orders add column if not exists provider text not null default '';
+    alter table phone_online_orders add column if not exists order_number text not null default '';
+    alter table phone_online_orders add column if not exists order_date date not null default current_date;
+    alter table phone_online_orders add column if not exists shipping_address text not null default '';
+    alter table phone_online_orders add column if not exists cc_used text not null default '';
+    alter table phone_online_orders add column if not exists cost numeric(12,2) not null default 0;
+    alter table phone_online_orders add column if not exists email text not null default '';
+    alter table phone_online_orders add column if not exists tracking_info text not null default '';
+    alter table phone_online_orders add column if not exists received_info text not null default '';
+    alter table phone_online_orders add column if not exists status text not null default 'Ordered';
+    alter table phone_online_orders add column if not exists received_at timestamptz;
+    alter table phone_online_orders add column if not exists local_sale_price numeric(12,2);
+    alter table phone_online_orders add column if not exists local_sold_at timestamptz;
+    alter table phone_online_orders add column if not exists local_sale_notes text not null default '';
+    alter table phone_online_orders add column if not exists gift_card_value numeric(12,2);
+    alter table phone_online_orders add column if not exists gift_card_at timestamptz;
+    alter table phone_online_orders add column if not exists gift_card_location text not null default '';
+    alter table phone_online_orders add column if not exists gift_card_notes text not null default '';
+    alter table phone_online_orders add column if not exists gift_card_phone_purchase_id integer references phone_purchases(id) on delete set null;
+    alter table phone_online_orders add column if not exists updated_at timestamptz not null default now();
     alter table phone_invoices add column if not exists sale_price numeric(12,2);
     alter table phone_invoices add column if not exists sale_notes text not null default '';
     alter table phone_invoices add column if not exists status_updated_at timestamptz not null default now();
