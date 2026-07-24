@@ -732,6 +732,9 @@ async function parseQuickPhoneText(saveAfterParse) {
   if (!parsed.modelText) {
     return status("quickPhoneStatus", "Type at least a model, like iPhone 17 256GB unlocked grade C.", "bad");
   }
+  if (saveAfterParse && !completeQuickRequiredDetails(parsed)) {
+    return status("quickPhoneStatus", "Seller name and IMEI are required unless you put Mike after the price.", "bad");
+  }
   applyQuickPhoneFields(parsed);
   if (!saveAfterParse) {
     status("quickPhoneStatus", `Filled flow for ${escapeHtml($("phoneModel").value || parsed.modelText)}.`);
@@ -769,6 +772,10 @@ async function addQuickPhoneLines(entries) {
       failures.push(typeof entry === "string" ? entry : entry.text);
       continue;
     }
+    if (!completeQuickRequiredDetails(parsed)) {
+      failures.push(`${typeof entry === "string" ? entry : entry.text} (missing seller or IMEI)`);
+      continue;
+    }
     applyQuickPhoneFields(parsed);
     const result = await savePhonePurchase({ silent: true, keepForm: true });
     if (result?.ok) added += 1;
@@ -784,6 +791,29 @@ async function addQuickPhoneLines(entries) {
   }
   resetPhonePurchase(false);
   return null;
+}
+
+function completeQuickRequiredDetails(parsed) {
+  if (isQuickMikeSource(parsed)) return true;
+  const seller = quickTitle(stripQuickNoise(window.prompt(`Who did you get this ${parsed.modelText || "phone"} from?`, parsed.seller || "") || ""));
+  if (!seller) return false;
+  const imei = stripQuickNoise(window.prompt(`Enter IMEI / serial for ${parsed.modelText || "this phone"}`, parsed.imei || "") || "");
+  if (!imei) return false;
+  parsed.seller = seller;
+  parsed.imei = imei;
+  parsed.placedAt = parsed.placedAt || seller;
+  parsed.notes = mergeQuickNotes(parsed.notes, `Seller ${seller}`);
+  return true;
+}
+
+function isQuickMikeSource(parsed) {
+  return /^mike$/i.test(String(parsed.priceSource || parsed.placedAt || parsed.seller || "").trim());
+}
+
+function mergeQuickNotes(notes, addition) {
+  const parts = String(notes || "").split(/\s+\|\s+/).filter(Boolean);
+  if (!parts.some((part) => part.toLowerCase() === addition.toLowerCase())) parts.push(addition);
+  return parts.join(" | ");
 }
 
 async function moveLatestPhones() {
@@ -870,7 +900,7 @@ function parseQuickPhoneLine(value) {
     atlasPurchase ? "Parts" : "",
   ].filter(Boolean).join(" | ");
   const placedAt = priceSource || purchaseLocation || seller || "";
-  return { raw, buyer, deviceType, brand, conditionType, packaging, grade, storage, carrier, quantity: quantityResult.quantity, cost, imei, deductions, modelText, notes, placedAt };
+  return { raw, buyer, deviceType, brand, conditionType, packaging, grade, storage, carrier, quantity: quantityResult.quantity, cost, imei, deductions, modelText, notes, placedAt, seller, purchaseLocation, priceSource };
 }
 
 function quickModelText(raw, brand, storage, carrier) {
