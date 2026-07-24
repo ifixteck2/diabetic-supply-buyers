@@ -215,12 +215,13 @@ app.post("/api/phone-online-orders", requirePhoneAuth, async (req, res) => {
   if (!Number.isFinite(cost) || cost < 0) return res.status(400).json({ error: "Enter a valid cost." });
   const result = await pool.query(
     `insert into phone_online_orders
-       (provider, order_number, order_date, placed_at, shipping_address, cc_used, cost, phone_number, email, tracking_info)
-     values ($1, $2, coalesce($3::date, current_date), $4, $5, $6, $7::numeric, $8, $9, $10)
+       (provider, order_number, phone_model, order_date, placed_at, shipping_address, cc_used, cost, phone_number, email, tracking_info)
+     values ($1, $2, $3, coalesce($4::date, current_date), $5, $6, $7, $8::numeric, $9, $10, $11)
      returning *`,
     [
       provider,
       orderNumber,
+      String(input.phone_model || "").trim(),
       String(input.order_date || "").trim() || null,
       String(input.placed_at || "").trim(),
       String(input.shipping_address || "").trim(),
@@ -231,6 +232,52 @@ app.post("/api/phone-online-orders", requirePhoneAuth, async (req, res) => {
       String(input.tracking_info || "").trim(),
     ]
   );
+  res.json({ ok: true, order: result.rows[0] });
+});
+
+app.patch("/api/phone-online-orders/:id", requirePhoneAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  const input = req.body || {};
+  const provider = String(input.provider || "").trim();
+  const orderNumber = String(input.order_number || "").trim();
+  const cost = Number(input.cost || 0);
+  if (!id) return res.status(400).json({ error: "Order ID is required." });
+  if (!provider) return res.status(400).json({ error: "Choose or enter the provider." });
+  if (!orderNumber) return res.status(400).json({ error: "Enter the order number." });
+  if (!Number.isFinite(cost) || cost < 0) return res.status(400).json({ error: "Enter a valid cost." });
+  const result = await pool.query(
+    `update phone_online_orders
+     set provider = $2,
+       order_number = $3,
+       phone_model = $4,
+       order_date = coalesce($5::date, order_date),
+       placed_at = $6,
+       shipping_address = $7,
+       cc_used = $8,
+       cost = $9::numeric,
+       phone_number = $10,
+       email = $11,
+       tracking_info = $12,
+       updated_at = now()
+     where id = $1
+       and status = 'Ordered'
+     returning *`,
+    [
+      id,
+      provider,
+      orderNumber,
+      String(input.phone_model || "").trim(),
+      String(input.order_date || "").trim() || null,
+      String(input.placed_at || "").trim(),
+      String(input.shipping_address || "").trim(),
+      String(input.cc_used || "").trim(),
+      cost,
+      String(input.phone_number || "").trim(),
+      String(input.email || "").trim(),
+      String(input.tracking_info || "").trim(),
+    ]
+  );
+  if (!result.rows[0]) return res.status(404).json({ error: "Pending online order not found." });
   res.json({ ok: true, order: result.rows[0] });
 });
 
@@ -1824,6 +1871,7 @@ async function migrate() {
       id serial primary key,
       provider text not null default '',
       order_number text not null default '',
+      phone_model text not null default '',
       order_date date not null default current_date,
       placed_at text not null default '',
       shipping_address text not null default '',
@@ -1924,6 +1972,7 @@ async function migrate() {
     alter table phone_manual_returns add column if not exists sale_notes text not null default '';
     alter table phone_online_orders add column if not exists provider text not null default '';
     alter table phone_online_orders add column if not exists order_number text not null default '';
+    alter table phone_online_orders add column if not exists phone_model text not null default '';
     alter table phone_online_orders add column if not exists order_date date not null default current_date;
     alter table phone_online_orders add column if not exists placed_at text not null default '';
     alter table phone_online_orders add column if not exists shipping_address text not null default '';

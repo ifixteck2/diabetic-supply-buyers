@@ -9,6 +9,7 @@ let phoneInvoices = [];
 let manualPhoneReturns = [];
 let phoneOnlineOrders = [];
 let editingPhonePurchaseId = null;
+let editingOnlineOrderId = null;
 
 initPhonePortal();
 
@@ -40,6 +41,7 @@ function bindPhoneEvents() {
   $("addManualGiftCardBtn").onclick = addManualGiftCard;
   $("closeGiftCardBatchBtn").onclick = closeCurrentGiftCardBatch;
   $("saveOnlineOrderBtn").onclick = saveOnlineOrder;
+  $("cancelOnlineOrderEditBtn").onclick = () => resetOnlineOrderForm();
   $("onlineOrdersBackBtn").onclick = () => closeOnlineOrdersPage("dashboard");
   $("onlineOrdersRefreshBtn").onclick = loadPhoneOnlineOrders;
   $("onlineOrderProvider").addEventListener("change", toggleOnlineOrderProvider);
@@ -1313,11 +1315,12 @@ function toggleOnlineOrderProvider() {
 
 async function saveOnlineOrder() {
   const provider = $("onlineOrderProvider").value === "Other" ? $("onlineOrderOtherProvider").value.trim() : $("onlineOrderProvider").value;
-  const result = await api("/api/phone-online-orders", {
-    method: "POST",
+  const result = await api(editingOnlineOrderId ? `/api/phone-online-orders/${editingOnlineOrderId}` : "/api/phone-online-orders", {
+    method: editingOnlineOrderId ? "PATCH" : "POST",
     body: {
       provider,
       order_number: $("onlineOrderNumber").value.trim(),
+      phone_model: $("onlineOrderModel").value.trim(),
       order_date: $("onlineOrderDate").value,
       placed_at: $("onlineOrderPlacedAt").value.trim(),
       shipping_address: $("onlineOrderAddress").value.trim(),
@@ -1329,13 +1332,21 @@ async function saveOnlineOrder() {
     },
   });
   if (!result?.ok) return status("onlineOrderStatus", result?.error || "Could not save online order.", "bad");
-  ["onlineOrderOtherProvider", "onlineOrderNumber", "onlineOrderPlacedAt", "onlineOrderAddress", "onlineOrderCard", "onlineOrderCost", "onlineOrderPhoneNumber", "onlineOrderEmail", "onlineOrderTracking"].forEach((id) => { $(id).value = ""; });
-  $("onlineOrderProvider").value = "Boost Mobile";
-  $("onlineOrderDate").value = localTodayInput();
-  toggleOnlineOrderProvider();
-  status("onlineOrderStatus", "Online order added.");
+  const message = editingOnlineOrderId ? "Online order updated." : "Online order added.";
+  resetOnlineOrderForm(message);
   await loadPhoneOnlineOrders();
   openOnlineOrderTab("pending");
+}
+
+function resetOnlineOrderForm(message = "") {
+  editingOnlineOrderId = null;
+  ["onlineOrderOtherProvider", "onlineOrderNumber", "onlineOrderModel", "onlineOrderPlacedAt", "onlineOrderAddress", "onlineOrderCard", "onlineOrderCost", "onlineOrderPhoneNumber", "onlineOrderEmail", "onlineOrderTracking"].forEach((id) => { $(id).value = ""; });
+  $("onlineOrderProvider").value = "Boost Mobile";
+  $("onlineOrderDate").value = localTodayInput();
+  $("saveOnlineOrderBtn").textContent = "Add Order";
+  $("cancelOnlineOrderEditBtn").classList.add("hidden");
+  toggleOnlineOrderProvider();
+  status("onlineOrderStatus", message);
 }
 
 function renderOnlineOrders() {
@@ -1370,7 +1381,7 @@ function renderOnlineOrderCard(order) {
         <div>
           <span class="online-provider">${escapeHtml(order.provider || "Online Order")}</span>
           <h3>${escapeHtml(order.order_number || `Order #${order.id}`)}</h3>
-          <p>${order.order_date ? formatDate(order.order_date) : ""} - ${escapeHtml(order.email || "No email saved")}</p>
+          <p>${escapeHtml(order.phone_model || "No model saved")} - ${order.order_date ? formatDate(order.order_date) : ""} - ${escapeHtml(order.email || "No email saved")}</p>
         </div>
         <span class="pill ${onlineOrderStatusClass(order.status)}">${escapeHtml(order.status || "Ordered")}</span>
       </div>
@@ -1386,7 +1397,7 @@ function renderOnlineOrderCard(order) {
       ${order.status === "Gift Card" ? `<div class="online-order-result">Gift Card: ${money(order.gift_card_value)}${order.gift_card_location ? ` - ${escapeHtml(order.gift_card_location)}` : ""}</div>` : ""}
       ${order.status === "Sold Local" ? `<div class="online-order-result">Sold Local: ${money(order.local_sale_price)}${order.local_sale_notes ? ` - ${escapeHtml(order.local_sale_notes)}` : ""}</div>` : ""}
       <div class="phone-row-actions online-order-actions">
-        ${order.status === "Ordered" ? `<button class="mini-btn" onclick="markOnlineOrderReceived(${order.id})">Received</button>` : ""}
+        ${order.status === "Ordered" ? `<button class="mini-btn" onclick="startOnlineOrderEdit(${order.id})">Edit</button><button class="mini-btn" onclick="markOnlineOrderReceived(${order.id})">Received</button>` : ""}
         ${order.status === "Received" ? `<button class="mini-btn danger" onclick="sellOnlineOrderLocal(${order.id})">Sell Local</button><button class="mini-btn" onclick="moveOnlineOrderToGiftCard(${order.id})">Move to Gift Cards</button>` : ""}
       </div>
     </article>
@@ -1419,6 +1430,36 @@ function trackingUrlForNumber(value) {
   if (/^9\d{21,33}$/.test(clean) || /^\d{20,34}$/.test(clean)) return `https://tools.usps.com/go/TrackConfirmAction?tLabels=${encodeURIComponent(clean)}`;
   return `https://www.google.com/search?q=${encodeURIComponent(`${value} tracking`)}`;
 }
+
+window.startOnlineOrderEdit = (id) => {
+  const order = phoneOnlineOrders.find((entry) => Number(entry.id) === Number(id));
+  if (!order || order.status !== "Ordered") return alert("Only pending online orders can be edited.");
+  editingOnlineOrderId = Number(id);
+  const providerOptions = ["Boost Mobile", "Metro PCS", "Cricket"];
+  if (providerOptions.includes(order.provider)) {
+    $("onlineOrderProvider").value = order.provider;
+    $("onlineOrderOtherProvider").value = "";
+  } else {
+    $("onlineOrderProvider").value = "Other";
+    $("onlineOrderOtherProvider").value = order.provider || "";
+  }
+  toggleOnlineOrderProvider();
+  $("onlineOrderNumber").value = order.order_number || "";
+  $("onlineOrderModel").value = order.phone_model || "";
+  $("onlineOrderDate").value = String(order.order_date || "").slice(0, 10) || localTodayInput();
+  $("onlineOrderPlacedAt").value = order.placed_at || "";
+  $("onlineOrderCard").value = order.cc_used || "";
+  $("onlineOrderCost").value = order.cost || "";
+  $("onlineOrderPhoneNumber").value = order.phone_number || "";
+  $("onlineOrderEmail").value = order.email || "";
+  $("onlineOrderAddress").value = order.shipping_address || "";
+  $("onlineOrderTracking").value = order.tracking_info || "";
+  $("saveOnlineOrderBtn").textContent = "Save Changes";
+  $("cancelOnlineOrderEditBtn").classList.remove("hidden");
+  status("onlineOrderStatus", `Editing order ${escapeHtml(order.order_number || `#${order.id}`)}.`);
+  openOnlineOrderTab("pending");
+  window.scrollTo({ top: 0, behavior: "smooth" });
+};
 
 function renderInvoiceGroup(id, buyer, view) {
   const list = phoneInvoices.filter((invoice) => {

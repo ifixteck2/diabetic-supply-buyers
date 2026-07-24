@@ -291,6 +291,9 @@
               <label>Order #<input id="onlineOrderNumber" placeholder="Order number"></label>
             </div>
             <div class="form-grid three">
+              <label>Phone Model<input id="onlineOrderModel" placeholder="Example: iPhone 16 Pro Max 256GB"></label>
+            </div>
+            <div class="form-grid three">
               <label>Date<input id="onlineOrderDate" type="date"></label>
               <label>Where Placed<input id="onlineOrderPlacedAt" list="onlineOrderPlacedAtOptions" placeholder="Website, app, store, promo page"></label>
               <datalist id="onlineOrderPlacedAtOptions">
@@ -311,7 +314,7 @@
               <label>Shipping Address<textarea id="onlineOrderAddress" rows="3" placeholder="Shipping address"></textarea></label>
             </div>
             <label>Tracking / Receive Notes<textarea id="onlineOrderTracking" rows="3" placeholder="Tracking number, delivery note, or what arrived"></textarea></label>
-            <div class="actions"><button class="btn phone-btn" id="saveOnlineOrderBtn">Add Order</button></div>
+            <div class="actions"><button class="btn phone-btn" id="saveOnlineOrderBtn">Add Order</button><button class="btn secondary hidden" id="cancelOnlineOrderEditBtn">Cancel Edit</button></div>
             <div id="onlineOrderStatus"></div>
           </section>
           <section class="panel online-order-stock-panel">
