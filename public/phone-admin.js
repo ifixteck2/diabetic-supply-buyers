@@ -12,9 +12,9 @@ let editingPhonePurchaseId = null;
 initPhonePortal();
 
 async function initPhonePortal() {
-  $("phonePurchaseDate").value = new Date().toISOString().slice(0, 10);
-  $("manualReturnDate").value = new Date().toISOString().slice(0, 10);
-  $("manualGiftCardDate").value = new Date().toISOString().slice(0, 10);
+  $("phonePurchaseDate").value = localTodayInput();
+  $("manualReturnDate").value = localTodayInput();
+  $("manualGiftCardDate").value = localTodayInput();
   bindPhoneEvents();
   const me = await api("/api/phone-me", { silent: true });
   if (me?.ok) showPhoneApp();
@@ -1512,7 +1512,7 @@ function renderGiftCards() {
   const totalValue = rows.reduce((sum, row) => sum + Number(row.gift_card_value || 0), 0);
   const totalProfit = totalValue - totalCost;
   const newest = rows[rows.length - 1];
-  const newestDate = newest?.gift_card_at ? new Date(newest.gift_card_at).toLocaleDateString() : "None";
+  const newestDate = newest?.gift_card_at ? formatDate(newest.gift_card_at) : "None";
   const body = renderGiftCardRows(openRows, cardNumbers);
   const closeoutReports = renderGiftCardCloseoutReports(rows, cardNumbers);
   const weeklyReports = renderGiftCardWeeklyReports(rows, cardNumbers);
@@ -1599,7 +1599,7 @@ function renderGiftCardRows(rows, cardNumbers, options = {}) {
         <td>${money(value)}</td>
         <td class="apple-estimate-cell">${renderAppleTradeInValue(appleTrade)}${appleDeltaLabel}</td>
         <td class="${profit >= 0 ? "profit-good" : "profit-bad"}">${money(profit)}</td>
-        <td>${row.gift_card_at ? new Date(row.gift_card_at).toLocaleDateString() : ""}</td>
+        <td>${row.gift_card_at ? formatDate(row.gift_card_at) : ""}</td>
         <td>
           <div class="phone-row-actions gift-card-actions">
             <div class="gift-card-media">
@@ -1778,7 +1778,14 @@ function localDateKey(date) {
 }
 
 function formatDate(date) {
-  return date instanceof Date ? date.toLocaleDateString() : new Date(date).toLocaleDateString();
+  if (date instanceof Date) return date.toLocaleDateString();
+  const match = String(date || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (match) return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3])).toLocaleDateString();
+  return new Date(date).toLocaleDateString();
+}
+
+function localTodayInput() {
+  return localDateKey(new Date());
 }
 
 function renderAppleTradeInReference() {
@@ -1848,7 +1855,7 @@ async function addManualGiftCard() {
   $("manualGiftCardLocation").value = "";
   $("manualGiftCardCost").value = "";
   $("manualGiftCardValue").value = "";
-  $("manualGiftCardDate").value = new Date().toISOString().slice(0, 10);
+  $("manualGiftCardDate").value = localTodayInput();
   status("manualGiftCardStatus", `${result.count || 1} gift card${Number(result.count || 1) === 1 ? "" : "s"} added.`);
   await loadPhoneInvoices();
   openPhoneTab("giftCards");

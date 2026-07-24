@@ -607,7 +607,7 @@ app.post("/api/phone-gift-cards", requirePhoneAuth, async (req, res) => {
   const quantity = Number(input.quantity || 1);
   const costEach = Number(input.cost_each || 0);
   const giftCardValue = Number(input.gift_card_value || 0);
-  const giftCardAt = input.gift_card_at || new Date().toISOString().slice(0, 10);
+  const giftCardAt = input.gift_card_at || localDateInTimeZone();
   const giftCardLocation = String(input.gift_card_location || "").trim();
   if (!model) return res.status(400).json({ error: "Enter the phone model." });
   if (!Number.isInteger(quantity) || quantity < 1 || quantity > 100) return res.status(400).json({ error: "Quantity must be between 1 and 100." });
@@ -623,7 +623,7 @@ app.post("/api/phone-gift-cards", requirePhoneAuth, async (req, res) => {
       const purchase = await client.query(
         `insert into phone_purchases
          (invoice_id, buyer, purchase_date, device_type, condition_type, model, carrier, quantity, cost_each, invoice_removed_at, invoice_removed_reason, gift_card_value, gift_card_at, gift_card_notes, gift_card_location, notes, invoice_item_start)
-         values ($1,'Apple GC',$2,'Phone','Used',$3,'Apple Trade-In',1,$4,now(),'Apple gift card trade-in',$5,$2::date,'Manual gift card entry',$6,'Direct gift card entry',$7)
+         values ($1,'Apple GC',$2,'Phone','Used',$3,'Apple Trade-In',1,$4,now(),'Apple gift card trade-in',$5,($2::date + time '12:00'),'Manual gift card entry',$6,'Direct gift card entry',$7)
          returning *`,
         [invoice.id, giftCardAt, model, costEach, giftCardValue, giftCardLocation, invoiceItemStart]
       );
@@ -661,7 +661,7 @@ app.post("/api/phone-gift-cards/closeout", requirePhoneAuth, async (req, res) =>
     }
     const totalCost = openCards.rows.reduce((sum, row) => sum + Number(row.quantity || 0) * Number(row.cost_each || 0), 0);
     const totalValue = openCards.rows.reduce((sum, row) => sum + Number(row.gift_card_value || 0), 0);
-    const today = new Date().toISOString().slice(0, 10);
+    const today = localDateInTimeZone();
     const label = requestedLabel || `Gift Card Closeout ${today}`;
     const notes = [
       requestedNotes || "Manual gift card closeout batch",
@@ -1884,6 +1884,17 @@ function giftCardWeekEndingDate(value) {
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+function localDateInTimeZone(timeZone = "America/New_York") {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
 }
 
 async function getOrCreateActiveBatch(client) {
@@ -3186,7 +3197,7 @@ function createGiftCardCloseoutInvoiceHtml(invoice, purchases = []) {
         <td class="num">${moneyText(cost)}</td>
         <td class="num">${moneyText(value)}</td>
         <td class="num ${profit >= 0 ? "good" : "bad"}">${moneyText(profit)}</td>
-        <td>${row.gift_card_at ? new Date(row.gift_card_at).toLocaleDateString("en-US") : ""}</td>
+        <td>${formatBusinessDate(row.gift_card_at)}</td>
       </tr>
     `;
   }).join("");
@@ -3295,6 +3306,15 @@ function phoneInvoiceLinesWithPrices(purchases, priceOverrides) {
 
 function moneyText(value) {
   return Number(value || 0).toLocaleString("en-US", { style: "currency", currency: "USD" });
+}
+
+function formatBusinessDate(value) {
+  if (!value) return "";
+  const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (match) {
+    return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3])).toLocaleDateString("en-US");
+  }
+  return new Date(value).toLocaleDateString("en-US", { timeZone: "America/New_York" });
 }
 
 function escapeHtml(value) {
