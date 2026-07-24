@@ -97,6 +97,17 @@
               <div class="form-grid three purchase-details hidden" id="purchaseExtrasWrap">
                 <label>IMEI<input id="phoneImei" placeholder="IMEI or serial"></label>
                 <label>Phone Photo<input id="phonePhoto" type="file" accept="image/*"></label>
+                <label>Where Placed<input id="phonePlacedAt" list="phonePlacedAtOptions" placeholder="Facebook, Apple, website, store"></label>
+                <datalist id="phonePlacedAtOptions">
+                  <option value="Facebook"></option>
+                  <option value="OfferUp"></option>
+                  <option value="eBay"></option>
+                  <option value="Apple Store"></option>
+                  <option value="Apple Online"></option>
+                  <option value="Boost Mobile"></option>
+                  <option value="Metro PCS"></option>
+                  <option value="Cricket"></option>
+                </datalist>
                 <label>Notes<input id="phoneNotes" placeholder="Damage notes, payment details"></label>
               </div>
               <div id="atlasPurchaseDeductions" class="deduction-box purchase-deduction-box">
@@ -281,11 +292,21 @@
             </div>
             <div class="form-grid three">
               <label>Date<input id="onlineOrderDate" type="date"></label>
+              <label>Where Placed<input id="onlineOrderPlacedAt" list="onlineOrderPlacedAtOptions" placeholder="Website, app, store, promo page"></label>
+              <datalist id="onlineOrderPlacedAtOptions">
+                <option value="Website"></option>
+                <option value="App"></option>
+                <option value="Store"></option>
+                <option value="Customer Service"></option>
+                <option value="Promo Page"></option>
+              </datalist>
               <label>CC Used<input id="onlineOrderCard" placeholder="Example: Amex 1001"></label>
+            </div>
+            <div class="form-grid three">
               <label>Cost<input id="onlineOrderCost" type="number" min="0" step="0.01"></label>
+              <label>Email<input id="onlineOrderEmail" type="email" placeholder="Order email"></label>
             </div>
             <div class="form-grid two">
-              <label>Email<input id="onlineOrderEmail" type="email" placeholder="Order email"></label>
               <label>Shipping Address<textarea id="onlineOrderAddress" rows="3" placeholder="Shipping address"></textarea></label>
             </div>
             <label>Tracking / Receive Notes<textarea id="onlineOrderTracking" rows="3" placeholder="Tracking number, delivery note, or what arrived"></textarea></label>

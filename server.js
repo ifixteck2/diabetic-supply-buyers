@@ -215,13 +215,14 @@ app.post("/api/phone-online-orders", requirePhoneAuth, async (req, res) => {
   if (!Number.isFinite(cost) || cost < 0) return res.status(400).json({ error: "Enter a valid cost." });
   const result = await pool.query(
     `insert into phone_online_orders
-       (provider, order_number, order_date, shipping_address, cc_used, cost, email, tracking_info)
-     values ($1, $2, coalesce($3::date, current_date), $4, $5, $6::numeric, $7, $8)
+       (provider, order_number, order_date, placed_at, shipping_address, cc_used, cost, email, tracking_info)
+     values ($1, $2, coalesce($3::date, current_date), $4, $5, $6, $7::numeric, $8, $9)
      returning *`,
     [
       provider,
       orderNumber,
       String(input.order_date || "").trim() || null,
+      String(input.placed_at || "").trim(),
       String(input.shipping_address || "").trim(),
       String(input.cc_used || "").trim(),
       cost,
@@ -453,8 +454,8 @@ app.post("/api/phone-purchases", requirePhoneAuth, async (req, res) => {
     const invoiceItemStart = await nextPhoneInvoiceItemStart(client, invoice.id);
     const purchase = await client.query(
       `insert into phone_purchases
-       (invoice_id, buyer, purchase_date, device_type, condition_type, packaging, grade, model, carrier, quantity, cost_each, projected_sell_each, imei, photo_file_name, photo_data_url, notes, invoice_item_start)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+       (invoice_id, buyer, purchase_date, device_type, condition_type, packaging, grade, model, carrier, quantity, cost_each, projected_sell_each, imei, placed_at, photo_file_name, photo_data_url, notes, invoice_item_start)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
        returning *`,
       [
         invoice.id,
@@ -470,6 +471,7 @@ app.post("/api/phone-purchases", requirePhoneAuth, async (req, res) => {
         costEach,
         projectedSellEach,
         String(input.imei || "").trim(),
+        String(input.placed_at || "").trim(),
         String(input.photo?.file_name || "").slice(0, 160),
         isAllowedPhotoDataUrl(input.photo?.data_url) ? String(input.photo.data_url) : "",
         String(input.notes || "").trim(),
@@ -604,12 +606,13 @@ app.patch("/api/phone-purchases/:id", requirePhoneAuth, async (req, res) => {
          cost_each = $11,
          projected_sell_each = $12,
          imei = $13,
-         photo_file_name = $14,
-         photo_data_url = $15,
-         notes = $16,
+         placed_at = $14,
+         photo_file_name = $15,
+         photo_data_url = $16,
+         notes = $17,
          invoice_added_at = case when invoice_id <> $1 then now() else invoice_added_at end,
-         invoice_item_start = $17
-       where id = $18
+         invoice_item_start = $18
+       where id = $19
        returning *`,
       [
         invoice.id,
@@ -625,6 +628,7 @@ app.patch("/api/phone-purchases/:id", requirePhoneAuth, async (req, res) => {
         costEach,
         projectedSellEach,
         String(input.imei || "").trim(),
+        String(input.placed_at || "").trim(),
         photoFileName,
         photoDataUrl,
         String(input.notes || "").trim(),
@@ -1754,6 +1758,7 @@ async function migrate() {
       cost_each numeric(12,2) not null default 0,
       projected_sell_each numeric(12,2) not null default 0,
       imei text not null default '',
+      placed_at text not null default '',
       photo_file_name text not null default '',
       photo_data_url text not null default '',
       notes text not null default '',
@@ -1804,6 +1809,7 @@ async function migrate() {
       provider text not null default '',
       order_number text not null default '',
       order_date date not null default current_date,
+      placed_at text not null default '',
       shipping_address text not null default '',
       cc_used text not null default '',
       cost numeric(12,2) not null default 0,
@@ -1857,6 +1863,7 @@ async function migrate() {
     alter table phone_purchases add column if not exists invoice_removed_at timestamptz;
     alter table phone_purchases add column if not exists invoice_removed_reason text not null default '';
     alter table phone_purchases add column if not exists imei text not null default '';
+    alter table phone_purchases add column if not exists placed_at text not null default '';
     alter table phone_purchases add column if not exists photo_file_name text not null default '';
     alter table phone_purchases add column if not exists photo_data_url text not null default '';
     alter table phone_purchases add column if not exists returned_at timestamptz;
@@ -1901,6 +1908,7 @@ async function migrate() {
     alter table phone_online_orders add column if not exists provider text not null default '';
     alter table phone_online_orders add column if not exists order_number text not null default '';
     alter table phone_online_orders add column if not exists order_date date not null default current_date;
+    alter table phone_online_orders add column if not exists placed_at text not null default '';
     alter table phone_online_orders add column if not exists shipping_address text not null default '';
     alter table phone_online_orders add column if not exists cc_used text not null default '';
     alter table phone_online_orders add column if not exists cost numeric(12,2) not null default 0;

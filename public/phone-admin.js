@@ -867,7 +867,8 @@ function parseQuickPhoneLine(value) {
     colorResult.color ? colorResult.color : "",
     atlasPurchase ? "Parts" : "",
   ].filter(Boolean).join(" | ");
-  return { raw, buyer, deviceType, brand, conditionType, packaging, grade, storage, carrier, quantity: quantityResult.quantity, cost, imei, deductions, modelText, notes };
+  const placedAt = priceSource || purchaseLocation || seller || "";
+  return { raw, buyer, deviceType, brand, conditionType, packaging, grade, storage, carrier, quantity: quantityResult.quantity, cost, imei, deductions, modelText, notes, placedAt };
 }
 
 function quickModelText(raw, brand, storage, carrier) {
@@ -1196,6 +1197,7 @@ function applyQuickPhoneFields(parsed) {
   $("phoneQuantity").value = parsed.quantity || 1;
   $("phoneCost").value = parsed.cost || "";
   $("phoneImei").value = parsed.imei;
+  $("phonePlacedAt").value = parsed.placedAt || "";
   $("ktDeductCrackedBack").checked = parsed.buyer === "KT" && parsed.deductions.crackedBack;
   $("atlasDeductCrackedBack").checked = parsed.buyer === "Atlas" && parsed.deductions.crackedBack;
   $("atlasDeductCrackedLens").checked = parsed.buyer === "Atlas" && parsed.deductions.crackedLens;
@@ -1256,6 +1258,7 @@ function phonePurchasePayload(photo) {
     cost_each: Number($("phoneCost").value || 0),
     projected_sell_each: Number($("phoneProjected").value || 0),
     imei: $("phoneImei").value.trim(),
+    placed_at: $("phonePlacedAt").value.trim(),
     photo,
     notes,
   };
@@ -1275,6 +1278,7 @@ function resetPhonePurchase(clearStatus = true) {
   $("phoneCost").value = "";
   $("phoneProjected").value = "";
   $("phoneImei").value = "";
+  $("phonePlacedAt").value = "";
   $("phonePhoto").value = "";
   $("ktDeductCrackedBack").checked = false;
   $("atlasDeductCrackedBack").checked = false;
@@ -1315,6 +1319,7 @@ async function saveOnlineOrder() {
       provider,
       order_number: $("onlineOrderNumber").value.trim(),
       order_date: $("onlineOrderDate").value,
+      placed_at: $("onlineOrderPlacedAt").value.trim(),
       shipping_address: $("onlineOrderAddress").value.trim(),
       cc_used: $("onlineOrderCard").value.trim(),
       cost: Number($("onlineOrderCost").value || 0),
@@ -1323,7 +1328,7 @@ async function saveOnlineOrder() {
     },
   });
   if (!result?.ok) return status("onlineOrderStatus", result?.error || "Could not save online order.", "bad");
-  ["onlineOrderOtherProvider", "onlineOrderNumber", "onlineOrderAddress", "onlineOrderCard", "onlineOrderCost", "onlineOrderEmail", "onlineOrderTracking"].forEach((id) => { $(id).value = ""; });
+  ["onlineOrderOtherProvider", "onlineOrderNumber", "onlineOrderPlacedAt", "onlineOrderAddress", "onlineOrderCard", "onlineOrderCost", "onlineOrderEmail", "onlineOrderTracking"].forEach((id) => { $(id).value = ""; });
   $("onlineOrderProvider").value = "Boost Mobile";
   $("onlineOrderDate").value = localTodayInput();
   toggleOnlineOrderProvider();
@@ -1370,6 +1375,7 @@ function renderOnlineOrderCard(order) {
       </div>
       <div class="online-order-grid">
         <span><small>Cost</small><b>${money(order.cost)}</b></span>
+        <span><small>Where Placed</small><b>${escapeHtml(order.placed_at || "")}</b></span>
         <span><small>CC Used</small><b>${escapeHtml(order.cc_used || "")}</b></span>
         <span><small>Tracking / Received</small><b>${escapeHtml(order.tracking_info || order.received_info || "")}</b></span>
         <span><small>Profit</small><b class="${profit === null || profit >= 0 ? "profit-good" : "profit-bad"}">${profit === null ? "-" : money(profit)}</b></span>
@@ -2141,6 +2147,7 @@ function renderPhoneInvoiceCard(invoice) {
       <td class="phone-device-cell">
         <strong>${escapeHtml(row.model)}</strong>
         <span>${escapeHtml(phoneInvoiceItemCondition(row))}</span>
+        ${row.placed_at ? `<em>Placed at ${escapeHtml(row.placed_at)}</em>` : ""}
         ${row.imei ? `<em>IMEI ${escapeHtml(row.imei)}</em>` : ""}
         ${row.photo_data_url ? `<button class="phone-photo-link" onclick="openPhonePhoto(${row.id})">View photo</button>` : ""}
       </td>
@@ -2163,6 +2170,7 @@ function renderPhoneInvoiceCard(invoice) {
         <strong>${escapeHtml(row.model)}</strong>
         <span>${escapeHtml(phoneInvoiceItemCondition(row))}</span>
         <em>${escapeHtml(row.device_type || "Phone")} purchase${row.purchase_date ? ` - Bought ${new Date(row.purchase_date).toLocaleDateString()}` : ""}</em>
+        ${row.placed_at ? `<em>Placed at ${escapeHtml(row.placed_at)}</em>` : ""}
         ${row.imei ? `<em>IMEI ${escapeHtml(row.imei)}</em>` : ""}
         ${row.notes ? `<em>${escapeHtml(row.notes)}</em>` : ""}
         ${row.photo_data_url ? `<button class="phone-photo-link" onclick="openPhonePhoto(${row.id})">View photo</button>` : ""}
@@ -2290,6 +2298,7 @@ window.startPhonePurchaseEdit = (id) => {
   $("phoneProjected").value = purchase.projected_sell_each || "";
   $("phonePurchaseDate").value = String(purchase.purchase_date || "").slice(0, 10) || new Date().toISOString().slice(0, 10);
   $("phoneImei").value = purchase.imei || "";
+  $("phonePlacedAt").value = purchase.placed_at || "";
   $("phonePhoto").value = "";
   $("phoneNotes").value = purchase.notes || "";
   $("ktDeductCrackedBack").checked = /cracked back/i.test(purchase.notes || "");
