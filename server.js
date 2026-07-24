@@ -217,8 +217,8 @@ app.post("/api/phone-online-orders", requirePhoneAuth, async (req, res) => {
   if (!Number.isFinite(portNumberCost) || portNumberCost < 0) return res.status(400).json({ error: "Enter a valid port number cost." });
   const result = await pool.query(
     `insert into phone_online_orders
-       (provider, order_number, phone_model, order_date, placed_at, shipping_address, cc_used, cost, port_number_cost, phone_number, email, tracking_info)
-     values ($1, $2, $3, coalesce($4::date, current_date), $5, $6, $7, $8::numeric, $9::numeric, $10, $11, $12)
+       (provider, order_number, phone_model, order_date, placed_at, shipping_address, cc_used, cost, port_number_cost, phone_number, account_pin, email, tracking_info)
+     values ($1, $2, $3, coalesce($4::date, current_date), $5, $6, $7, $8::numeric, $9::numeric, $10, $11, $12, $13)
      returning *`,
     [
       provider,
@@ -231,6 +231,7 @@ app.post("/api/phone-online-orders", requirePhoneAuth, async (req, res) => {
       cost,
       portNumberCost,
       String(input.phone_number || "").trim(),
+      String(input.account_pin || "").trim(),
       String(input.email || "").trim(),
       String(input.tracking_info || "").trim(),
     ]
@@ -262,8 +263,9 @@ app.patch("/api/phone-online-orders/:id", requirePhoneAuth, async (req, res) => 
        cost = $9::numeric,
        port_number_cost = $10::numeric,
        phone_number = $11,
-       email = $12,
-       tracking_info = $13,
+       account_pin = $12,
+       email = $13,
+       tracking_info = $14,
        updated_at = now()
      where id = $1
        and status = 'Ordered'
@@ -280,6 +282,7 @@ app.patch("/api/phone-online-orders/:id", requirePhoneAuth, async (req, res) => 
       cost,
       portNumberCost,
       String(input.phone_number || "").trim(),
+      String(input.account_pin || "").trim(),
       String(input.email || "").trim(),
       String(input.tracking_info || "").trim(),
     ]
@@ -1886,6 +1889,7 @@ async function migrate() {
       cost numeric(12,2) not null default 0,
       port_number_cost numeric(12,2) not null default 0,
       phone_number text not null default '',
+      account_pin text not null default '',
       email text not null default '',
       tracking_info text not null default '',
       received_info text not null default '',
@@ -1988,6 +1992,7 @@ async function migrate() {
     alter table phone_online_orders add column if not exists cost numeric(12,2) not null default 0;
     alter table phone_online_orders add column if not exists port_number_cost numeric(12,2) not null default 0;
     alter table phone_online_orders add column if not exists phone_number text not null default '';
+    alter table phone_online_orders add column if not exists account_pin text not null default '';
     alter table phone_online_orders add column if not exists email text not null default '';
     alter table phone_online_orders add column if not exists tracking_info text not null default '';
     alter table phone_online_orders add column if not exists received_info text not null default '';

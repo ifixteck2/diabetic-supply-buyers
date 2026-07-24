@@ -1358,6 +1358,7 @@ async function saveOnlineOrder() {
       cost: Number($("onlineOrderCost").value || 0),
       port_number_cost: Number($("onlineOrderPortCost").value || 0),
       phone_number: $("onlineOrderPhoneNumber").value.trim(),
+      account_pin: $("onlineOrderAccountPin").value.trim(),
       email: $("onlineOrderEmail").value.trim(),
       tracking_info: $("onlineOrderTracking").value.trim(),
     },
@@ -1371,7 +1372,7 @@ async function saveOnlineOrder() {
 
 function resetOnlineOrderForm(message = "") {
   editingOnlineOrderId = null;
-  ["onlineOrderOtherProvider", "onlineOrderNumber", "onlineOrderModel", "onlineOrderPlacedAt", "onlineOrderAddress", "onlineOrderCard", "onlineOrderCost", "onlineOrderPortCost", "onlineOrderPhoneNumber", "onlineOrderEmail", "onlineOrderTracking"].forEach((id) => { $(id).value = ""; });
+  ["onlineOrderOtherProvider", "onlineOrderNumber", "onlineOrderModel", "onlineOrderPlacedAt", "onlineOrderAddress", "onlineOrderCard", "onlineOrderCost", "onlineOrderPortCost", "onlineOrderPhoneNumber", "onlineOrderAccountPin", "onlineOrderEmail", "onlineOrderTracking"].forEach((id) => { $(id).value = ""; });
   $("onlineOrderProvider").value = "Boost Mobile";
   $("onlineOrderDate").value = localTodayInput();
   $("saveOnlineOrderBtn").textContent = "Add Order";
@@ -1497,6 +1498,7 @@ function renderOnlineOrderCard(order) {
         <span><small>Where Placed</small><b>${escapeHtml(order.placed_at || "")}</b></span>
         <span><small>CC Used</small><b>${escapeHtml(order.cc_used || "")}</b></span>
         <span><small>Phone Number</small><b>${escapeHtml(order.phone_number || "")}</b></span>
+        <span><small>Account PIN</small><b>${escapeHtml(order.account_pin || "")}</b></span>
         <span><small>Tracking / Received</small><b>${renderTrackingLink(order.tracking_info || order.received_info || "")}</b></span>
         <span><small>Profit</small><b class="${profit === null || profit >= 0 ? "profit-good" : "profit-bad"}">${profit === null ? "-" : money(profit)}</b></span>
       </div>
@@ -1563,6 +1565,7 @@ window.startOnlineOrderEdit = (id) => {
   $("onlineOrderCost").value = order.cost || "";
   $("onlineOrderPortCost").value = order.port_number_cost || "";
   $("onlineOrderPhoneNumber").value = order.phone_number || "";
+  $("onlineOrderAccountPin").value = order.account_pin || "";
   $("onlineOrderEmail").value = order.email || "";
   $("onlineOrderAddress").value = order.shipping_address || "";
   $("onlineOrderTracking").value = order.tracking_info || "";
