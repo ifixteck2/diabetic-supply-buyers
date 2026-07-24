@@ -263,44 +263,57 @@
           </div>
         </header>
 
-        <section class="panel online-order-entry-panel">
-          <div class="panel-head">
-            <div><h2>Add Order</h2><p>Enter the order details when you buy phones online.</p></div>
-          </div>
-          <div class="form-grid three">
-            <label>Provider<select id="onlineOrderProvider"><option>Boost Mobile</option><option>Metro PCS</option><option>Cricket</option><option>Other</option></select></label>
-            <label id="onlineOrderOtherProviderWrap" class="hidden">Other Provider<input id="onlineOrderOtherProvider" placeholder="Website or provider name"></label>
-            <label>Order #<input id="onlineOrderNumber" placeholder="Order number"></label>
-          </div>
-          <div class="form-grid three">
-            <label>Date<input id="onlineOrderDate" type="date"></label>
-            <label>CC Used<input id="onlineOrderCard" placeholder="Example: Amex 1001"></label>
-            <label>Cost<input id="onlineOrderCost" type="number" min="0" step="0.01"></label>
-          </div>
-          <div class="form-grid two">
-            <label>Email<input id="onlineOrderEmail" type="email" placeholder="Order email"></label>
-            <label>Shipping Address<textarea id="onlineOrderAddress" rows="3" placeholder="Shipping address"></textarea></label>
-          </div>
-          <label>Tracking / Receive Notes<textarea id="onlineOrderTracking" rows="3" placeholder="Tracking number, delivery note, or what arrived"></textarea></label>
-          <div class="actions"><button class="btn phone-btn" id="saveOnlineOrderBtn">Add Order</button></div>
-          <div id="onlineOrderStatus"></div>
+        <nav class="online-order-tabs" aria-label="Online order sections">
+          <button class="online-order-tab active" data-online-order-tab="pending">Orders Pending</button>
+          <button class="online-order-tab" data-online-order-tab="stock">In Stock</button>
+          <button class="online-order-tab" data-online-order-tab="completed">Completed</button>
+        </nav>
+
+        <section id="onlineOrdersPendingPanel" class="online-order-tab-panel">
+          <section class="panel online-order-entry-panel">
+            <div class="panel-head">
+              <div><h2>Add Order</h2><p>Enter the order details when you buy phones online.</p></div>
+            </div>
+            <div class="form-grid three">
+              <label>Provider<select id="onlineOrderProvider"><option>Boost Mobile</option><option>Metro PCS</option><option>Cricket</option><option>Other</option></select></label>
+              <label id="onlineOrderOtherProviderWrap" class="hidden">Other Provider<input id="onlineOrderOtherProvider" placeholder="Website or provider name"></label>
+              <label>Order #<input id="onlineOrderNumber" placeholder="Order number"></label>
+            </div>
+            <div class="form-grid three">
+              <label>Date<input id="onlineOrderDate" type="date"></label>
+              <label>CC Used<input id="onlineOrderCard" placeholder="Example: Amex 1001"></label>
+              <label>Cost<input id="onlineOrderCost" type="number" min="0" step="0.01"></label>
+            </div>
+            <div class="form-grid two">
+              <label>Email<input id="onlineOrderEmail" type="email" placeholder="Order email"></label>
+              <label>Shipping Address<textarea id="onlineOrderAddress" rows="3" placeholder="Shipping address"></textarea></label>
+            </div>
+            <label>Tracking / Receive Notes<textarea id="onlineOrderTracking" rows="3" placeholder="Tracking number, delivery note, or what arrived"></textarea></label>
+            <div class="actions"><button class="btn phone-btn" id="saveOnlineOrderBtn">Add Order</button></div>
+            <div id="onlineOrderStatus"></div>
+          </section>
+          <section class="panel online-order-stock-panel">
+            <div class="panel-head"><div><h2>Stats</h2><p>Quick view of ordered, received, and completed online order money.</p></div></div>
+            <div id="onlineOrderStats" class="stats online-order-stats"></div>
+          </section>
+          <section class="panel online-order-list-panel">
+            <div class="panel-head"><div><h2>Orders Pending</h2><p>Mark orders received when they arrive.</p></div></div>
+            <div id="onlineOrdersPlacedList" class="online-order-list"></div>
+          </section>
         </section>
 
-        <section class="panel online-order-stock-panel">
-          <div class="panel-head"><div><h2>Order Stats</h2><p>Quick view of ordered, received, and completed online order money.</p></div></div>
-          <div id="onlineOrderStats" class="stats online-order-stats"></div>
+        <section id="onlineOrdersStockPanel" class="online-order-tab-panel hidden">
+          <section class="panel online-order-list-panel">
+            <div class="panel-head"><div><h2>In Stock</h2><p>Received orders ready to sell locally or move to Apple gift cards.</p></div></div>
+            <div id="onlineOrdersStockList" class="online-order-list"></div>
+          </section>
         </section>
-        <section class="panel online-order-list-panel">
-          <div class="panel-head"><div><h2>Orders Placed</h2><p>Mark orders received when they arrive.</p></div></div>
-          <div id="onlineOrdersPlacedList" class="online-order-list"></div>
-        </section>
-        <section class="panel online-order-list-panel">
-          <div class="panel-head"><div><h2>In Stock</h2><p>Received orders ready to sell locally or move to Apple gift cards.</p></div></div>
-          <div id="onlineOrdersStockList" class="online-order-list"></div>
-        </section>
-        <section class="panel online-order-list-panel">
-          <div class="panel-head"><div><h2>Completed</h2><p>Orders already sold locally or moved to gift cards.</p></div></div>
-          <div id="onlineOrdersCompletedList" class="online-order-list"></div>
+
+        <section id="onlineOrdersCompletedPanel" class="online-order-tab-panel hidden">
+          <section class="panel online-order-list-panel">
+            <div class="panel-head"><div><h2>Completed</h2><p>Orders already sold locally or moved to gift cards.</p></div></div>
+            <div id="onlineOrdersCompletedList" class="online-order-list"></div>
+          </section>
         </section>
       </section>
     </section>

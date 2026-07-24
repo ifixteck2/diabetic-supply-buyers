@@ -43,6 +43,9 @@ function bindPhoneEvents() {
   $("onlineOrdersBackBtn").onclick = () => closeOnlineOrdersPage("dashboard");
   $("onlineOrdersRefreshBtn").onclick = loadPhoneOnlineOrders;
   $("onlineOrderProvider").addEventListener("change", toggleOnlineOrderProvider);
+  document.querySelectorAll("[data-online-order-tab]").forEach((button) => {
+    button.onclick = () => openOnlineOrderTab(button.dataset.onlineOrderTab);
+  });
   ["phoneBuyer", "deviceType", "phoneBrand", "conditionType", "packaging", "grade", "phoneModel", "phoneStorage", "phoneCarrier", "ktDeductCrackedBack", "atlasDeductCrackedBack", "atlasDeductCrackedLens", "atlasDeductBattery", "atlasDeductRepair", "atlasDeductFaceId"].forEach((id) => {
     $(id).addEventListener("change", handleFlowChange);
   });
@@ -145,6 +148,7 @@ function openOnlineOrdersPage() {
   document.querySelector(".admin-shell").classList.add("hidden");
   $("onlineOrdersPage").classList.remove("hidden");
   document.querySelectorAll("[data-phone-tab]").forEach((button) => button.classList.toggle("active", button.dataset.phoneTab === "onlineOrders"));
+  openOnlineOrderTab("pending");
   renderOnlineOrders();
 }
 
@@ -152,6 +156,17 @@ function closeOnlineOrdersPage(tabName = "dashboard") {
   $("onlineOrdersPage").classList.add("hidden");
   document.querySelector(".admin-shell").classList.remove("hidden");
   openPhoneTab(tabName);
+}
+
+function openOnlineOrderTab(name) {
+  const selected = ["pending", "stock", "completed"].includes(name) ? name : "pending";
+  document.querySelectorAll("[data-online-order-tab]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.onlineOrderTab === selected);
+  });
+  ["pending", "stock", "completed"].forEach((tabName) => {
+    const panel = $(`onlineOrders${tabName === "pending" ? "Pending" : tabName === "stock" ? "Stock" : "Completed"}Panel`);
+    if (panel) panel.classList.toggle("hidden", tabName !== selected);
+  });
 }
 
 function handlePriceCheckerChange(event) {
@@ -1314,6 +1329,7 @@ async function saveOnlineOrder() {
   toggleOnlineOrderProvider();
   status("onlineOrderStatus", "Online order added.");
   await loadPhoneOnlineOrders();
+  openOnlineOrderTab("pending");
 }
 
 function renderOnlineOrders() {
@@ -2808,6 +2824,7 @@ window.markOnlineOrderReceived = async (id) => {
   });
   if (!result?.ok) return alert(result?.error || "Could not mark this order received.");
   await loadPhoneOnlineOrders();
+  openOnlineOrderTab("stock");
   return true;
 };
 
@@ -2830,6 +2847,7 @@ window.sellOnlineOrderLocal = async (id) => {
   });
   if (!result?.ok) return alert(result?.error || "Could not mark this online order sold locally.");
   await loadPhoneOnlineOrders();
+  openOnlineOrderTab("completed");
   return true;
 };
 
@@ -2863,6 +2881,7 @@ window.moveOnlineOrderToGiftCard = async (id) => {
   if (!result?.ok) return alert(result?.error || "Could not move this online order to gift cards.");
   await loadPhoneOnlineOrders();
   await loadPhoneInvoices();
+  openOnlineOrderTab("completed");
   return true;
 };
 
