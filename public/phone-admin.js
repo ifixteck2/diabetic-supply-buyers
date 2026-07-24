@@ -2124,19 +2124,20 @@ function renderPastInvoiceCard(invoice) {
         <strong>Open</strong>
       </button>
       <div id="pastInvoiceDetail${invoice.id}" class="past-invoice-detail hidden">
-        ${renderPhoneInvoiceCard(invoice)}
+        ${renderPhoneInvoiceCard(invoice, { allowPastDelete: true })}
       </div>
     </article>
   `;
 }
 
-function renderPhoneInvoiceCard(invoice) {
+function renderPhoneInvoiceCard(invoice, options = {}) {
   const purchases = invoice.purchases || [];
   const { totalCost, units, salePrice } = invoiceTotals(invoice);
   const actualProfit = salePrice === null ? null : salePrice - totalCost;
   const canRemove = invoice.status === "Pending";
   const canReturn = salePrice === null;
   const isPending = invoice.status === "Pending";
+  const canDeleteMistake = Boolean(options.allowPastDelete) && invoice.status !== "Pending";
   let itemNumber = 1;
   const rows = purchases.map((row) => {
     const itemLabel = phoneInvoiceItemNumber(row, itemNumber);
@@ -2154,7 +2155,7 @@ function renderPhoneInvoiceCard(invoice) {
       <td>${escapeHtml(row.carrier || "")}</td>
       <td>${row.quantity}</td>
       <td>${money(row.cost_each)}</td>
-      <td><div class="phone-row-actions"><button class="mini-btn" onclick="startPhonePurchaseEdit(${row.id})">Edit</button>${canRemove ? `<button class="mini-btn" onclick="movePhonePurchaseToInvoice(${row.id})">Move</button>` : ""}${canRemove ? `<button class="mini-btn" onclick="movePhonePurchaseToGiftCard(${row.id})">Move to GC</button>` : ""}${canReturn ? `<button class="mini-btn warning" onclick="returnPhonePurchaseToKt(${row.id})">Return</button>` : ""}${canRemove ? `<button class="mini-btn danger" onclick="removePhonePurchaseFromInvoice(${row.id})">Locally Sold</button>` : ""}</div></td>
+      <td><div class="phone-row-actions"><button class="mini-btn" onclick="startPhonePurchaseEdit(${row.id})">Edit</button>${canRemove ? `<button class="mini-btn" onclick="movePhonePurchaseToInvoice(${row.id})">Move</button>` : ""}${canRemove ? `<button class="mini-btn" onclick="movePhonePurchaseToGiftCard(${row.id})">Move to GC</button>` : ""}${canReturn ? `<button class="mini-btn warning" onclick="returnPhonePurchaseToKt(${row.id})">Return</button>` : ""}${canRemove ? `<button class="mini-btn danger" onclick="removePhonePurchaseFromInvoice(${row.id})">Locally Sold</button>` : ""}${canDeleteMistake ? `<button class="mini-btn danger" onclick="deletePhonePurchaseFromPastInvoice(${row.id})">Delete</button>` : ""}</div></td>
     </tr>
   `;
   }).join("");
@@ -2180,7 +2181,7 @@ function renderPhoneInvoiceCard(invoice) {
       <td>${money(row.cost_each)}</td>
       <td>${money(lineCost)}</td>
       <td>${phoneAddedDate(row)}</td>
-      <td><div class="phone-row-actions"><button class="mini-btn" onclick="startPhonePurchaseEdit(${row.id})">Edit</button>${canRemove ? `<button class="mini-btn" onclick="movePhonePurchaseToInvoice(${row.id})">Move</button>` : ""}${canRemove ? `<button class="mini-btn" onclick="movePhonePurchaseToGiftCard(${row.id})">Move to GC</button>` : ""}${canReturn ? `<button class="mini-btn warning" onclick="returnPhonePurchaseToKt(${row.id})">Return</button>` : ""}${canRemove ? `<button class="mini-btn danger" onclick="removePhonePurchaseFromInvoice(${row.id})">Locally Sold</button>` : ""}</div></td>
+      <td><div class="phone-row-actions"><button class="mini-btn" onclick="startPhonePurchaseEdit(${row.id})">Edit</button>${canRemove ? `<button class="mini-btn" onclick="movePhonePurchaseToInvoice(${row.id})">Move</button>` : ""}${canRemove ? `<button class="mini-btn" onclick="movePhonePurchaseToGiftCard(${row.id})">Move to GC</button>` : ""}${canReturn ? `<button class="mini-btn warning" onclick="returnPhonePurchaseToKt(${row.id})">Return</button>` : ""}${canRemove ? `<button class="mini-btn danger" onclick="removePhonePurchaseFromInvoice(${row.id})">Locally Sold</button>` : ""}${canDeleteMistake ? `<button class="mini-btn danger" onclick="deletePhonePurchaseFromPastInvoice(${row.id})">Delete</button>` : ""}</div></td>
     </tr>
   `;
   }).join("");
@@ -2791,6 +2792,17 @@ window.removePhonePurchaseFromInvoice = async (id) => {
   }
   await loadPhoneInvoices();
   openPhoneTab("locallySold");
+  return true;
+};
+
+window.deletePhonePurchaseFromPastInvoice = async (id) => {
+  const purchase = phoneInvoices.flatMap((invoice) => invoice.purchases || []).find((row) => Number(row.id) === Number(id));
+  const label = purchase?.model || "this phone";
+  if (!confirm(`Delete ${label} from this past invoice? This is only for items added by mistake.`)) return false;
+  const result = await api(`/api/phone-purchases/${id}`, { method: "DELETE" });
+  if (!result?.ok) return alert(result?.error || "Could not delete this item.");
+  await loadPhoneInvoices();
+  openPhoneTab("pastInvoices");
   return true;
 };
 

@@ -647,6 +647,22 @@ app.patch("/api/phone-purchases/:id", requirePhoneAuth, async (req, res) => {
   }
 });
 
+app.delete("/api/phone-purchases/:id", requirePhoneAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!id) return res.status(400).json({ error: "Purchase ID is required." });
+  const result = await pool.query(
+    `delete from phone_purchases pp
+      using phone_invoices pi
+      where pp.invoice_id = pi.id
+        and pp.id = $1
+        and pi.status <> 'Pending'
+      returning pp.*`,
+    [id]
+  );
+  if (!result.rows[0]) return res.status(404).json({ error: "Past invoice item not found." });
+  res.json({ ok: true, purchase: result.rows[0] });
+});
+
 app.patch("/api/phone-purchases/:id/move-invoice", requirePhoneAuth, async (req, res) => {
   const id = Number(req.params.id);
   const invoiceId = Number(req.body?.invoice_id || 0);
