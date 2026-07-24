@@ -1368,9 +1368,83 @@ function renderOnlineOrders() {
     <div class="stat"><span>Money Back</span><strong>${money(completedValue)}</strong><em>Local sales + gift cards</em></div>
     <div class="stat"><span>Profit</span><strong class="${completedValue - completedCost >= 0 ? "profit-good" : "profit-bad"}">${money(completedValue - completedCost)}</strong><em>Completed only</em></div>
   `;
-  $("onlineOrdersPlacedList").innerHTML = ordered.map(renderOnlineOrderCard).join("") || `<div class="empty">No open online orders.</div>`;
+  $("onlineOrdersPlacedList").innerHTML = renderOnlineOrderProviderGroups(ordered);
   $("onlineOrdersStockList").innerHTML = stock.map(renderOnlineOrderCard).join("") || `<div class="empty">No received online orders in stock.</div>`;
   $("onlineOrdersCompletedList").innerHTML = completed.map(renderOnlineOrderCard).join("") || `<div class="empty">No completed online orders yet.</div>`;
+}
+
+function renderOnlineOrderProviderGroups(orders) {
+  if (!orders.length) return `<div class="empty">No open online orders.</div>`;
+  return groupOnlineOrdersByProvider(orders).map((group) => `
+    <details class="online-order-provider-group">
+      <summary>
+        <div class="online-order-provider-title">
+          <strong>${escapeHtml(group.provider)}</strong>
+          <span>${group.orders.length} order${group.orders.length === 1 ? "" : "s"}</span>
+        </div>
+        <div class="online-order-provider-metrics">
+          <span><small>Total Cost</small><b>${money(group.cost)}</b></span>
+          <span><small>Newest</small><b>${group.newest ? formatDate(group.newest) : "-"}</b></span>
+        </div>
+      </summary>
+      <div class="online-order-provider-orders">
+        ${group.orders.map(renderOnlineOrderCard).join("")}
+      </div>
+    </details>
+  `).join("");
+}
+
+function groupOnlineOrdersByProvider(orders) {
+  const groups = new Map();
+  orders.forEach((order) => {
+    const provider = onlineOrderProviderLabel(order.provider);
+    const group = groups.get(provider) || { provider, orders: [], cost: 0, newest: "" };
+    group.orders.push(order);
+    group.cost += onlineOrderTotalCost(order);
+    const orderDate = order.order_date || order.created_at || "";
+    if (isNewerOnlineOrderDate(orderDate, group.newest)) group.newest = orderDate;
+    groups.set(provider, group);
+  });
+  const priority = ["Boost Mobile", "Metro PCS", "Cricket"];
+  return Array.from(groups.values())
+    .map((group) => ({
+      ...group,
+      orders: group.orders.slice().sort(sortOnlineOrdersNewestFirst),
+    }))
+    .sort((a, b) => {
+      const aIndex = priority.indexOf(a.provider);
+      const bIndex = priority.indexOf(b.provider);
+      if (aIndex !== -1 || bIndex !== -1) return (aIndex === -1 ? 99 : aIndex) - (bIndex === -1 ? 99 : bIndex);
+      return a.provider.localeCompare(b.provider);
+    });
+}
+
+function onlineOrderProviderLabel(value) {
+  const text = String(value || "Other").trim();
+  if (/^boost/i.test(text)) return "Boost Mobile";
+  if (/^metro/i.test(text)) return "Metro PCS";
+  if (/^cricket/i.test(text)) return "Cricket";
+  return text || "Other";
+}
+
+function sortOnlineOrdersNewestFirst(a, b) {
+  const dateDiff = onlineOrderDateTime(b) - onlineOrderDateTime(a);
+  if (dateDiff) return dateDiff;
+  return Number(b.id || 0) - Number(a.id || 0);
+}
+
+function onlineOrderDateTime(order) {
+  const value = order?.order_date || order?.created_at || "";
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) ? time : 0;
+}
+
+function isNewerOnlineOrderDate(candidate, current) {
+  if (!candidate) return false;
+  if (!current) return true;
+  const candidateTime = new Date(candidate).getTime();
+  const currentTime = new Date(current).getTime();
+  return Number.isFinite(candidateTime) && (!Number.isFinite(currentTime) || candidateTime > currentTime);
 }
 
 function renderOnlineOrderCard(order) {
