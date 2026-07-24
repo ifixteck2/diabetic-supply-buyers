@@ -2137,7 +2137,7 @@ function renderPhoneInvoiceCard(invoice, options = {}) {
   const canRemove = invoice.status === "Pending";
   const canReturn = salePrice === null;
   const isPending = invoice.status === "Pending";
-  const canDeleteMistake = Boolean(options.allowPastDelete) && invoice.status !== "Pending";
+  const canDeleteMistake = true;
   let itemNumber = 1;
   const rows = purchases.map((row) => {
     const itemLabel = phoneInvoiceItemNumber(row, itemNumber);

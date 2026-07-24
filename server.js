@@ -655,11 +655,10 @@ app.delete("/api/phone-purchases/:id", requirePhoneAuth, async (req, res) => {
       using phone_invoices pi
       where pp.invoice_id = pi.id
         and pp.id = $1
-        and pi.status <> 'Pending'
       returning pp.*`,
     [id]
   );
-  if (!result.rows[0]) return res.status(404).json({ error: "Past invoice item not found." });
+  if (!result.rows[0]) return res.status(404).json({ error: "Invoice item not found." });
   res.json({ ok: true, purchase: result.rows[0] });
 });
 
