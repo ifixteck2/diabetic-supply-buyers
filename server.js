@@ -210,13 +210,15 @@ app.post("/api/phone-online-orders", requirePhoneAuth, async (req, res) => {
   const provider = String(input.provider || "").trim();
   const orderNumber = String(input.order_number || "").trim();
   const cost = Number(input.cost || 0);
+  const portNumberCost = Number(input.port_number_cost || 0);
   if (!provider) return res.status(400).json({ error: "Choose or enter the provider." });
   if (!orderNumber) return res.status(400).json({ error: "Enter the order number." });
   if (!Number.isFinite(cost) || cost < 0) return res.status(400).json({ error: "Enter a valid cost." });
+  if (!Number.isFinite(portNumberCost) || portNumberCost < 0) return res.status(400).json({ error: "Enter a valid port number cost." });
   const result = await pool.query(
     `insert into phone_online_orders
-       (provider, order_number, phone_model, order_date, placed_at, shipping_address, cc_used, cost, phone_number, email, tracking_info)
-     values ($1, $2, $3, coalesce($4::date, current_date), $5, $6, $7, $8::numeric, $9, $10, $11)
+       (provider, order_number, phone_model, order_date, placed_at, shipping_address, cc_used, cost, port_number_cost, phone_number, email, tracking_info)
+     values ($1, $2, $3, coalesce($4::date, current_date), $5, $6, $7, $8::numeric, $9::numeric, $10, $11, $12)
      returning *`,
     [
       provider,
@@ -227,6 +229,7 @@ app.post("/api/phone-online-orders", requirePhoneAuth, async (req, res) => {
       String(input.shipping_address || "").trim(),
       String(input.cc_used || "").trim(),
       cost,
+      portNumberCost,
       String(input.phone_number || "").trim(),
       String(input.email || "").trim(),
       String(input.tracking_info || "").trim(),
@@ -241,10 +244,12 @@ app.patch("/api/phone-online-orders/:id", requirePhoneAuth, async (req, res) => 
   const provider = String(input.provider || "").trim();
   const orderNumber = String(input.order_number || "").trim();
   const cost = Number(input.cost || 0);
+  const portNumberCost = Number(input.port_number_cost || 0);
   if (!id) return res.status(400).json({ error: "Order ID is required." });
   if (!provider) return res.status(400).json({ error: "Choose or enter the provider." });
   if (!orderNumber) return res.status(400).json({ error: "Enter the order number." });
   if (!Number.isFinite(cost) || cost < 0) return res.status(400).json({ error: "Enter a valid cost." });
+  if (!Number.isFinite(portNumberCost) || portNumberCost < 0) return res.status(400).json({ error: "Enter a valid port number cost." });
   const result = await pool.query(
     `update phone_online_orders
      set provider = $2,
@@ -255,9 +260,10 @@ app.patch("/api/phone-online-orders/:id", requirePhoneAuth, async (req, res) => 
        shipping_address = $7,
        cc_used = $8,
        cost = $9::numeric,
-       phone_number = $10,
-       email = $11,
-       tracking_info = $12,
+       port_number_cost = $10::numeric,
+       phone_number = $11,
+       email = $12,
+       tracking_info = $13,
        updated_at = now()
      where id = $1
        and status = 'Ordered'
@@ -272,6 +278,7 @@ app.patch("/api/phone-online-orders/:id", requirePhoneAuth, async (req, res) => 
       String(input.shipping_address || "").trim(),
       String(input.cc_used || "").trim(),
       cost,
+      portNumberCost,
       String(input.phone_number || "").trim(),
       String(input.email || "").trim(),
       String(input.tracking_info || "").trim(),
@@ -361,7 +368,7 @@ app.patch("/api/phone-online-orders/:id/gift-card", requirePhoneAuth, async (req
         invoice.id,
         giftCardAt,
         model,
-        Number(order.cost || 0),
+        onlineOrderTotalCost(order),
         giftCardValue,
         giftCardNotes || "Apple trade-in gift card",
         giftCardLocation,
@@ -1877,6 +1884,7 @@ async function migrate() {
       shipping_address text not null default '',
       cc_used text not null default '',
       cost numeric(12,2) not null default 0,
+      port_number_cost numeric(12,2) not null default 0,
       phone_number text not null default '',
       email text not null default '',
       tracking_info text not null default '',
@@ -1978,6 +1986,7 @@ async function migrate() {
     alter table phone_online_orders add column if not exists shipping_address text not null default '';
     alter table phone_online_orders add column if not exists cc_used text not null default '';
     alter table phone_online_orders add column if not exists cost numeric(12,2) not null default 0;
+    alter table phone_online_orders add column if not exists port_number_cost numeric(12,2) not null default 0;
     alter table phone_online_orders add column if not exists phone_number text not null default '';
     alter table phone_online_orders add column if not exists email text not null default '';
     alter table phone_online_orders add column if not exists tracking_info text not null default '';
@@ -3578,6 +3587,10 @@ function phoneInvoiceLinesWithPrices(purchases, priceOverrides) {
 
 function moneyText(value) {
   return Number(value || 0).toLocaleString("en-US", { style: "currency", currency: "USD" });
+}
+
+function onlineOrderTotalCost(order) {
+  return Number(order?.cost || 0) + Number(order?.port_number_cost || 0);
 }
 
 function formatBusinessDate(value) {

@@ -1326,6 +1326,7 @@ async function saveOnlineOrder() {
       shipping_address: $("onlineOrderAddress").value.trim(),
       cc_used: $("onlineOrderCard").value.trim(),
       cost: Number($("onlineOrderCost").value || 0),
+      port_number_cost: Number($("onlineOrderPortCost").value || 0),
       phone_number: $("onlineOrderPhoneNumber").value.trim(),
       email: $("onlineOrderEmail").value.trim(),
       tracking_info: $("onlineOrderTracking").value.trim(),
@@ -1340,7 +1341,7 @@ async function saveOnlineOrder() {
 
 function resetOnlineOrderForm(message = "") {
   editingOnlineOrderId = null;
-  ["onlineOrderOtherProvider", "onlineOrderNumber", "onlineOrderModel", "onlineOrderPlacedAt", "onlineOrderAddress", "onlineOrderCard", "onlineOrderCost", "onlineOrderPhoneNumber", "onlineOrderEmail", "onlineOrderTracking"].forEach((id) => { $(id).value = ""; });
+  ["onlineOrderOtherProvider", "onlineOrderNumber", "onlineOrderModel", "onlineOrderPlacedAt", "onlineOrderAddress", "onlineOrderCard", "onlineOrderCost", "onlineOrderPortCost", "onlineOrderPhoneNumber", "onlineOrderEmail", "onlineOrderTracking"].forEach((id) => { $(id).value = ""; });
   $("onlineOrderProvider").value = "Boost Mobile";
   $("onlineOrderDate").value = localTodayInput();
   $("saveOnlineOrderBtn").textContent = "Add Order";
@@ -1354,9 +1355,9 @@ function renderOnlineOrders() {
   const ordered = phoneOnlineOrders.filter((order) => order.status === "Ordered");
   const stock = phoneOnlineOrders.filter((order) => order.status === "Received");
   const completed = phoneOnlineOrders.filter((order) => order.status === "Sold Local" || order.status === "Gift Card");
-  const orderedCost = ordered.reduce((sum, order) => sum + Number(order.cost || 0), 0);
-  const stockCost = stock.reduce((sum, order) => sum + Number(order.cost || 0), 0);
-  const completedCost = completed.reduce((sum, order) => sum + Number(order.cost || 0), 0);
+  const orderedCost = ordered.reduce((sum, order) => sum + onlineOrderTotalCost(order), 0);
+  const stockCost = stock.reduce((sum, order) => sum + onlineOrderTotalCost(order), 0);
+  const completedCost = completed.reduce((sum, order) => sum + onlineOrderTotalCost(order), 0);
   const localSales = completed.reduce((sum, order) => sum + Number(order.local_sale_price || 0), 0);
   const giftCards = completed.reduce((sum, order) => sum + Number(order.gift_card_value || 0), 0);
   const completedValue = localSales + giftCards;
@@ -1374,7 +1375,8 @@ function renderOnlineOrders() {
 
 function renderOnlineOrderCard(order) {
   const value = order.status === "Sold Local" ? Number(order.local_sale_price || 0) : order.status === "Gift Card" ? Number(order.gift_card_value || 0) : null;
-  const profit = value === null ? null : value - Number(order.cost || 0);
+  const totalCost = onlineOrderTotalCost(order);
+  const profit = value === null ? null : value - totalCost;
   return `
     <article class="online-order-card ${escapeAttr(order.status || "Ordered").toLowerCase().replace(/\s+/g, "-")}">
       <div class="online-order-main">
@@ -1386,7 +1388,8 @@ function renderOnlineOrderCard(order) {
         <span class="pill ${onlineOrderStatusClass(order.status)}">${escapeHtml(order.status || "Ordered")}</span>
       </div>
       <div class="online-order-grid">
-        <span><small>Cost</small><b>${money(order.cost)}</b></span>
+        <span><small>Total Cost</small><b>${money(totalCost)}</b></span>
+        <span><small>Port Cost</small><b>${money(order.port_number_cost)}</b></span>
         <span><small>Where Placed</small><b>${escapeHtml(order.placed_at || "")}</b></span>
         <span><small>CC Used</small><b>${escapeHtml(order.cc_used || "")}</b></span>
         <span><small>Phone Number</small><b>${escapeHtml(order.phone_number || "")}</b></span>
@@ -1408,6 +1411,10 @@ function onlineOrderStatusClass(statusText) {
   if (statusText === "Received") return "shipped";
   if (statusText === "Sold Local" || statusText === "Gift Card") return "sold";
   return "pending";
+}
+
+function onlineOrderTotalCost(order) {
+  return Number(order?.cost || 0) + Number(order?.port_number_cost || 0);
 }
 
 function renderTrackingLink(value) {
@@ -1450,6 +1457,7 @@ window.startOnlineOrderEdit = (id) => {
   $("onlineOrderPlacedAt").value = order.placed_at || "";
   $("onlineOrderCard").value = order.cc_used || "";
   $("onlineOrderCost").value = order.cost || "";
+  $("onlineOrderPortCost").value = order.port_number_cost || "";
   $("onlineOrderPhoneNumber").value = order.phone_number || "";
   $("onlineOrderEmail").value = order.email || "";
   $("onlineOrderAddress").value = order.shipping_address || "";
