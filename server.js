@@ -215,8 +215,8 @@ app.post("/api/phone-online-orders", requirePhoneAuth, async (req, res) => {
   if (!Number.isFinite(cost) || cost < 0) return res.status(400).json({ error: "Enter a valid cost." });
   const result = await pool.query(
     `insert into phone_online_orders
-       (provider, order_number, order_date, placed_at, shipping_address, cc_used, cost, email, tracking_info)
-     values ($1, $2, coalesce($3::date, current_date), $4, $5, $6, $7::numeric, $8, $9)
+       (provider, order_number, order_date, placed_at, shipping_address, cc_used, cost, phone_number, email, tracking_info)
+     values ($1, $2, coalesce($3::date, current_date), $4, $5, $6, $7::numeric, $8, $9, $10)
      returning *`,
     [
       provider,
@@ -226,6 +226,7 @@ app.post("/api/phone-online-orders", requirePhoneAuth, async (req, res) => {
       String(input.shipping_address || "").trim(),
       String(input.cc_used || "").trim(),
       cost,
+      String(input.phone_number || "").trim(),
       String(input.email || "").trim(),
       String(input.tracking_info || "").trim(),
     ]
@@ -1828,6 +1829,7 @@ async function migrate() {
       shipping_address text not null default '',
       cc_used text not null default '',
       cost numeric(12,2) not null default 0,
+      phone_number text not null default '',
       email text not null default '',
       tracking_info text not null default '',
       received_info text not null default '',
@@ -1927,6 +1929,7 @@ async function migrate() {
     alter table phone_online_orders add column if not exists shipping_address text not null default '';
     alter table phone_online_orders add column if not exists cc_used text not null default '';
     alter table phone_online_orders add column if not exists cost numeric(12,2) not null default 0;
+    alter table phone_online_orders add column if not exists phone_number text not null default '';
     alter table phone_online_orders add column if not exists email text not null default '';
     alter table phone_online_orders add column if not exists tracking_info text not null default '';
     alter table phone_online_orders add column if not exists received_info text not null default '';

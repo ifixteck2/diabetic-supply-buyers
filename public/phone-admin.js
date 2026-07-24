@@ -1323,12 +1323,13 @@ async function saveOnlineOrder() {
       shipping_address: $("onlineOrderAddress").value.trim(),
       cc_used: $("onlineOrderCard").value.trim(),
       cost: Number($("onlineOrderCost").value || 0),
+      phone_number: $("onlineOrderPhoneNumber").value.trim(),
       email: $("onlineOrderEmail").value.trim(),
       tracking_info: $("onlineOrderTracking").value.trim(),
     },
   });
   if (!result?.ok) return status("onlineOrderStatus", result?.error || "Could not save online order.", "bad");
-  ["onlineOrderOtherProvider", "onlineOrderNumber", "onlineOrderPlacedAt", "onlineOrderAddress", "onlineOrderCard", "onlineOrderCost", "onlineOrderEmail", "onlineOrderTracking"].forEach((id) => { $(id).value = ""; });
+  ["onlineOrderOtherProvider", "onlineOrderNumber", "onlineOrderPlacedAt", "onlineOrderAddress", "onlineOrderCard", "onlineOrderCost", "onlineOrderPhoneNumber", "onlineOrderEmail", "onlineOrderTracking"].forEach((id) => { $(id).value = ""; });
   $("onlineOrderProvider").value = "Boost Mobile";
   $("onlineOrderDate").value = localTodayInput();
   toggleOnlineOrderProvider();
@@ -1377,7 +1378,8 @@ function renderOnlineOrderCard(order) {
         <span><small>Cost</small><b>${money(order.cost)}</b></span>
         <span><small>Where Placed</small><b>${escapeHtml(order.placed_at || "")}</b></span>
         <span><small>CC Used</small><b>${escapeHtml(order.cc_used || "")}</b></span>
-        <span><small>Tracking / Received</small><b>${escapeHtml(order.tracking_info || order.received_info || "")}</b></span>
+        <span><small>Phone Number</small><b>${escapeHtml(order.phone_number || "")}</b></span>
+        <span><small>Tracking / Received</small><b>${renderTrackingLink(order.tracking_info || order.received_info || "")}</b></span>
         <span><small>Profit</small><b class="${profit === null || profit >= 0 ? "profit-good" : "profit-bad"}">${profit === null ? "-" : money(profit)}</b></span>
       </div>
       <div class="online-order-address">${escapeHtml(order.shipping_address || "No shipping address saved")}</div>
@@ -1395,6 +1397,27 @@ function onlineOrderStatusClass(statusText) {
   if (statusText === "Received") return "shipped";
   if (statusText === "Sold Local" || statusText === "Gift Card") return "sold";
   return "pending";
+}
+
+function renderTrackingLink(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const trackingNumber = trackingNumberFromText(raw);
+  const url = trackingUrlForNumber(trackingNumber || raw);
+  return `<a class="tracking-link" href="${escapeAttr(url)}" target="_blank" rel="noopener">${escapeHtml(raw)}</a>`;
+}
+
+function trackingNumberFromText(value) {
+  const match = String(value || "").match(/\b(1Z[0-9A-Z]{16}|9[0-9]{21,33}|[0-9]{12,22}|[0-9]{20,34})\b/i);
+  return match ? match[1].toUpperCase() : "";
+}
+
+function trackingUrlForNumber(value) {
+  const clean = String(value || "").trim().replace(/\s+/g, "");
+  if (/^1Z[0-9A-Z]{16}$/i.test(clean)) return `https://www.ups.com/track?tracknum=${encodeURIComponent(clean)}`;
+  if (/^\d{12}$/.test(clean) || /^\d{15}$/.test(clean) || /^\d{20,22}$/.test(clean)) return `https://www.fedex.com/fedextrack/?trknbr=${encodeURIComponent(clean)}`;
+  if (/^9\d{21,33}$/.test(clean) || /^\d{20,34}$/.test(clean)) return `https://tools.usps.com/go/TrackConfirmAction?tLabels=${encodeURIComponent(clean)}`;
+  return `https://www.google.com/search?q=${encodeURIComponent(`${value} tracking`)}`;
 }
 
 function renderInvoiceGroup(id, buyer, view) {
