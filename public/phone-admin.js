@@ -1418,7 +1418,7 @@ function renderOnlineOrders() {
   `;
   $("onlineOrderModelSummary").innerHTML = renderOnlineOrderModelSummary(ordered, transit);
   $("onlineOrdersPlacedList").innerHTML = renderOnlineOrderProviderGroups(ordered);
-  $("onlineOrdersTransitList").innerHTML = transit.map(renderOnlineOrderCard).join("") || `<div class="empty">No shipped online orders in transit.</div>`;
+  $("onlineOrdersTransitList").innerHTML = renderOnlineOrderProviderGroups(transit, "No shipped online orders in transit.");
   $("onlineOrdersStockList").innerHTML = stock.map(renderOnlineOrderCard).join("") || `<div class="empty">No received online orders in stock.</div>`;
   $("onlineOrdersCompletedList").innerHTML = completed.map(renderOnlineOrderCard).join("") || `<div class="empty">No completed online orders yet.</div>`;
 }
@@ -1472,8 +1472,8 @@ function onlineOrderModelKey(value) {
   return "other";
 }
 
-function renderOnlineOrderProviderGroups(orders) {
-  if (!orders.length) return `<div class="empty">No open online orders.</div>`;
+function renderOnlineOrderProviderGroups(orders, emptyMessage = "No open online orders.") {
+  if (!orders.length) return `<div class="empty">${escapeHtml(emptyMessage)}</div>`;
   return groupOnlineOrdersByProvider(orders).map((group) => `
     <details class="online-order-provider-group">
       <summary>
