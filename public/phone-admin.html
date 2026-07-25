@@ -278,6 +278,7 @@
           <button class="online-order-tab active" data-online-order-tab="pending">Orders Pending</button>
           <button class="online-order-tab" data-online-order-tab="transit">In Transit</button>
           <button class="online-order-tab" data-online-order-tab="stock">In Stock</button>
+          <button class="online-order-tab" data-online-order-tab="addresses">Addresses</button>
           <button class="online-order-tab" data-online-order-tab="completed">Completed</button>
         </nav>
 
@@ -362,6 +363,13 @@
           <section class="panel online-order-list-panel">
             <div class="panel-head"><div><h2>In Stock</h2><p>Received orders ready to sell locally or move to Apple gift cards.</p></div></div>
             <div id="onlineOrdersStockList" class="online-order-list"></div>
+          </section>
+        </section>
+
+        <section id="onlineOrdersAddressesPanel" class="online-order-tab-panel hidden">
+          <section class="panel online-order-list-panel">
+            <div class="panel-head"><div><h2>Addresses</h2><p>Track every shipping address, how often it was used, and open orders at each address.</p></div></div>
+            <div id="onlineOrdersAddressList" class="online-order-address-list"></div>
           </section>
         </section>
 

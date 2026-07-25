@@ -162,7 +162,7 @@ function closeOnlineOrdersPage(tabName = "dashboard") {
 }
 
 function openOnlineOrderTab(name) {
-  const panelNames = { pending: "Pending", transit: "Transit", stock: "Stock", completed: "Completed" };
+  const panelNames = { pending: "Pending", transit: "Transit", stock: "Stock", addresses: "Addresses", completed: "Completed" };
   const selected = panelNames[name] ? name : "pending";
   document.querySelectorAll("[data-online-order-tab]").forEach((button) => {
     button.classList.toggle("active", button.dataset.onlineOrderTab === selected);
@@ -1420,7 +1420,89 @@ function renderOnlineOrders() {
   $("onlineOrdersPlacedList").innerHTML = renderOnlineOrderProviderGroups(ordered);
   $("onlineOrdersTransitList").innerHTML = renderOnlineOrderProviderGroups(transit, "No shipped online orders in transit.");
   $("onlineOrdersStockList").innerHTML = stock.map(renderOnlineOrderCard).join("") || `<div class="empty">No received online orders in stock.</div>`;
+  $("onlineOrdersAddressList").innerHTML = renderOnlineOrderAddressList(phoneOnlineOrders);
   $("onlineOrdersCompletedList").innerHTML = completed.map(renderOnlineOrderCard).join("") || `<div class="empty">No completed online orders yet.</div>`;
+}
+
+function renderOnlineOrderAddressList(orders) {
+  const groups = groupOnlineOrdersByAddress(orders);
+  if (!groups.length) return `<div class="empty">No shipping addresses saved yet.</div>`;
+  return groups.map((group) => `
+    <details class="online-order-address-group">
+      <summary>
+        <div class="online-order-address-title">
+          <strong>${escapeHtml(group.address)}</strong>
+          <span>${group.total} total use${group.total === 1 ? "" : "s"}</span>
+        </div>
+        <div class="online-order-address-metrics">
+          <span><small>Pending</small><b>${group.pending}</b></span>
+          <span><small>In Transit</small><b>${group.transit}</b></span>
+          <span><small>In Stock</small><b>${group.stock}</b></span>
+          <span><small>Completed</small><b>${group.completed}</b></span>
+        </div>
+      </summary>
+      <div class="online-order-address-orders">
+        ${renderOnlineOrderAddressStatusBlock("Pending Orders", group.orders.filter((order) => order.status === "Ordered"))}
+        ${renderOnlineOrderAddressStatusBlock("In Transit", group.orders.filter((order) => order.status === "Shipped"))}
+        ${renderOnlineOrderAddressStatusBlock("Other Orders", group.orders.filter((order) => !["Ordered", "Shipped"].includes(order.status)))}
+      </div>
+    </details>
+  `).join("");
+}
+
+function renderOnlineOrderAddressStatusBlock(title, orders) {
+  if (!orders.length) return "";
+  return `
+    <div class="online-order-address-status-block">
+      <h4>${escapeHtml(title)} <span>${orders.length}</span></h4>
+      <div class="online-order-address-mini-list">
+        ${orders.map(renderOnlineOrderAddressMiniRow).join("")}
+      </div>
+    </div>
+  `;
+}
+
+function renderOnlineOrderAddressMiniRow(order) {
+  const customerName = onlineOrderCustomerName(order);
+  return `
+    <div class="online-order-address-row">
+      <div>
+        <strong>${escapeHtml(order.phone_model || "No model saved")}</strong>
+        <span>${escapeHtml([order.provider, order.order_number || `Order #${order.id}`, customerName].filter(Boolean).join(" - "))}</span>
+      </div>
+      <div>
+        <b>${escapeHtml(order.status || "Ordered")}</b>
+        <em>${formatDateTime(order.order_placed_at || order.created_at)}</em>
+      </div>
+    </div>
+  `;
+}
+
+function groupOnlineOrdersByAddress(orders) {
+  const groups = new Map();
+  orders.forEach((order) => {
+    const key = normalizeOnlineOrderAddress(order.shipping_address);
+    if (!key) return;
+    const group = groups.get(key) || { address: formatOnlineOrderAddress(order.shipping_address), orders: [], total: 0, pending: 0, transit: 0, stock: 0, completed: 0 };
+    group.orders.push(order);
+    group.total += 1;
+    if (order.status === "Ordered") group.pending += 1;
+    else if (order.status === "Shipped") group.transit += 1;
+    else if (order.status === "Received") group.stock += 1;
+    else group.completed += 1;
+    groups.set(key, group);
+  });
+  return Array.from(groups.values())
+    .map((group) => ({ ...group, orders: group.orders.slice().sort(sortOnlineOrdersNewestFirst) }))
+    .sort((a, b) => (b.pending + b.transit) - (a.pending + a.transit) || b.total - a.total || a.address.localeCompare(b.address));
+}
+
+function normalizeOnlineOrderAddress(value) {
+  return String(value || "").toLowerCase().replace(/\s+/g, " ").replace(/[.,]+/g, "").trim();
+}
+
+function formatOnlineOrderAddress(value) {
+  return String(value || "").replace(/\s+/g, " ").trim();
 }
 
 function renderOnlineOrderModelSummary(ordered, transit) {
