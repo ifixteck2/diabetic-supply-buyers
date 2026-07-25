@@ -1416,10 +1416,60 @@ function renderOnlineOrders() {
     <div class="stat"><span>Money Back</span><strong>${money(completedValue)}</strong><em>Local sales + gift cards</em></div>
     <div class="stat"><span>Profit</span><strong class="${completedValue - completedCost >= 0 ? "profit-good" : "profit-bad"}">${money(completedValue - completedCost)}</strong><em>Completed only</em></div>
   `;
+  $("onlineOrderModelSummary").innerHTML = renderOnlineOrderModelSummary(ordered, transit);
   $("onlineOrdersPlacedList").innerHTML = renderOnlineOrderProviderGroups(ordered);
   $("onlineOrdersTransitList").innerHTML = transit.map(renderOnlineOrderCard).join("") || `<div class="empty">No shipped online orders in transit.</div>`;
   $("onlineOrdersStockList").innerHTML = stock.map(renderOnlineOrderCard).join("") || `<div class="empty">No received online orders in stock.</div>`;
   $("onlineOrdersCompletedList").innerHTML = completed.map(renderOnlineOrderCard).join("") || `<div class="empty">No completed online orders yet.</div>`;
+}
+
+function renderOnlineOrderModelSummary(ordered, transit) {
+  const rows = [
+    { label: "iPhone 16e", key: "iphone16e" },
+    { label: "Samsung A37", key: "samsunga37" },
+  ].map((model) => {
+    const pendingCount = countOnlineOrdersByModel(ordered, model.key);
+    const transitCount = countOnlineOrdersByModel(transit, model.key);
+    return { ...model, pendingCount, transitCount, total: pendingCount + transitCount };
+  });
+  const totalPending = rows.reduce((sum, row) => sum + row.pendingCount, 0);
+  const totalTransit = rows.reduce((sum, row) => sum + row.transitCount, 0);
+  return `
+    <div class="online-order-model-head">
+      <div>
+        <h3>Phones Ordered By Model</h3>
+        <p>Pending and in-transit phones for the two models you are ordering.</p>
+      </div>
+      <strong>${totalPending + totalTransit} total</strong>
+    </div>
+    <div class="online-order-model-grid">
+      ${rows.map((row) => `
+        <div class="online-order-model-card">
+          <h4>${escapeHtml(row.label)}</h4>
+          <span><small>Pending</small><b>${row.pendingCount}</b></span>
+          <span><small>In Transit</small><b>${row.transitCount}</b></span>
+          <span><small>Total</small><b>${row.total}</b></span>
+        </div>
+      `).join("")}
+      <div class="online-order-model-card total">
+        <h4>All Two Models</h4>
+        <span><small>Pending</small><b>${totalPending}</b></span>
+        <span><small>In Transit</small><b>${totalTransit}</b></span>
+        <span><small>Total</small><b>${totalPending + totalTransit}</b></span>
+      </div>
+    </div>
+  `;
+}
+
+function countOnlineOrdersByModel(orders, modelKey) {
+  return orders.filter((order) => onlineOrderModelKey(order.phone_model) === modelKey).length;
+}
+
+function onlineOrderModelKey(value) {
+  const text = String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+  if (text.includes("iphone16e") || text.includes("16e")) return "iphone16e";
+  if (text.includes("samsunga37") || text.includes("galaxya37") || text.includes("a37")) return "samsunga37";
+  return "other";
 }
 
 function renderOnlineOrderProviderGroups(orders) {
