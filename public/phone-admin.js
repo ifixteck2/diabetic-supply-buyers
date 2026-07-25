@@ -1500,13 +1500,14 @@ function renderOnlineOrderCard(order) {
   const value = order.status === "Sold Local" ? Number(order.local_sale_price || 0) : order.status === "Gift Card" ? Number(order.gift_card_value || 0) : null;
   const totalCost = onlineOrderTotalCost(order);
   const profit = value === null ? null : value - totalCost;
+  const customerName = onlineOrderCustomerName(order);
   return `
     <article class="online-order-card ${escapeAttr(order.status || "Ordered").toLowerCase().replace(/\s+/g, "-")}">
       <div class="online-order-main">
         <div>
           <span class="online-provider">${escapeHtml(order.provider || "Online Order")}</span>
-          <h3>${escapeHtml(order.order_number || `Order #${order.id}`)}</h3>
-          <p>${escapeHtml(order.phone_model || "No model saved")} - ${order.order_date ? formatDate(order.order_date) : ""} - ${escapeHtml(order.email || "No email saved")}</p>
+          <h3>${escapeHtml(order.phone_model || "No model saved")}</h3>
+          <p>${escapeHtml([order.order_number || `Order #${order.id}`, order.order_date ? formatDate(order.order_date) : "", customerName, order.email || ""].filter(Boolean).join(" - "))}</p>
         </div>
         <span class="pill ${onlineOrderStatusClass(order.status)}">${escapeHtml(order.status || "Ordered")}</span>
       </div>
@@ -1515,7 +1516,7 @@ function renderOnlineOrderCard(order) {
         <span><small>Port Cost</small><b>${money(order.port_number_cost)}</b></span>
         <span><small>Where Placed</small><b>${escapeHtml(order.placed_at || "")}</b></span>
         <span><small>Order Placed</small><b>${formatDateTime(order.order_placed_at || order.created_at)}</b></span>
-        <span><small>Name</small><b>${escapeHtml(onlineOrderCustomerName(order))}</b></span>
+        <span><small>Name</small><b>${escapeHtml(customerName)}</b></span>
         <span><small>CC Used</small><b>${escapeHtml(order.cc_used || "")}</b></span>
         <span><small>Phone Number</small><b>${escapeHtml(order.phone_number || "")}</b></span>
         <span><small>Call Phone #</small><b>${escapeHtml(order.call_phone_number || "")}</b></span>
