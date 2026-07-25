@@ -282,6 +282,10 @@
         </nav>
 
         <section id="onlineOrdersPendingPanel" class="online-order-tab-panel">
+          <section class="panel online-order-list-panel">
+            <div class="panel-head"><div><h2>Orders Pending</h2><p>Mark orders shipped when tracking starts moving.</p></div></div>
+            <div id="onlineOrdersPlacedList" class="online-order-list"></div>
+          </section>
           <section class="panel online-order-entry-panel">
             <div class="panel-head">
               <div><h2>Add Order</h2><p>Enter the order details when you buy phones online.</p></div>
@@ -329,7 +333,7 @@
                   <label>CC Used<input id="onlineOrderCard" placeholder="Example: Amex 1001"></label>
                 </div>
               </div>
-              <div class="online-order-form-section">
+              <div class="online-order-form-section online-order-form-section-wide">
                 <h3>Delivery</h3>
                 <div class="form-grid two">
                   <label>Shipping Address<textarea id="onlineOrderAddress" rows="3" placeholder="Shipping address"></textarea></label>
@@ -343,10 +347,6 @@
           <section class="panel online-order-stock-panel">
             <div class="panel-head"><div><h2>Stats</h2><p>Quick view of ordered, received, and completed online order money.</p></div></div>
             <div id="onlineOrderStats" class="stats online-order-stats"></div>
-          </section>
-          <section class="panel online-order-list-panel">
-            <div class="panel-head"><div><h2>Orders Pending</h2><p>Mark orders shipped when tracking starts moving.</p></div></div>
-            <div id="onlineOrdersPlacedList" class="online-order-list"></div>
           </section>
         </section>
 
