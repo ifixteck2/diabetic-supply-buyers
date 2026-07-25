@@ -1408,13 +1408,19 @@ function renderOnlineOrders() {
   const localSales = completed.reduce((sum, order) => sum + Number(order.local_sale_price || 0), 0);
   const giftCards = completed.reduce((sum, order) => sum + Number(order.gift_card_value || 0), 0);
   const completedValue = localSales + giftCards;
+  const openOrders = [...ordered, ...transit, ...stock];
+  const pendingProfit = openOrders.reduce((sum, order) => {
+    const expectedSale = onlineOrderExpectedSalePrice(order);
+    return expectedSale === null ? sum : sum + expectedSale - onlineOrderTotalCost(order);
+  }, 0);
+  const completedProfit = completedValue - completedCost;
   $("onlineOrderStats").innerHTML = `
     <div class="stat"><span>Ordered</span><strong>${ordered.length}</strong><em>${money(orderedCost)} pending</em></div>
     <div class="stat"><span>In Transit</span><strong>${transit.length}</strong><em>${money(transitCost)} shipped</em></div>
     <div class="stat"><span>In Stock</span><strong>${stock.length}</strong><em>${money(stockCost)} cost</em></div>
+    <div class="stat"><span>Pending Profits</span><strong class="${pendingProfit >= 0 ? "profit-good" : "profit-bad"}">${money(pendingProfit)}</strong><em>Expected: 16e $310 / A37 $200</em></div>
     <div class="stat"><span>Completed</span><strong>${completed.length}</strong><em>${money(completedCost)} cost</em></div>
-    <div class="stat"><span>Money Back</span><strong>${money(completedValue)}</strong><em>Local sales + gift cards</em></div>
-    <div class="stat"><span>Profit</span><strong class="${completedValue - completedCost >= 0 ? "profit-good" : "profit-bad"}">${money(completedValue - completedCost)}</strong><em>Completed only</em></div>
+    <div class="stat"><span>Completed Profits</span><strong class="${completedProfit >= 0 ? "profit-good" : "profit-bad"}">${money(completedProfit)}</strong><em>${money(completedValue)} money back</em></div>
   `;
   $("onlineOrderModelSummary").innerHTML = renderOnlineOrderModelSummary(ordered, transit);
   $("onlineOrdersPlacedList").innerHTML = renderOnlineOrderProviderGroups(ordered);
@@ -1510,19 +1516,26 @@ function renderOnlineOrderModelSummary(ordered, transit) {
     { label: "iPhone 16e", key: "iphone16e" },
     { label: "Samsung A37", key: "samsunga37" },
   ].map((model) => {
-    const pendingCount = countOnlineOrdersByModel(ordered, model.key);
-    const transitCount = countOnlineOrdersByModel(transit, model.key);
-    return { ...model, pendingCount, transitCount, total: pendingCount + transitCount };
+    const pendingOrders = onlineOrdersByModel(ordered, model.key);
+    const transitOrders = onlineOrdersByModel(transit, model.key);
+    const pendingCount = pendingOrders.length;
+    const transitCount = transitOrders.length;
+    const pendingProfit = [...pendingOrders, ...transitOrders].reduce((sum, order) => {
+      const expectedSale = onlineOrderExpectedSalePrice(order);
+      return expectedSale === null ? sum : sum + expectedSale - onlineOrderTotalCost(order);
+    }, 0);
+    return { ...model, pendingCount, transitCount, total: pendingCount + transitCount, pendingProfit };
   });
   const totalPending = rows.reduce((sum, row) => sum + row.pendingCount, 0);
   const totalTransit = rows.reduce((sum, row) => sum + row.transitCount, 0);
+  const totalPendingProfit = rows.reduce((sum, row) => sum + row.pendingProfit, 0);
   return `
     <div class="online-order-model-head">
       <div>
         <h3>Phones Ordered By Model</h3>
         <p>Pending and in-transit phones for the two models you are ordering.</p>
       </div>
-      <strong>${totalPending + totalTransit} total</strong>
+      <strong>${totalPending + totalTransit} total / ${money(totalPendingProfit)} pending profit</strong>
     </div>
     <div class="online-order-model-grid">
       ${rows.map((row) => `
@@ -1530,21 +1543,25 @@ function renderOnlineOrderModelSummary(ordered, transit) {
           <h4>${escapeHtml(row.label)}</h4>
           <span><small>Pending</small><b>${row.pendingCount}</b></span>
           <span><small>In Transit</small><b>${row.transitCount}</b></span>
-          <span><small>Total</small><b>${row.total}</b></span>
+          <span><small>Pending Profit</small><b class="${row.pendingProfit >= 0 ? "profit-good" : "profit-bad"}">${money(row.pendingProfit)}</b></span>
         </div>
       `).join("")}
       <div class="online-order-model-card total">
         <h4>All Two Models</h4>
         <span><small>Pending</small><b>${totalPending}</b></span>
         <span><small>In Transit</small><b>${totalTransit}</b></span>
-        <span><small>Total</small><b>${totalPending + totalTransit}</b></span>
+        <span><small>Pending Profit</small><b class="${totalPendingProfit >= 0 ? "profit-good" : "profit-bad"}">${money(totalPendingProfit)}</b></span>
       </div>
     </div>
   `;
 }
 
 function countOnlineOrdersByModel(orders, modelKey) {
-  return orders.filter((order) => onlineOrderModelKey(order.phone_model) === modelKey).length;
+  return onlineOrdersByModel(orders, modelKey).length;
+}
+
+function onlineOrdersByModel(orders, modelKey) {
+  return orders.filter((order) => onlineOrderModelKey(order.phone_model) === modelKey);
 }
 
 function onlineOrderModelKey(value) {
@@ -1629,9 +1646,11 @@ function isNewerOnlineOrderDate(candidate, current) {
 }
 
 function renderOnlineOrderCard(order) {
-  const value = order.status === "Sold Local" ? Number(order.local_sale_price || 0) : order.status === "Gift Card" ? Number(order.gift_card_value || 0) : null;
+  const completedOrder = order.status === "Sold Local" || order.status === "Gift Card";
+  const value = order.status === "Sold Local" ? Number(order.local_sale_price || 0) : order.status === "Gift Card" ? Number(order.gift_card_value || 0) : onlineOrderExpectedSalePrice(order);
   const totalCost = onlineOrderTotalCost(order);
   const profit = value === null ? null : value - totalCost;
+  const profitLabel = completedOrder ? "Completed Profit" : "Pending Profit";
   const customerName = onlineOrderCustomerName(order);
   return `
     <article class="online-order-card ${escapeAttr(order.status || "Ordered").toLowerCase().replace(/\s+/g, "-")}">
@@ -1654,7 +1673,8 @@ function renderOnlineOrderCard(order) {
         <span><small>Call Phone #</small><b>${escapeHtml(order.call_phone_number || "")}</b></span>
         <span><small>Account PIN</small><b>${escapeHtml(order.account_pin || "")}</b></span>
         <span><small>Tracking / Received</small><b>${renderTrackingLink(order.tracking_info || order.received_info || "")}</b></span>
-        <span><small>Profit</small><b class="${profit === null || profit >= 0 ? "profit-good" : "profit-bad"}">${profit === null ? "-" : money(profit)}</b></span>
+        <span><small>Expected Sale</small><b>${value === null ? "-" : money(value)}</b></span>
+        <span><small>${profitLabel}</small><b class="${profit === null || profit >= 0 ? "profit-good" : "profit-bad"}">${profit === null ? "-" : money(profit)}</b></span>
       </div>
       <div class="online-order-address">${escapeHtml(order.shipping_address || "No shipping address saved")}</div>
       ${order.status === "Gift Card" ? `<div class="online-order-result">Gift Card: ${money(order.gift_card_value)}${order.gift_card_location ? ` - ${escapeHtml(order.gift_card_location)}` : ""}</div>` : ""}
@@ -1680,6 +1700,13 @@ function onlineOrderCustomerName(order) {
 
 function onlineOrderTotalCost(order) {
   return Number(order?.cost || 0) + Number(order?.port_number_cost || 0);
+}
+
+function onlineOrderExpectedSalePrice(order) {
+  const key = onlineOrderModelKey(order?.phone_model);
+  if (key === "iphone16e") return 310;
+  if (key === "samsunga37") return 200;
+  return null;
 }
 
 function renderTrackingLink(value) {
