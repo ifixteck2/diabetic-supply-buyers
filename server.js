@@ -196,8 +196,8 @@ app.get("/api/phone-online-orders", requirePhoneAuth, async (req, res) => {
   const result = await pool.query(
     `select * from phone_online_orders
      order by
-       case status when 'Ordered' then 1 when 'Received' then 2 else 3 end,
-       coalesce(received_at, local_sold_at, gift_card_at, created_at) desc,
+       case status when 'Ordered' then 1 when 'Shipped' then 2 when 'Received' then 3 else 4 end,
+       coalesce(received_at, shipped_at, local_sold_at, gift_card_at, created_at) desc,
        order_date desc,
        id desc
      limit 1000`
@@ -291,6 +291,25 @@ app.patch("/api/phone-online-orders/:id", requirePhoneAuth, async (req, res) => 
   res.json({ ok: true, order: result.rows[0] });
 });
 
+app.patch("/api/phone-online-orders/:id/shipped", requirePhoneAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!id) return res.status(400).json({ error: "Order ID is required." });
+  const trackingInfo = String(req.body?.tracking_info || "").trim();
+  const result = await pool.query(
+    `update phone_online_orders
+     set status = 'Shipped',
+       tracking_info = coalesce(nullif($2,''), tracking_info),
+       shipped_at = coalesce(shipped_at, now()),
+       updated_at = now()
+     where id = $1
+       and status = 'Ordered'
+     returning *`,
+    [id, trackingInfo]
+  );
+  if (!result.rows[0]) return res.status(404).json({ error: "Pending online order not found." });
+  res.json({ ok: true, order: result.rows[0] });
+});
+
 app.patch("/api/phone-online-orders/:id/received", requirePhoneAuth, async (req, res) => {
   const id = Number(req.params.id);
   if (!id) return res.status(400).json({ error: "Order ID is required." });
@@ -304,7 +323,7 @@ app.patch("/api/phone-online-orders/:id/received", requirePhoneAuth, async (req,
        received_at = coalesce(received_at, now()),
        updated_at = now()
      where id = $1
-       and status = 'Ordered'
+       and status in ('Ordered', 'Shipped')
      returning *`,
     [id, trackingInfo, receivedInfo]
   );
@@ -1894,6 +1913,7 @@ async function migrate() {
       tracking_info text not null default '',
       received_info text not null default '',
       status text not null default 'Ordered',
+      shipped_at timestamptz,
       received_at timestamptz,
       local_sale_price numeric(12,2),
       local_sold_at timestamptz,
@@ -1997,6 +2017,7 @@ async function migrate() {
     alter table phone_online_orders add column if not exists tracking_info text not null default '';
     alter table phone_online_orders add column if not exists received_info text not null default '';
     alter table phone_online_orders add column if not exists status text not null default 'Ordered';
+    alter table phone_online_orders add column if not exists shipped_at timestamptz;
     alter table phone_online_orders add column if not exists received_at timestamptz;
     alter table phone_online_orders add column if not exists local_sale_price numeric(12,2);
     alter table phone_online_orders add column if not exists local_sold_at timestamptz;

@@ -276,6 +276,7 @@
 
         <nav class="online-order-tabs" aria-label="Online order sections">
           <button class="online-order-tab active" data-online-order-tab="pending">Orders Pending</button>
+          <button class="online-order-tab" data-online-order-tab="transit">In Transit</button>
           <button class="online-order-tab" data-online-order-tab="stock">In Stock</button>
           <button class="online-order-tab" data-online-order-tab="completed">Completed</button>
         </nav>
@@ -324,8 +325,15 @@
             <div id="onlineOrderStats" class="stats online-order-stats"></div>
           </section>
           <section class="panel online-order-list-panel">
-            <div class="panel-head"><div><h2>Orders Pending</h2><p>Mark orders received when they arrive.</p></div></div>
+            <div class="panel-head"><div><h2>Orders Pending</h2><p>Mark orders shipped when tracking starts moving.</p></div></div>
             <div id="onlineOrdersPlacedList" class="online-order-list"></div>
+          </section>
+        </section>
+
+        <section id="onlineOrdersTransitPanel" class="online-order-tab-panel hidden">
+          <section class="panel online-order-list-panel">
+            <div class="panel-head"><div><h2>In Transit</h2><p>Shipped orders waiting to arrive.</p></div></div>
+            <div id="onlineOrdersTransitList" class="online-order-list"></div>
           </section>
         </section>
 

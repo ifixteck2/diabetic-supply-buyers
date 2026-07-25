@@ -161,12 +161,13 @@ function closeOnlineOrdersPage(tabName = "dashboard") {
 }
 
 function openOnlineOrderTab(name) {
-  const selected = ["pending", "stock", "completed"].includes(name) ? name : "pending";
+  const panelNames = { pending: "Pending", transit: "Transit", stock: "Stock", completed: "Completed" };
+  const selected = panelNames[name] ? name : "pending";
   document.querySelectorAll("[data-online-order-tab]").forEach((button) => {
     button.classList.toggle("active", button.dataset.onlineOrderTab === selected);
   });
-  ["pending", "stock", "completed"].forEach((tabName) => {
-    const panel = $(`onlineOrders${tabName === "pending" ? "Pending" : tabName === "stock" ? "Stock" : "Completed"}Panel`);
+  Object.entries(panelNames).forEach(([tabName, panelName]) => {
+    const panel = $(`onlineOrders${panelName}Panel`);
     if (panel) panel.classList.toggle("hidden", tabName !== selected);
   });
 }
@@ -1384,9 +1385,11 @@ function resetOnlineOrderForm(message = "") {
 function renderOnlineOrders() {
   if (!$("onlineOrderStats")) return;
   const ordered = phoneOnlineOrders.filter((order) => order.status === "Ordered");
+  const transit = phoneOnlineOrders.filter((order) => order.status === "Shipped");
   const stock = phoneOnlineOrders.filter((order) => order.status === "Received");
   const completed = phoneOnlineOrders.filter((order) => order.status === "Sold Local" || order.status === "Gift Card");
   const orderedCost = ordered.reduce((sum, order) => sum + onlineOrderTotalCost(order), 0);
+  const transitCost = transit.reduce((sum, order) => sum + onlineOrderTotalCost(order), 0);
   const stockCost = stock.reduce((sum, order) => sum + onlineOrderTotalCost(order), 0);
   const completedCost = completed.reduce((sum, order) => sum + onlineOrderTotalCost(order), 0);
   const localSales = completed.reduce((sum, order) => sum + Number(order.local_sale_price || 0), 0);
@@ -1394,12 +1397,14 @@ function renderOnlineOrders() {
   const completedValue = localSales + giftCards;
   $("onlineOrderStats").innerHTML = `
     <div class="stat"><span>Ordered</span><strong>${ordered.length}</strong><em>${money(orderedCost)} pending</em></div>
+    <div class="stat"><span>In Transit</span><strong>${transit.length}</strong><em>${money(transitCost)} shipped</em></div>
     <div class="stat"><span>In Stock</span><strong>${stock.length}</strong><em>${money(stockCost)} cost</em></div>
     <div class="stat"><span>Completed</span><strong>${completed.length}</strong><em>${money(completedCost)} cost</em></div>
     <div class="stat"><span>Money Back</span><strong>${money(completedValue)}</strong><em>Local sales + gift cards</em></div>
     <div class="stat"><span>Profit</span><strong class="${completedValue - completedCost >= 0 ? "profit-good" : "profit-bad"}">${money(completedValue - completedCost)}</strong><em>Completed only</em></div>
   `;
   $("onlineOrdersPlacedList").innerHTML = renderOnlineOrderProviderGroups(ordered);
+  $("onlineOrdersTransitList").innerHTML = transit.map(renderOnlineOrderCard).join("") || `<div class="empty">No shipped online orders in transit.</div>`;
   $("onlineOrdersStockList").innerHTML = stock.map(renderOnlineOrderCard).join("") || `<div class="empty">No received online orders in stock.</div>`;
   $("onlineOrdersCompletedList").innerHTML = completed.map(renderOnlineOrderCard).join("") || `<div class="empty">No completed online orders yet.</div>`;
 }
@@ -1506,7 +1511,8 @@ function renderOnlineOrderCard(order) {
       ${order.status === "Gift Card" ? `<div class="online-order-result">Gift Card: ${money(order.gift_card_value)}${order.gift_card_location ? ` - ${escapeHtml(order.gift_card_location)}` : ""}</div>` : ""}
       ${order.status === "Sold Local" ? `<div class="online-order-result">Sold Local: ${money(order.local_sale_price)}${order.local_sale_notes ? ` - ${escapeHtml(order.local_sale_notes)}` : ""}</div>` : ""}
       <div class="phone-row-actions online-order-actions">
-        ${order.status === "Ordered" ? `<button class="mini-btn" onclick="startOnlineOrderEdit(${order.id})">Edit</button><button class="mini-btn" onclick="markOnlineOrderReceived(${order.id})">Received</button>` : ""}
+        ${order.status === "Ordered" ? `<button class="mini-btn" onclick="startOnlineOrderEdit(${order.id})">Edit</button><button class="mini-btn" onclick="markOnlineOrderShipped(${order.id})">Shipped</button>` : ""}
+        ${order.status === "Shipped" ? `<button class="mini-btn" onclick="markOnlineOrderReceived(${order.id})">Received</button>` : ""}
         ${order.status === "Received" ? `<button class="mini-btn danger" onclick="sellOnlineOrderLocal(${order.id})">Sell Local</button><button class="mini-btn" onclick="moveOnlineOrderToGiftCard(${order.id})">Move to Gift Cards</button>` : ""}
       </div>
     </article>
@@ -1514,7 +1520,7 @@ function renderOnlineOrderCard(order) {
 }
 
 function onlineOrderStatusClass(statusText) {
-  if (statusText === "Received") return "shipped";
+  if (statusText === "Shipped" || statusText === "Received") return "shipped";
   if (statusText === "Sold Local" || statusText === "Gift Card") return "sold";
   return "pending";
 }
@@ -3025,6 +3031,22 @@ window.markOnlineOrderReceived = async (id) => {
   if (!result?.ok) return alert(result?.error || "Could not mark this order received.");
   await loadPhoneOnlineOrders();
   openOnlineOrderTab("stock");
+  return true;
+};
+
+window.markOnlineOrderShipped = async (id) => {
+  const existing = phoneOnlineOrders.find((order) => Number(order.id) === Number(id));
+  const trackingInput = prompt("Tracking number or shipped note", existing?.tracking_info || "");
+  if (trackingInput === null) return false;
+  const result = await api(`/api/phone-online-orders/${id}/shipped`, {
+    method: "PATCH",
+    body: {
+      tracking_info: trackingInput.trim(),
+    },
+  });
+  if (!result?.ok) return alert(result?.error || "Could not mark this order shipped.");
+  await loadPhoneOnlineOrders();
+  openOnlineOrderTab("transit");
   return true;
 };
 
