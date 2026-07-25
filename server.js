@@ -217,20 +217,22 @@ app.post("/api/phone-online-orders", requirePhoneAuth, async (req, res) => {
   if (!Number.isFinite(portNumberCost) || portNumberCost < 0) return res.status(400).json({ error: "Enter a valid port number cost." });
   const result = await pool.query(
     `insert into phone_online_orders
-       (provider, order_number, phone_model, order_date, placed_at, shipping_address, cc_used, cost, port_number_cost, phone_number, account_pin, email, tracking_info)
-     values ($1, $2, $3, coalesce($4::date, current_date), $5, $6, $7, $8::numeric, $9::numeric, $10, $11, $12, $13)
+       (provider, order_number, phone_model, order_date, order_placed_at, placed_at, shipping_address, cc_used, cost, port_number_cost, phone_number, call_phone_number, account_pin, email, tracking_info)
+     values ($1, $2, $3, coalesce($4::date, current_date), coalesce($5::timestamptz, now()), $6, $7, $8, $9::numeric, $10::numeric, $11, $12, $13, $14, $15)
      returning *`,
     [
       provider,
       orderNumber,
       String(input.phone_model || "").trim(),
       String(input.order_date || "").trim() || null,
+      String(input.order_placed_at || "").trim() || null,
       String(input.placed_at || "").trim(),
       String(input.shipping_address || "").trim(),
       String(input.cc_used || "").trim(),
       cost,
       portNumberCost,
       String(input.phone_number || "").trim(),
+      String(input.call_phone_number || "").trim(),
       String(input.account_pin || "").trim(),
       String(input.email || "").trim(),
       String(input.tracking_info || "").trim(),
@@ -257,15 +259,17 @@ app.patch("/api/phone-online-orders/:id", requirePhoneAuth, async (req, res) => 
        order_number = $3,
        phone_model = $4,
        order_date = coalesce($5::date, order_date),
-       placed_at = $6,
-       shipping_address = $7,
-       cc_used = $8,
-       cost = $9::numeric,
-       port_number_cost = $10::numeric,
-       phone_number = $11,
-       account_pin = $12,
-       email = $13,
-       tracking_info = $14,
+       order_placed_at = coalesce($6::timestamptz, order_placed_at),
+       placed_at = $7,
+       shipping_address = $8,
+       cc_used = $9,
+       cost = $10::numeric,
+       port_number_cost = $11::numeric,
+       phone_number = $12,
+       call_phone_number = $13,
+       account_pin = $14,
+       email = $15,
+       tracking_info = $16,
        updated_at = now()
      where id = $1
        and status = 'Ordered'
@@ -276,12 +280,14 @@ app.patch("/api/phone-online-orders/:id", requirePhoneAuth, async (req, res) => 
       orderNumber,
       String(input.phone_model || "").trim(),
       String(input.order_date || "").trim() || null,
+      String(input.order_placed_at || "").trim() || null,
       String(input.placed_at || "").trim(),
       String(input.shipping_address || "").trim(),
       String(input.cc_used || "").trim(),
       cost,
       portNumberCost,
       String(input.phone_number || "").trim(),
+      String(input.call_phone_number || "").trim(),
       String(input.account_pin || "").trim(),
       String(input.email || "").trim(),
       String(input.tracking_info || "").trim(),
@@ -1902,12 +1908,14 @@ async function migrate() {
       order_number text not null default '',
       phone_model text not null default '',
       order_date date not null default current_date,
+      order_placed_at timestamptz not null default now(),
       placed_at text not null default '',
       shipping_address text not null default '',
       cc_used text not null default '',
       cost numeric(12,2) not null default 0,
       port_number_cost numeric(12,2) not null default 0,
       phone_number text not null default '',
+      call_phone_number text not null default '',
       account_pin text not null default '',
       email text not null default '',
       tracking_info text not null default '',
@@ -2006,12 +2014,14 @@ async function migrate() {
     alter table phone_online_orders add column if not exists order_number text not null default '';
     alter table phone_online_orders add column if not exists phone_model text not null default '';
     alter table phone_online_orders add column if not exists order_date date not null default current_date;
+    alter table phone_online_orders add column if not exists order_placed_at timestamptz not null default now();
     alter table phone_online_orders add column if not exists placed_at text not null default '';
     alter table phone_online_orders add column if not exists shipping_address text not null default '';
     alter table phone_online_orders add column if not exists cc_used text not null default '';
     alter table phone_online_orders add column if not exists cost numeric(12,2) not null default 0;
     alter table phone_online_orders add column if not exists port_number_cost numeric(12,2) not null default 0;
     alter table phone_online_orders add column if not exists phone_number text not null default '';
+    alter table phone_online_orders add column if not exists call_phone_number text not null default '';
     alter table phone_online_orders add column if not exists account_pin text not null default '';
     alter table phone_online_orders add column if not exists email text not null default '';
     alter table phone_online_orders add column if not exists tracking_info text not null default '';

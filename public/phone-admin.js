@@ -42,6 +42,7 @@ function bindPhoneEvents() {
   $("closeGiftCardBatchBtn").onclick = closeCurrentGiftCardBatch;
   $("saveOnlineOrderBtn").onclick = saveOnlineOrder;
   $("cancelOnlineOrderEditBtn").onclick = () => resetOnlineOrderForm();
+  $("onlineOrderPlacedNowBtn").onclick = stampOnlineOrderPlacedNow;
   $("onlineOrdersBackBtn").onclick = () => closeOnlineOrdersPage("dashboard");
   $("onlineOrdersRefreshBtn").onclick = loadPhoneOnlineOrders;
   $("onlineOrderProvider").addEventListener("change", toggleOnlineOrderProvider);
@@ -1346,6 +1347,7 @@ function toggleOnlineOrderProvider() {
 
 async function saveOnlineOrder() {
   const provider = $("onlineOrderProvider").value === "Other" ? $("onlineOrderOtherProvider").value.trim() : $("onlineOrderProvider").value;
+  if (!editingOnlineOrderId && !$("onlineOrderPlacedTimestamp").value) stampOnlineOrderPlacedNow(false);
   const result = await api(editingOnlineOrderId ? `/api/phone-online-orders/${editingOnlineOrderId}` : "/api/phone-online-orders", {
     method: editingOnlineOrderId ? "PATCH" : "POST",
     body: {
@@ -1359,9 +1361,11 @@ async function saveOnlineOrder() {
       cost: Number($("onlineOrderCost").value || 0),
       port_number_cost: Number($("onlineOrderPortCost").value || 0),
       phone_number: $("onlineOrderPhoneNumber").value.trim(),
+      call_phone_number: $("onlineOrderCallPhoneNumber").value.trim(),
       account_pin: $("onlineOrderAccountPin").value.trim(),
       email: $("onlineOrderEmail").value.trim(),
       tracking_info: $("onlineOrderTracking").value.trim(),
+      order_placed_at: $("onlineOrderPlacedTimestamp").value,
     },
   });
   if (!result?.ok) return status("onlineOrderStatus", result?.error || "Could not save online order.", "bad");
@@ -1373,13 +1377,20 @@ async function saveOnlineOrder() {
 
 function resetOnlineOrderForm(message = "") {
   editingOnlineOrderId = null;
-  ["onlineOrderOtherProvider", "onlineOrderNumber", "onlineOrderModel", "onlineOrderPlacedAt", "onlineOrderAddress", "onlineOrderCard", "onlineOrderCost", "onlineOrderPortCost", "onlineOrderPhoneNumber", "onlineOrderAccountPin", "onlineOrderEmail", "onlineOrderTracking"].forEach((id) => { $(id).value = ""; });
+  ["onlineOrderOtherProvider", "onlineOrderNumber", "onlineOrderModel", "onlineOrderPlacedAt", "onlineOrderAddress", "onlineOrderCard", "onlineOrderCost", "onlineOrderPortCost", "onlineOrderPhoneNumber", "onlineOrderCallPhoneNumber", "onlineOrderAccountPin", "onlineOrderEmail", "onlineOrderTracking", "onlineOrderPlacedTimestamp"].forEach((id) => { $(id).value = ""; });
   $("onlineOrderProvider").value = "Boost Mobile";
   $("onlineOrderDate").value = localTodayInput();
   $("saveOnlineOrderBtn").textContent = "Add Order";
   $("cancelOnlineOrderEditBtn").classList.add("hidden");
   toggleOnlineOrderProvider();
   status("onlineOrderStatus", message);
+}
+
+function stampOnlineOrderPlacedNow(showMessage = true) {
+  const now = new Date();
+  $("onlineOrderDate").value = localDateKey(now);
+  $("onlineOrderPlacedTimestamp").value = now.toISOString();
+  if (showMessage) status("onlineOrderStatus", `Order placed time stamped: ${formatDateTime(now)}.`);
 }
 
 function renderOnlineOrders() {
@@ -1501,8 +1512,10 @@ function renderOnlineOrderCard(order) {
         <span><small>Total Cost</small><b>${money(totalCost)}</b></span>
         <span><small>Port Cost</small><b>${money(order.port_number_cost)}</b></span>
         <span><small>Where Placed</small><b>${escapeHtml(order.placed_at || "")}</b></span>
+        <span><small>Order Placed</small><b>${formatDateTime(order.order_placed_at || order.created_at)}</b></span>
         <span><small>CC Used</small><b>${escapeHtml(order.cc_used || "")}</b></span>
         <span><small>Phone Number</small><b>${escapeHtml(order.phone_number || "")}</b></span>
+        <span><small>Call Phone #</small><b>${escapeHtml(order.call_phone_number || "")}</b></span>
         <span><small>Account PIN</small><b>${escapeHtml(order.account_pin || "")}</b></span>
         <span><small>Tracking / Received</small><b>${renderTrackingLink(order.tracking_info || order.received_info || "")}</b></span>
         <span><small>Profit</small><b class="${profit === null || profit >= 0 ? "profit-good" : "profit-bad"}">${profit === null ? "-" : money(profit)}</b></span>
@@ -1571,10 +1584,12 @@ window.startOnlineOrderEdit = (id) => {
   $("onlineOrderCost").value = order.cost || "";
   $("onlineOrderPortCost").value = order.port_number_cost || "";
   $("onlineOrderPhoneNumber").value = order.phone_number || "";
+  $("onlineOrderCallPhoneNumber").value = order.call_phone_number || "";
   $("onlineOrderAccountPin").value = order.account_pin || "";
   $("onlineOrderEmail").value = order.email || "";
   $("onlineOrderAddress").value = order.shipping_address || "";
   $("onlineOrderTracking").value = order.tracking_info || "";
+  $("onlineOrderPlacedTimestamp").value = order.order_placed_at ? new Date(order.order_placed_at).toISOString() : "";
   $("saveOnlineOrderBtn").textContent = "Save Changes";
   $("cancelOnlineOrderEditBtn").classList.remove("hidden");
   status("onlineOrderStatus", `Editing order ${escapeHtml(order.order_number || `#${order.id}`)}.`);
@@ -2110,6 +2125,13 @@ function formatDate(date) {
   const match = String(date || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (match) return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3])).toLocaleDateString();
   return new Date(date).toLocaleDateString();
+}
+
+function formatDateTime(value) {
+  if (!value) return "";
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString([], { month: "numeric", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
 function localTodayInput() {

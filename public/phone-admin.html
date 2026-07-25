@@ -295,11 +295,12 @@
               <label>Phone Model<input id="onlineOrderModel" placeholder="Example: iPhone 16 Pro Max 256GB"></label>
             </div>
             <div class="form-grid three">
-              <label>Date<input id="onlineOrderDate" type="date"></label>
+              <label>Date<div class="inline-input-action"><input id="onlineOrderDate" type="date"><button type="button" class="mini-btn" id="onlineOrderPlacedNowBtn">Order Placed</button></div><input id="onlineOrderPlacedTimestamp" type="hidden"></label>
               <label>Where Placed<input id="onlineOrderPlacedAt" list="onlineOrderPlacedAtOptions" placeholder="Website, app, store, promo page"></label>
               <datalist id="onlineOrderPlacedAtOptions">
                 <option value="Website"></option>
                 <option value="App"></option>
+                <option value="Phone"></option>
                 <option value="Store"></option>
                 <option value="Customer Service"></option>
                 <option value="Promo Page"></option>
@@ -310,6 +311,7 @@
               <label>Cost<input id="onlineOrderCost" type="number" min="0" step="0.01"></label>
               <label>Port Number Cost<input id="onlineOrderPortCost" type="number" min="0" step="0.01"></label>
               <label>Phone Number<input id="onlineOrderPhoneNumber" placeholder="Phone number on order"></label>
+              <label>Call Phone #<input id="onlineOrderCallPhoneNumber" placeholder="Number called to place order"></label>
               <label>Account PIN<input id="onlineOrderAccountPin" placeholder="Account PIN"></label>
               <label>Email<input id="onlineOrderEmail" type="email" placeholder="Order email"></label>
             </div>
