@@ -1354,6 +1354,8 @@ async function saveOnlineOrder() {
       provider,
       order_number: $("onlineOrderNumber").value.trim(),
       phone_model: $("onlineOrderModel").value.trim(),
+      first_name: $("onlineOrderFirstName").value.trim(),
+      last_name: $("onlineOrderLastName").value.trim(),
       order_date: $("onlineOrderDate").value,
       placed_at: $("onlineOrderPlacedAt").value.trim(),
       shipping_address: $("onlineOrderAddress").value.trim(),
@@ -1377,7 +1379,7 @@ async function saveOnlineOrder() {
 
 function resetOnlineOrderForm(message = "") {
   editingOnlineOrderId = null;
-  ["onlineOrderOtherProvider", "onlineOrderNumber", "onlineOrderModel", "onlineOrderPlacedAt", "onlineOrderAddress", "onlineOrderCard", "onlineOrderCost", "onlineOrderPortCost", "onlineOrderPhoneNumber", "onlineOrderCallPhoneNumber", "onlineOrderAccountPin", "onlineOrderEmail", "onlineOrderTracking", "onlineOrderPlacedTimestamp"].forEach((id) => { $(id).value = ""; });
+  ["onlineOrderOtherProvider", "onlineOrderNumber", "onlineOrderModel", "onlineOrderFirstName", "onlineOrderLastName", "onlineOrderPlacedAt", "onlineOrderAddress", "onlineOrderCard", "onlineOrderCost", "onlineOrderPortCost", "onlineOrderPhoneNumber", "onlineOrderCallPhoneNumber", "onlineOrderAccountPin", "onlineOrderEmail", "onlineOrderTracking", "onlineOrderPlacedTimestamp"].forEach((id) => { $(id).value = ""; });
   $("onlineOrderProvider").value = "Boost Mobile";
   $("onlineOrderDate").value = localTodayInput();
   $("saveOnlineOrderBtn").textContent = "Add Order";
@@ -1513,6 +1515,7 @@ function renderOnlineOrderCard(order) {
         <span><small>Port Cost</small><b>${money(order.port_number_cost)}</b></span>
         <span><small>Where Placed</small><b>${escapeHtml(order.placed_at || "")}</b></span>
         <span><small>Order Placed</small><b>${formatDateTime(order.order_placed_at || order.created_at)}</b></span>
+        <span><small>Name</small><b>${escapeHtml(onlineOrderCustomerName(order))}</b></span>
         <span><small>CC Used</small><b>${escapeHtml(order.cc_used || "")}</b></span>
         <span><small>Phone Number</small><b>${escapeHtml(order.phone_number || "")}</b></span>
         <span><small>Call Phone #</small><b>${escapeHtml(order.call_phone_number || "")}</b></span>
@@ -1536,6 +1539,10 @@ function onlineOrderStatusClass(statusText) {
   if (statusText === "Shipped" || statusText === "Received") return "shipped";
   if (statusText === "Sold Local" || statusText === "Gift Card") return "sold";
   return "pending";
+}
+
+function onlineOrderCustomerName(order) {
+  return [order.first_name, order.last_name].map((part) => String(part || "").trim()).filter(Boolean).join(" ");
 }
 
 function onlineOrderTotalCost(order) {
@@ -1578,6 +1585,8 @@ window.startOnlineOrderEdit = (id) => {
   toggleOnlineOrderProvider();
   $("onlineOrderNumber").value = order.order_number || "";
   $("onlineOrderModel").value = order.phone_model || "";
+  $("onlineOrderFirstName").value = order.first_name || "";
+  $("onlineOrderLastName").value = order.last_name || "";
   $("onlineOrderDate").value = String(order.order_date || "").slice(0, 10) || localTodayInput();
   $("onlineOrderPlacedAt").value = order.placed_at || "";
   $("onlineOrderCard").value = order.cc_used || "";

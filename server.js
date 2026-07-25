@@ -217,13 +217,15 @@ app.post("/api/phone-online-orders", requirePhoneAuth, async (req, res) => {
   if (!Number.isFinite(portNumberCost) || portNumberCost < 0) return res.status(400).json({ error: "Enter a valid port number cost." });
   const result = await pool.query(
     `insert into phone_online_orders
-       (provider, order_number, phone_model, order_date, order_placed_at, placed_at, shipping_address, cc_used, cost, port_number_cost, phone_number, call_phone_number, account_pin, email, tracking_info)
-     values ($1, $2, $3, coalesce($4::date, current_date), coalesce($5::timestamptz, now()), $6, $7, $8, $9::numeric, $10::numeric, $11, $12, $13, $14, $15)
+       (provider, order_number, phone_model, first_name, last_name, order_date, order_placed_at, placed_at, shipping_address, cc_used, cost, port_number_cost, phone_number, call_phone_number, account_pin, email, tracking_info)
+     values ($1, $2, $3, $4, $5, coalesce($6::date, current_date), coalesce($7::timestamptz, now()), $8, $9, $10, $11::numeric, $12::numeric, $13, $14, $15, $16, $17)
      returning *`,
     [
       provider,
       orderNumber,
       String(input.phone_model || "").trim(),
+      String(input.first_name || "").trim(),
+      String(input.last_name || "").trim(),
       String(input.order_date || "").trim() || null,
       String(input.order_placed_at || "").trim() || null,
       String(input.placed_at || "").trim(),
@@ -258,18 +260,20 @@ app.patch("/api/phone-online-orders/:id", requirePhoneAuth, async (req, res) => 
      set provider = $2,
        order_number = $3,
        phone_model = $4,
-       order_date = coalesce($5::date, order_date),
-       order_placed_at = coalesce($6::timestamptz, order_placed_at),
-       placed_at = $7,
-       shipping_address = $8,
-       cc_used = $9,
-       cost = $10::numeric,
-       port_number_cost = $11::numeric,
-       phone_number = $12,
-       call_phone_number = $13,
-       account_pin = $14,
-       email = $15,
-       tracking_info = $16,
+       first_name = $5,
+       last_name = $6,
+       order_date = coalesce($7::date, order_date),
+       order_placed_at = coalesce($8::timestamptz, order_placed_at),
+       placed_at = $9,
+       shipping_address = $10,
+       cc_used = $11,
+       cost = $12::numeric,
+       port_number_cost = $13::numeric,
+       phone_number = $14,
+       call_phone_number = $15,
+       account_pin = $16,
+       email = $17,
+       tracking_info = $18,
        updated_at = now()
      where id = $1
        and status = 'Ordered'
@@ -279,6 +283,8 @@ app.patch("/api/phone-online-orders/:id", requirePhoneAuth, async (req, res) => 
       provider,
       orderNumber,
       String(input.phone_model || "").trim(),
+      String(input.first_name || "").trim(),
+      String(input.last_name || "").trim(),
       String(input.order_date || "").trim() || null,
       String(input.order_placed_at || "").trim() || null,
       String(input.placed_at || "").trim(),
@@ -1907,6 +1913,8 @@ async function migrate() {
       provider text not null default '',
       order_number text not null default '',
       phone_model text not null default '',
+      first_name text not null default '',
+      last_name text not null default '',
       order_date date not null default current_date,
       order_placed_at timestamptz not null default now(),
       placed_at text not null default '',
@@ -2013,6 +2021,8 @@ async function migrate() {
     alter table phone_online_orders add column if not exists provider text not null default '';
     alter table phone_online_orders add column if not exists order_number text not null default '';
     alter table phone_online_orders add column if not exists phone_model text not null default '';
+    alter table phone_online_orders add column if not exists first_name text not null default '';
+    alter table phone_online_orders add column if not exists last_name text not null default '';
     alter table phone_online_orders add column if not exists order_date date not null default current_date;
     alter table phone_online_orders add column if not exists order_placed_at timestamptz not null default now();
     alter table phone_online_orders add column if not exists placed_at text not null default '';
