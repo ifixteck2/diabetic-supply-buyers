@@ -1425,7 +1425,7 @@ function renderOnlineOrders() {
     <div class="stat"><span>Completed Profits</span><strong class="${completedProfit >= 0 ? "profit-good" : "profit-bad"}">${profitMoney(completedProfit)}</strong><em>${money(completedValue)} money back</em></div>
   `;
   $("onlineOrderModelSummary").innerHTML = renderOnlineOrderModelSummary(ordered, transit, stockItems);
-  $("onlineOrdersPlacedList").innerHTML = renderOnlineOrderProviderGroups(ordered);
+  $("onlineOrdersPlacedList").innerHTML = renderOnlineOrderCompactList(ordered, "No pending online orders.");
   $("onlineOrdersTransitList").innerHTML = renderOnlineOrderTransitList(transit);
   $("onlineOrdersStockList").innerHTML = renderOnlineOrderModelGroups(stockItems, "No received online orders in stock.");
   $("onlineOrdersAddressList").innerHTML = renderOnlineOrderAddressList(phoneOnlineOrders);
@@ -1600,31 +1600,38 @@ function renderOnlineOrderProviderGroups(orders, emptyMessage = "No open online 
 }
 
 function renderOnlineOrderTransitList(orders) {
-  if (!orders.length) return `<div class="empty">No shipped online orders in transit.</div>`;
-  return orders.slice().sort(sortOnlineOrdersNewestFirst).map((order) => {
-    const customerName = onlineOrderCustomerName(order);
-    const metaLine = [
-      order.order_number || `Order #${order.id}`,
-      order.order_date ? formatDate(order.order_date) : "",
-      customerName,
-      order.email || "",
-    ].filter(Boolean).join(" - ");
-    return `
-      <details class="online-order-transit-item">
-        <summary>
-          <div class="online-order-transit-summary">
-            <strong>${escapeHtml(order.phone_model || "No model saved")}</strong>
-            <span>${escapeHtml(metaLine)}</span>
-            <em>${escapeHtml(order.shipping_address || "No shipping address saved")}</em>
-          </div>
-          <span class="pill shipped">In Transit</span>
-        </summary>
-        <div class="online-order-transit-details">
-          ${renderOnlineOrderCard(order)}
+  return renderOnlineOrderCompactList(orders, "No shipped online orders in transit.", "In Transit");
+}
+
+function renderOnlineOrderCompactList(orders, emptyMessage = "No online orders.", statusLabel = "") {
+  if (!orders.length) return `<div class="empty">${escapeHtml(emptyMessage)}</div>`;
+  return orders.slice().sort(sortOnlineOrdersNewestFirst).map((order) => renderOnlineOrderCompactItem(order, statusLabel)).join("");
+}
+
+function renderOnlineOrderCompactItem(order, statusLabel = "") {
+  const customerName = onlineOrderCustomerName(order);
+  const label = statusLabel || order.status || "Ordered";
+  const metaLine = [
+    order.order_number || `Order #${order.id}`,
+    order.order_date ? formatDate(order.order_date) : "",
+    customerName,
+    order.email || "",
+  ].filter(Boolean).join(" - ");
+  return `
+    <details class="online-order-transit-item">
+      <summary>
+        <div class="online-order-transit-summary">
+          <strong>${escapeHtml(order.phone_model || "No model saved")}</strong>
+          <span>${escapeHtml(metaLine)}</span>
+          <em>${escapeHtml(order.shipping_address || "No shipping address saved")}</em>
         </div>
-      </details>
-    `;
-  }).join("");
+        <span class="pill ${onlineOrderStatusClass(order.status)}">${escapeHtml(label)}</span>
+      </summary>
+      <div class="online-order-transit-details">
+        ${renderOnlineOrderCard(order)}
+      </div>
+    </details>
+  `;
 }
 
 function renderOnlineOrderModelGroups(orders, emptyMessage = "No online orders.") {
@@ -1642,7 +1649,7 @@ function renderOnlineOrderModelGroups(orders, emptyMessage = "No online orders."
         </div>
       </summary>
       <div class="online-order-provider-orders">
-        ${group.orders.map(renderOnlineOrderCard).join("")}
+        ${group.orders.map((order) => renderOnlineOrderCompactItem(order)).join("")}
       </div>
     </details>
   `).join("");
