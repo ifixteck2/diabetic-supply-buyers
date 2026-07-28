@@ -1400,15 +1400,16 @@ function renderOnlineOrders() {
   const ordered = phoneOnlineOrders.filter((order) => order.status === "Ordered");
   const transit = phoneOnlineOrders.filter((order) => order.status === "Shipped");
   const stock = phoneOnlineOrders.filter((order) => order.status === "Received");
+  const stockItems = onlineOrderStockItems(stock);
   const completed = phoneOnlineOrders.filter((order) => order.status === "Sold Local" || order.status === "Gift Card");
   const orderedCost = ordered.reduce((sum, order) => sum + onlineOrderTotalCost(order), 0);
   const transitCost = transit.reduce((sum, order) => sum + onlineOrderTotalCost(order), 0);
-  const stockCost = stock.reduce((sum, order) => sum + onlineOrderTotalCost(order), 0);
+  const stockCost = stockItems.reduce((sum, order) => sum + onlineOrderTotalCost(order), 0);
   const completedCost = completed.reduce((sum, order) => sum + onlineOrderTotalCost(order), 0);
   const localSales = completed.reduce((sum, order) => sum + Number(order.local_sale_price || 0), 0);
   const giftCards = completed.reduce((sum, order) => sum + Number(order.gift_card_value || 0), 0);
   const completedValue = localSales + giftCards;
-  const openOrders = [...ordered, ...transit, ...stock];
+  const openOrders = [...ordered, ...transit, ...stockItems];
   const pendingProfit = openOrders.reduce((sum, order) => {
     const expectedSale = onlineOrderExpectedSalePrice(order);
     return expectedSale === null ? sum : sum + expectedSale - onlineOrderTotalCost(order);
@@ -1417,15 +1418,15 @@ function renderOnlineOrders() {
   $("onlineOrderStats").innerHTML = `
     <div class="stat"><span>Ordered</span><strong>${ordered.length}</strong><em>${money(orderedCost)} pending</em></div>
     <div class="stat"><span>In Transit</span><strong>${transit.length}</strong><em>${money(transitCost)} shipped</em></div>
-    <div class="stat"><span>In Stock</span><strong>${stock.length}</strong><em>${money(stockCost)} cost</em></div>
+    <div class="stat"><span>In Stock</span><strong>${stockItems.length}</strong><em>${money(stockCost)} cost</em></div>
     <div class="stat"><span>Pending Profits</span><strong class="${pendingProfit >= 0 ? "profit-good" : "profit-bad"}">${money(pendingProfit)}</strong><em>Expected: 16e $310 / A37 $200</em></div>
     <div class="stat"><span>Completed</span><strong>${completed.length}</strong><em>${money(completedCost)} cost</em></div>
     <div class="stat"><span>Completed Profits</span><strong class="${completedProfit >= 0 ? "profit-good" : "profit-bad"}">${money(completedProfit)}</strong><em>${money(completedValue)} money back</em></div>
   `;
-  $("onlineOrderModelSummary").innerHTML = renderOnlineOrderModelSummary(ordered, transit, stock);
+  $("onlineOrderModelSummary").innerHTML = renderOnlineOrderModelSummary(ordered, transit, stockItems);
   $("onlineOrdersPlacedList").innerHTML = renderOnlineOrderProviderGroups(ordered);
   $("onlineOrdersTransitList").innerHTML = renderOnlineOrderProviderGroups(transit, "No shipped online orders in transit.");
-  $("onlineOrdersStockList").innerHTML = stock.map(renderOnlineOrderCard).join("") || `<div class="empty">No received online orders in stock.</div>`;
+  $("onlineOrdersStockList").innerHTML = renderOnlineOrderModelGroups(stockItems, "No received online orders in stock.");
   $("onlineOrdersAddressList").innerHTML = renderOnlineOrderAddressList(phoneOnlineOrders);
   $("onlineOrdersCompletedList").innerHTML = completed.map(renderOnlineOrderCard).join("") || `<div class="empty">No completed online orders yet.</div>`;
 }
@@ -1597,6 +1598,27 @@ function renderOnlineOrderProviderGroups(orders, emptyMessage = "No open online 
   `).join("");
 }
 
+function renderOnlineOrderModelGroups(orders, emptyMessage = "No online orders.") {
+  if (!orders.length) return `<div class="empty">${escapeHtml(emptyMessage)}</div>`;
+  return groupOnlineOrdersByStockModel(orders).map((group) => `
+    <details class="online-order-provider-group online-order-model-group" open>
+      <summary>
+        <div class="online-order-provider-title">
+          <strong>${escapeHtml(group.model)}</strong>
+          <span>${group.orders.length} phone${group.orders.length === 1 ? "" : "s"} in stock</span>
+        </div>
+        <div class="online-order-provider-metrics">
+          <span><small>Total Cost</small><b>${money(group.cost)}</b></span>
+          <span><small>Pending Profit</small><b class="${group.profit >= 0 ? "profit-good" : "profit-bad"}">${money(group.profit)}</b></span>
+        </div>
+      </summary>
+      <div class="online-order-provider-orders">
+        ${group.orders.map(renderOnlineOrderCard).join("")}
+      </div>
+    </details>
+  `).join("");
+}
+
 function groupOnlineOrdersByProvider(orders) {
   const groups = new Map();
   orders.forEach((order) => {
@@ -1619,6 +1641,29 @@ function groupOnlineOrdersByProvider(orders) {
       const bIndex = priority.indexOf(b.provider);
       if (aIndex !== -1 || bIndex !== -1) return (aIndex === -1 ? 99 : aIndex) - (bIndex === -1 ? 99 : bIndex);
       return a.provider.localeCompare(b.provider);
+    });
+}
+
+function groupOnlineOrdersByStockModel(orders) {
+  const groups = new Map();
+  orders.forEach((order) => {
+    const model = onlineOrderModelLabel(order.phone_model);
+    const group = groups.get(model) || { model, key: onlineOrderModelKey(order.phone_model), orders: [], cost: 0, profit: 0 };
+    const expectedSale = onlineOrderExpectedSalePrice(order);
+    const totalCost = onlineOrderTotalCost(order);
+    group.orders.push(order);
+    group.cost += totalCost;
+    if (expectedSale !== null) group.profit += expectedSale - totalCost;
+    groups.set(model, group);
+  });
+  const priority = ["iphone16e", "samsunga37"];
+  return Array.from(groups.values())
+    .map((group) => ({ ...group, orders: group.orders.slice().sort(sortOnlineOrdersNewestFirst) }))
+    .sort((a, b) => {
+      const aIndex = priority.indexOf(a.key);
+      const bIndex = priority.indexOf(b.key);
+      if (aIndex !== -1 || bIndex !== -1) return (aIndex === -1 ? 99 : aIndex) - (bIndex === -1 ? 99 : bIndex);
+      return a.model.localeCompare(b.model);
     });
 }
 
@@ -1651,6 +1696,7 @@ function isNewerOnlineOrderDate(candidate, current) {
 }
 
 function renderOnlineOrderCard(order) {
+  const isLineItem = Boolean(order.is_line_item);
   const completedOrder = order.status === "Sold Local" || order.status === "Gift Card";
   const value = order.status === "Sold Local" ? Number(order.local_sale_price || 0) : order.status === "Gift Card" ? Number(order.gift_card_value || 0) : onlineOrderExpectedSalePrice(order);
   const totalCost = onlineOrderTotalCost(order);
@@ -1682,21 +1728,47 @@ function renderOnlineOrderCard(order) {
         <span><small>${profitLabel}</small><b class="${profit === null || profit >= 0 ? "profit-good" : "profit-bad"}">${profit === null ? "-" : money(profit)}</b></span>
       </div>
       <div class="online-order-address">${escapeHtml(order.shipping_address || "No shipping address saved")}</div>
+      ${isLineItem ? `<div class="online-order-result">Added line under ${escapeHtml(order.parent_order_label || "received order")}.</div>` : ""}
       ${order.status === "Gift Card" ? `<div class="online-order-result">Gift Card: ${money(order.gift_card_value)}${order.gift_card_location ? ` - ${escapeHtml(order.gift_card_location)}` : ""}</div>` : ""}
       ${order.status === "Sold Local" ? `<div class="online-order-result">Sold Local: ${money(order.local_sale_price)}${order.local_sale_notes ? ` - ${escapeHtml(order.local_sale_notes)}` : ""}</div>` : ""}
       <div class="phone-row-actions online-order-actions">
-        ${order.status === "Ordered" ? `<button class="mini-btn" onclick="startOnlineOrderEdit(${order.id})">Edit</button><button class="mini-btn" onclick="markOnlineOrderShipped(${order.id})">Shipped</button>` : ""}
-        ${order.status === "Shipped" ? `<button class="mini-btn" onclick="markOnlineOrderReceived(${order.id})">Received</button>` : ""}
-        ${order.status === "Received" ? `<button class="mini-btn danger" onclick="sellOnlineOrderLocal(${order.id})">Sell Local</button><button class="mini-btn" onclick="moveOnlineOrderToGiftCard(${order.id})">Move to Gift Cards</button>` : ""}
+        ${!isLineItem && order.status === "Ordered" ? `<button class="mini-btn" onclick="startOnlineOrderEdit(${order.id})">Edit</button><button class="mini-btn" onclick="markOnlineOrderShipped(${order.id})">Shipped</button>` : ""}
+        ${!isLineItem && order.status === "Shipped" ? `<button class="mini-btn" onclick="markOnlineOrderReceived(${order.id})">Received</button>` : ""}
+        ${!isLineItem && order.status === "Received" ? `<button class="mini-btn" onclick="addOnlineOrderLine(${order.id})">Add Line</button><button class="mini-btn danger" onclick="sellOnlineOrderLocal(${order.id})">Sell Local</button><button class="mini-btn" onclick="moveOnlineOrderToGiftCard(${order.id})">Move to Gift Cards</button>` : ""}
       </div>
     </article>
   `;
 }
 
 function onlineOrderStatusClass(statusText) {
-  if (statusText === "Shipped" || statusText === "Received") return "shipped";
+  if (statusText === "Shipped" || statusText === "Received" || statusText === "Line Added") return "shipped";
   if (statusText === "Sold Local" || statusText === "Gift Card") return "sold";
   return "pending";
+}
+
+function onlineOrderStockItems(stockOrders) {
+  return stockOrders.flatMap((order) => [
+    order,
+    ...onlineOrderLineItems(order).map((line) => ({
+      ...order,
+      id: `line-${line.id}`,
+      line_id: line.id,
+      parent_order_id: order.id,
+      parent_order_label: order.order_number || `Order #${order.id}`,
+      phone_model: line.phone_model,
+      cost: Number(line.cost || 0),
+      port_number_cost: 0,
+      status: line.status || "Line Added",
+      created_at: line.created_at || order.created_at,
+      order_placed_at: line.created_at || order.order_placed_at,
+      order_number: `${order.order_number || `Order #${order.id}`} / Line #${line.id}`,
+      is_line_item: true,
+    })),
+  ]);
+}
+
+function onlineOrderLineItems(order) {
+  return Array.isArray(order?.line_items) ? order.line_items : [];
 }
 
 function onlineOrderCustomerName(order) {
@@ -1712,6 +1784,13 @@ function onlineOrderExpectedSalePrice(order) {
   if (key === "iphone16e") return 310;
   if (key === "samsunga37") return 200;
   return null;
+}
+
+function onlineOrderModelLabel(value) {
+  const key = onlineOrderModelKey(value);
+  if (key === "iphone16e") return "iPhone 16e";
+  if (key === "samsunga37") return "Samsung A37";
+  return String(value || "Other Model").trim() || "Other Model";
 }
 
 function renderTrackingLink(value) {
@@ -3243,6 +3322,31 @@ window.markOnlineOrderShipped = async (id) => {
   if (!result?.ok) return alert(result?.error || "Could not mark this order shipped.");
   await loadPhoneOnlineOrders();
   openOnlineOrderTab("transit");
+  return true;
+};
+
+window.addOnlineOrderLine = async (id) => {
+  const modelInput = prompt("Add line phone model:\n1 = iPhone 16e\n2 = Samsung A37", "1");
+  if (modelInput === null) return false;
+  const cleanModel = String(modelInput || "").trim().toLowerCase();
+  const phoneModel = cleanModel === "2" || cleanModel.includes("samsung") || cleanModel.includes("a37") ? "Samsung A37" : "iPhone 16e";
+  const costInput = prompt(`Your cost for the added ${phoneModel} line?`);
+  if (costInput === null) return false;
+  const cleanCost = String(costInput || "").replace(/[$,\s]/g, "");
+  if (!cleanCost || Number.isNaN(Number(cleanCost)) || Number(cleanCost) < 0) {
+    alert("Enter a valid line cost.");
+    return false;
+  }
+  const result = await api(`/api/phone-online-orders/${id}/lines`, {
+    method: "POST",
+    body: {
+      phone_model: phoneModel,
+      cost: cleanCost,
+    },
+  });
+  if (!result?.ok) return alert(result?.error || "Could not add this line.");
+  await loadPhoneOnlineOrders();
+  openOnlineOrderTab("stock");
   return true;
 };
 

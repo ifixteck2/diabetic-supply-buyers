@@ -202,7 +202,24 @@ app.get("/api/phone-online-orders", requirePhoneAuth, async (req, res) => {
        id desc
      limit 1000`
   );
-  res.json({ orders: result.rows });
+  const orders = result.rows;
+  const ids = orders.map((order) => order.id);
+  let linesByOrder = new Map();
+  if (ids.length) {
+    const lines = await pool.query(
+      `select * from phone_online_order_lines
+       where online_order_id = any($1::int[])
+       order by created_at asc, id asc`,
+      [ids]
+    );
+    linesByOrder = lines.rows.reduce((map, line) => {
+      const list = map.get(line.online_order_id) || [];
+      list.push(line);
+      map.set(line.online_order_id, list);
+      return map;
+    }, new Map());
+  }
+  res.json({ orders: orders.map((order) => ({ ...order, line_items: linesByOrder.get(order.id) || [] })) });
 });
 
 app.post("/api/phone-online-orders", requirePhoneAuth, async (req, res) => {
@@ -341,6 +358,25 @@ app.patch("/api/phone-online-orders/:id/received", requirePhoneAuth, async (req,
   );
   if (!result.rows[0]) return res.status(404).json({ error: "Open online order not found." });
   res.json({ ok: true, order: result.rows[0] });
+});
+
+app.post("/api/phone-online-orders/:id/lines", requirePhoneAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  const phoneModel = String(req.body?.phone_model || "").trim();
+  const cost = Number(req.body?.cost || 0);
+  if (!id) return res.status(400).json({ error: "Order ID is required." });
+  if (!phoneModel) return res.status(400).json({ error: "Choose the phone model for the added line." });
+  if (!Number.isFinite(cost) || cost < 0) return res.status(400).json({ error: "Enter a valid line cost." });
+  const parent = await pool.query("select id from phone_online_orders where id = $1 and status = 'Received'", [id]);
+  if (!parent.rows[0]) return res.status(404).json({ error: "Received online order not found." });
+  const result = await pool.query(
+    `insert into phone_online_order_lines
+       (online_order_id, phone_model, cost, status)
+     values ($1, $2, $3::numeric, 'Line Added')
+     returning *`,
+    [id, phoneModel, cost]
+  );
+  res.json({ ok: true, line: result.rows[0] });
 });
 
 app.patch("/api/phone-online-orders/:id/local-sale", requirePhoneAuth, async (req, res) => {
@@ -1942,6 +1978,17 @@ async function migrate() {
       created_at timestamptz not null default now(),
       updated_at timestamptz not null default now()
     );
+
+    create table if not exists phone_online_order_lines (
+      id serial primary key,
+      online_order_id integer not null references phone_online_orders(id) on delete cascade,
+      phone_model text not null default '',
+      cost numeric(12,2) not null default 0,
+      status text not null default 'Line Added',
+      notes text not null default '',
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
   `);
 
   await pool.query(`
@@ -2048,6 +2095,11 @@ async function migrate() {
     alter table phone_online_orders add column if not exists gift_card_notes text not null default '';
     alter table phone_online_orders add column if not exists gift_card_phone_purchase_id integer references phone_purchases(id) on delete set null;
     alter table phone_online_orders add column if not exists updated_at timestamptz not null default now();
+    alter table phone_online_order_lines add column if not exists phone_model text not null default '';
+    alter table phone_online_order_lines add column if not exists cost numeric(12,2) not null default 0;
+    alter table phone_online_order_lines add column if not exists status text not null default 'Line Added';
+    alter table phone_online_order_lines add column if not exists notes text not null default '';
+    alter table phone_online_order_lines add column if not exists updated_at timestamptz not null default now();
     alter table phone_invoices add column if not exists sale_price numeric(12,2);
     alter table phone_invoices add column if not exists sale_notes text not null default '';
     alter table phone_invoices add column if not exists status_updated_at timestamptz not null default now();
