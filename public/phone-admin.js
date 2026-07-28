@@ -1,5 +1,6 @@
 const $ = (id) => document.getElementById(id);
 const money = (value) => Number(value || 0).toLocaleString("en-US", { style: "currency", currency: "USD" });
+const profitMoney = (value) => Math.ceil(Number(value || 0)).toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
 const status = (id, message, type = "ok") => {
   $(id).innerHTML = message ? `<div class="status ${type}">${message}</div>` : "";
 };
@@ -1419,9 +1420,9 @@ function renderOnlineOrders() {
     <div class="stat"><span>Ordered</span><strong>${ordered.length}</strong><em>${money(orderedCost)} pending</em></div>
     <div class="stat"><span>In Transit</span><strong>${transit.length}</strong><em>${money(transitCost)} shipped</em></div>
     <div class="stat"><span>In Stock</span><strong>${stockItems.length}</strong><em>${money(stockCost)} cost</em></div>
-    <div class="stat"><span>Pending Profits</span><strong class="${pendingProfit >= 0 ? "profit-good" : "profit-bad"}">${money(pendingProfit)}</strong><em>Expected: 16e $310 / A37 $200</em></div>
+    <div class="stat"><span>Pending Profits</span><strong class="${pendingProfit >= 0 ? "profit-good" : "profit-bad"}">${profitMoney(pendingProfit)}</strong><em>Expected: 16e $310 / A37 $200</em></div>
     <div class="stat"><span>Completed</span><strong>${completed.length}</strong><em>${money(completedCost)} cost</em></div>
-    <div class="stat"><span>Completed Profits</span><strong class="${completedProfit >= 0 ? "profit-good" : "profit-bad"}">${money(completedProfit)}</strong><em>${money(completedValue)} money back</em></div>
+    <div class="stat"><span>Completed Profits</span><strong class="${completedProfit >= 0 ? "profit-good" : "profit-bad"}">${profitMoney(completedProfit)}</strong><em>${money(completedValue)} money back</em></div>
   `;
   $("onlineOrderModelSummary").innerHTML = renderOnlineOrderModelSummary(ordered, transit, stockItems);
   $("onlineOrdersPlacedList").innerHTML = renderOnlineOrderProviderGroups(ordered);
@@ -1539,7 +1540,7 @@ function renderOnlineOrderModelSummary(ordered, transit, stock) {
         <h3>Phones Ordered By Model</h3>
         <p>Open phones for the two models you are ordering: pending, in transit, and in stock.</p>
       </div>
-      <strong>${totalPending + totalTransit + totalStock} open / ${money(totalPendingProfit)} open profit</strong>
+      <strong>${totalPending + totalTransit + totalStock} open / ${profitMoney(totalPendingProfit)} open profit</strong>
     </div>
     <div class="online-order-model-grid">
       ${rows.map((row) => `
@@ -1548,7 +1549,7 @@ function renderOnlineOrderModelSummary(ordered, transit, stock) {
           <span><small>Pending</small><b>${row.pendingCount}</b></span>
           <span><small>In Transit</small><b>${row.transitCount}</b></span>
           <span><small>In Stock</small><b>${row.stockCount}</b></span>
-          <span><small>Open Profit</small><b class="${row.pendingProfit >= 0 ? "profit-good" : "profit-bad"}">${money(row.pendingProfit)}</b></span>
+          <span><small>Open Profit</small><b class="${row.pendingProfit >= 0 ? "profit-good" : "profit-bad"}">${profitMoney(row.pendingProfit)}</b></span>
         </div>
       `).join("")}
       <div class="online-order-model-card total">
@@ -1556,7 +1557,7 @@ function renderOnlineOrderModelSummary(ordered, transit, stock) {
         <span><small>Pending</small><b>${totalPending}</b></span>
         <span><small>In Transit</small><b>${totalTransit}</b></span>
         <span><small>In Stock</small><b>${totalStock}</b></span>
-        <span><small>Open Profit</small><b class="${totalPendingProfit >= 0 ? "profit-good" : "profit-bad"}">${money(totalPendingProfit)}</b></span>
+        <span><small>Open Profit</small><b class="${totalPendingProfit >= 0 ? "profit-good" : "profit-bad"}">${profitMoney(totalPendingProfit)}</b></span>
       </div>
     </div>
   `;
@@ -1609,7 +1610,7 @@ function renderOnlineOrderModelGroups(orders, emptyMessage = "No online orders."
         </div>
         <div class="online-order-provider-metrics">
           <span><small>Total Cost</small><b>${money(group.cost)}</b></span>
-          <span><small>Pending Profit</small><b class="${group.profit >= 0 ? "profit-good" : "profit-bad"}">${money(group.profit)}</b></span>
+          <span><small>Pending Profit</small><b class="${group.profit >= 0 ? "profit-good" : "profit-bad"}">${profitMoney(group.profit)}</b></span>
         </div>
       </summary>
       <div class="online-order-provider-orders">
@@ -1725,7 +1726,7 @@ function renderOnlineOrderCard(order) {
         <span><small>Account PIN</small><b>${escapeHtml(order.account_pin || "")}</b></span>
         <span><small>Tracking / Received</small><b>${renderTrackingLink(order.tracking_info || order.received_info || "")}</b></span>
         <span><small>Expected Sale</small><b>${value === null ? "-" : money(value)}</b></span>
-        <span><small>${profitLabel}</small><b class="${profit === null || profit >= 0 ? "profit-good" : "profit-bad"}">${profit === null ? "-" : money(profit)}</b></span>
+        <span><small>${profitLabel}</small><b class="${profit === null || profit >= 0 ? "profit-good" : "profit-bad"}">${profit === null ? "-" : profitMoney(profit)}</b></span>
       </div>
       <div class="online-order-address">${escapeHtml(order.shipping_address || "No shipping address saved")}</div>
       ${isLineItem ? `<div class="online-order-result">Added line under ${escapeHtml(order.parent_order_label || "received order")}.</div>` : ""}
@@ -1972,7 +1973,7 @@ function renderManualKtReturns() {
           </div>
           <button class="mini-btn" onclick="saveManualReturnSale(${row.id})">Save Sale</button>
         </td>
-        <td class="${profit === null || profit >= 0 ? "profit-good" : "profit-bad"} return-profit">${profit === null ? "Not Sold" : money(profit)}</td>
+        <td class="${profit === null || profit >= 0 ? "profit-good" : "profit-bad"} return-profit">${profit === null ? "Not Sold" : profitMoney(profit)}</td>
       </tr>
     `;
   }).join("");
@@ -1991,7 +1992,7 @@ function renderManualKtReturns() {
         <div class="return-stat"><span>Sold</span><strong>${soldCount}</strong></div>
         <div class="return-stat"><span>Total Cost</span><strong>${money(totalCost)}</strong></div>
         <div class="return-stat"><span>Sold Total</span><strong>${money(totalSales)}</strong></div>
-        <div class="return-stat"><span>Profit / Loss</span><strong class="${totalLoss >= 0 ? "profit-good" : "profit-bad"}">${money(totalLoss)}</strong></div>
+        <div class="return-stat"><span>Profit / Loss</span><strong class="${totalLoss >= 0 ? "profit-good" : "profit-bad"}">${profitMoney(totalLoss)}</strong></div>
       </div>
       <div class="table-wrap">
         <table class="phone-profit-table manual-return-table">
@@ -2065,7 +2066,7 @@ function renderLocallySoldCard(invoice) {
         <td>${row.quantity}</td>
         <td>${money(row.cost_each)}</td>
         <td>${sale === null ? "Not Set" : money(sale)}</td>
-        <td class="${profit === null || profit >= 0 ? "profit-good" : "profit-bad"}">${profit === null ? "Not Set" : money(profit)}</td>
+        <td class="${profit === null || profit >= 0 ? "profit-good" : "profit-bad"}">${profit === null ? "Not Set" : profitMoney(profit)}</td>
         <td>${row.local_sold_at || row.invoice_removed_at ? new Date(row.local_sold_at || row.invoice_removed_at).toLocaleDateString() : ""}</td>
       </tr>
     `;
@@ -2088,7 +2089,7 @@ function renderLocallySoldCard(invoice) {
       <div class="sale-summary">
         <span>Cost ${money(totalCost)}</span>
         <span>Local Sales ${totalSale ? money(totalSale) : "Not Set"}</span>
-        ${totalProfit === null ? "" : `<strong class="${totalProfit >= 0 ? "profit-good" : "profit-bad"}">Profit ${money(totalProfit)}</strong>`}
+        ${totalProfit === null ? "" : `<strong class="${totalProfit >= 0 ? "profit-good" : "profit-bad"}">Profit ${profitMoney(totalProfit)}</strong>`}
       </div>
     </article>
   `;
@@ -2125,7 +2126,7 @@ function renderGiftCards() {
         <span><small>Total Cards</small><b>${rows.length}</b></span>
         <span><small>Total Phones Cost</small><b>${money(totalCost)}</b></span>
         <span><small>Gift Card Value</small><b>${money(totalValue)}</b></span>
-        <span><small>Profit</small><b class="${totalProfit >= 0 ? "profit-good" : "profit-bad"}">${money(totalProfit)}</b></span>
+        <span><small>Profit</small><b class="${totalProfit >= 0 ? "profit-good" : "profit-bad"}">${profitMoney(totalProfit)}</b></span>
         <span><small>Latest Card</small><b>${newestDate}</b></span>
       </div>
       ${closeoutReports}
@@ -2157,7 +2158,7 @@ function renderGiftCardCloseoutSummary(rows) {
       <span><small>Current Open Cards</small><b>${openRows.length}</b></span>
       <span><small>Total Phones Cost</small><b>${money(totalCost)}</b></span>
       <span><small>Gift Card Value</small><b>${money(totalValue)}</b></span>
-      <span><small>Profit</small><b class="${totalProfit >= 0 ? "profit-good" : "profit-bad"}">${money(totalProfit)}</b></span>
+      <span><small>Profit</small><b class="${totalProfit >= 0 ? "profit-good" : "profit-bad"}">${profitMoney(totalProfit)}</b></span>
     </div>
   ` : `<div class="empty">No open gift cards to close out. New gift cards will start the next batch.</div>`;
   $("closeGiftCardBatchBtn").disabled = !openRows.length;
@@ -2176,7 +2177,7 @@ function renderGiftCardRows(rows, cardNumbers, options = {}) {
     const receiptIsPdf = isPdfDataUrl(row.gift_card_receipt_data_url) || /\.pdf$/i.test(row.gift_card_receipt_file_name || "");
     const appleTrade = appleTradeInForModel(row.model);
     const appleDelta = appleTrade && appleTrade.value !== null ? value - appleTrade.value : null;
-    const appleDeltaLabel = appleDelta === null ? "" : `<em class="${appleDelta >= 0 ? "profit-good" : "profit-bad"}">${appleDelta >= 0 ? "+" : ""}${money(appleDelta)} vs Apple</em>`;
+    const appleDeltaLabel = appleDelta === null ? "" : `<em class="${appleDelta >= 0 ? "profit-good" : "profit-bad"}">${appleDelta >= 0 ? "+" : ""}${profitMoney(appleDelta)} vs Apple</em>`;
     return `
       <tr>
         <td><strong class="gift-card-number">#${cardNumber}</strong></td>
@@ -2194,7 +2195,7 @@ function renderGiftCardRows(rows, cardNumbers, options = {}) {
         <td>${money(cost)}</td>
         <td>${money(value)}</td>
         <td class="apple-estimate-cell">${renderAppleTradeInValue(appleTrade)}${appleDeltaLabel}</td>
-        <td class="${profit >= 0 ? "profit-good" : "profit-bad"}">${money(profit)}</td>
+        <td class="${profit >= 0 ? "profit-good" : "profit-bad"}">${profitMoney(profit)}</td>
         <td>${row.gift_card_at ? formatDate(row.gift_card_at) : ""}</td>
         <td>
           <div class="phone-row-actions gift-card-actions">
@@ -2228,14 +2229,14 @@ function renderGiftCardCloseoutReports(rows, cardNumbers) {
         <details class="gift-card-week-report gift-card-closeout-report" ${report.closed ? "" : "open"}>
           <summary>
             <strong>${escapeHtml(report.label)}</strong>
-            <span>${report.rows.length} card${report.rows.length === 1 ? "" : "s"} - Value ${money(report.value)} - Profit ${money(report.profit)} - Click to view cards</span>
+            <span>${report.rows.length} card${report.rows.length === 1 ? "" : "s"} - Value ${money(report.value)} - Profit ${profitMoney(report.profit)} - Click to view cards</span>
           </summary>
           <div class="gift-card-week-stats">
             <span><small>Status</small><b>${escapeHtml(report.closed ? "Closed" : "Current Open Batch")}</b></span>
             <span><small>Total Cards</small><b>${report.rows.length}</b></span>
             <span><small>Total Cost</small><b>${money(report.cost)}</b></span>
             <span><small>Gift Card Value</small><b>${money(report.value)}</b></span>
-            <span><small>Profit</small><b class="${report.profit >= 0 ? "profit-good" : "profit-bad"}">${money(report.profit)}</b></span>
+            <span><small>Profit</small><b class="${report.profit >= 0 ? "profit-good" : "profit-bad"}">${profitMoney(report.profit)}</b></span>
           </div>
           ${report.closed && report.invoiceId ? `<div class="gift-card-closeout-actions"><button class="mini-btn" onclick="openGiftCardCloseoutInvoice(${report.invoiceId})">Gift Card Invoice</button></div>` : ""}
           <div class="table-wrap">
@@ -2300,14 +2301,14 @@ function renderGiftCardWeeklyReports(rows, cardNumbers) {
         <details class="gift-card-week-report">
           <summary>
             <strong>Week Ending ${formatDate(report.weekEnding)}</strong>
-            <span>${report.rows.length} card${report.rows.length === 1 ? "" : "s"} - Value ${money(report.value)} - Profit ${money(report.profit)}</span>
+            <span>${report.rows.length} card${report.rows.length === 1 ? "" : "s"} - Value ${money(report.value)} - Profit ${profitMoney(report.profit)}</span>
           </summary>
           <div class="gift-card-week-stats">
             <span><small>Period</small><b>${formatDate(report.weekStart)} - ${formatDate(report.weekEnding)}</b></span>
             <span><small>Total Cards</small><b>${report.rows.length}</b></span>
             <span><small>Total Cost</small><b>${money(report.cost)}</b></span>
             <span><small>Gift Card Value</small><b>${money(report.value)}</b></span>
-            <span><small>Profit</small><b class="${report.profit >= 0 ? "profit-good" : "profit-bad"}">${money(report.profit)}</b></span>
+            <span><small>Profit</small><b class="${report.profit >= 0 ? "profit-good" : "profit-bad"}">${profitMoney(report.profit)}</b></span>
           </div>
           <div class="table-wrap">
             <table class="phone-profit-table gift-card-table">
@@ -2580,7 +2581,7 @@ function renderPastInvoiceCard(invoice) {
         <span><small>Units</small>${totals.units}</span>
         <span><small>Cost</small>${money(totals.totalCost)}</span>
         <span><small>Sold For</small>${totals.salePrice === null ? "Not Set" : money(totals.salePrice)}</span>
-        <span class="${totals.profit === null || totals.profit >= 0 ? "profit-good" : "profit-bad"}"><small>Profit</small>${totals.profit === null ? "Not Set" : money(totals.profit)}</span>
+        <span class="${totals.profit === null || totals.profit >= 0 ? "profit-good" : "profit-bad"}"><small>Profit</small>${totals.profit === null ? "Not Set" : profitMoney(totals.profit)}</span>
         <strong>Open</strong>
       </button>
       <div id="pastInvoiceDetail${invoice.id}" class="past-invoice-detail hidden">
@@ -2699,7 +2700,7 @@ function renderPhoneInvoiceCard(invoice, options = {}) {
       <div class="sale-summary ${isPending ? "pending-sale-summary" : ""}">
         <span>Cost ${money(totalCost)}</span>
         ${salePrice === null ? `<span>Actual Sale Not Set</span>` : `<span>Actual Sale ${money(salePrice)}</span>`}
-        ${actualProfit === null ? "" : `<strong class="${actualProfit >= 0 ? "profit-good" : "profit-bad"}">Actual Profit ${money(actualProfit)}</strong>`}
+        ${actualProfit === null ? "" : `<strong class="${actualProfit >= 0 ? "profit-good" : "profit-bad"}">Actual Profit ${profitMoney(actualProfit)}</strong>`}
       </div>
       ${isPending ? `<details class="phone-controls"><summary>Sale / Status Controls</summary>${saleControls}</details>` : saleControls}
       <div class="invoice-actions">
@@ -2865,7 +2866,7 @@ function renderPhoneDashboard() {
   $("phoneDashboardStats").innerHTML = `
     <div class="stat"><span>Total Cost</span><strong>${money(totals.cost)}</strong></div>
     <div class="stat"><span>Actual Sales</span><strong>${money(totals.actualSale)}</strong></div>
-    <div class="stat"><span>Actual Profit</span><strong class="${totals.actualProfit >= 0 ? "profit-good" : "profit-bad"}">${money(totals.actualProfit)}</strong></div>
+    <div class="stat"><span>Actual Profit</span><strong class="${totals.actualProfit >= 0 ? "profit-good" : "profit-bad"}">${profitMoney(totals.actualProfit)}</strong></div>
     <div class="stat"><span>Units</span><strong>${totals.units}</strong></div>
     <div class="stat"><span>Pending Cost</span><strong>${money(totals.pendingCost)}</strong></div>
     <div class="stat"><span>Shipped Cost</span><strong>${money(totals.shippedCost)}</strong></div>
@@ -2883,7 +2884,7 @@ function renderPhoneDashboard() {
           <td>${row.completedUnits}</td>
           <td>${money(row.cost)}</td>
           <td>${money(row.actualSale)}</td>
-          <td class="${row.actualProfit >= 0 ? "profit-good" : "profit-bad"}">${money(row.actualProfit)}</td>
+          <td class="${row.actualProfit >= 0 ? "profit-good" : "profit-bad"}">${profitMoney(row.actualProfit)}</td>
           <td>${row.needsSaleAmount}</td>
         </tr>
       `).join("")}</tbody>
@@ -2986,7 +2987,7 @@ function renderPhoneMoneyDashboard() {
   $("phoneMoneyStats").innerHTML = `
     <div class="stat"><span>Gross Receipts</span><strong>${money(totalSales)}</strong></div>
     <div class="stat"><span>Cost of Goods Sold</span><strong>${money(totalCost)}</strong></div>
-    <div class="stat"><span>Gross Profit</span><strong class="${totalProfit >= 0 ? "profit-good" : "profit-bad"}">${money(totalProfit)}</strong></div>
+    <div class="stat"><span>Gross Profit</span><strong class="${totalProfit >= 0 ? "profit-good" : "profit-bad"}">${profitMoney(totalProfit)}</strong></div>
     <div class="stat"><span>Gross Margin</span><strong>${grossMargin.toFixed(1)}%</strong></div>
     <div class="stat"><span>Transactions</span><strong>${events.length}</strong></div>
     <div class="stat"><span>Units Closed</span><strong>${totalUnits}</strong></div>
@@ -3096,9 +3097,9 @@ function renderPhoneProfitGraph(events) {
     const y = yFor(Math.max(point.profit, 0));
     const barHeight = Math.max(2, Math.abs(yFor(point.profit) - zeroY));
     const top = point.profit >= 0 ? y : zeroY;
-    return `<rect x="${x - barWidth / 2}" y="${top}" width="${barWidth}" height="${barHeight}" rx="4" class="${point.profit >= 0 ? "profit-bar-good" : "profit-bar-bad"}"><title>#${point.transactionNumber} ${point.reference || point.type} - ${point.date.toLocaleDateString()} profit ${money(point.profit)}</title></rect>`;
+    return `<rect x="${x - barWidth / 2}" y="${top}" width="${barWidth}" height="${barHeight}" rx="4" class="${point.profit >= 0 ? "profit-bar-good" : "profit-bar-bad"}"><title>#${point.transactionNumber} ${point.reference || point.type} - ${point.date.toLocaleDateString()} profit ${profitMoney(point.profit)}</title></rect>`;
   }).join("");
-  const dots = graphPoints.map((point, index) => `<circle cx="${xFor(index)}" cy="${yFor(point.runningProfit)}" r="5"><title>#${point.transactionNumber} running profit ${money(point.runningProfit)}</title></circle>`).join("");
+  const dots = graphPoints.map((point, index) => `<circle cx="${xFor(index)}" cy="${yFor(point.runningProfit)}" r="5"><title>#${point.transactionNumber} running profit ${profitMoney(point.runningProfit)}</title></circle>`).join("");
   const ledgerRows = [...graphPoints].reverse().map((event) => `
     <tr>
       <td>${event.transactionNumber}</td>
@@ -3108,8 +3109,8 @@ function renderPhoneProfitGraph(events) {
       <td>${event.units}</td>
       <td>${money(event.sale)}</td>
       <td>${money(event.cost)}</td>
-      <td class="${event.profit >= 0 ? "profit-good" : "profit-bad"}">${money(event.profit)}</td>
-      <td class="${event.runningProfit >= 0 ? "profit-good" : "profit-bad"}">${money(event.runningProfit)}</td>
+      <td class="${event.profit >= 0 ? "profit-good" : "profit-bad"}">${profitMoney(event.profit)}</td>
+      <td class="${event.runningProfit >= 0 ? "profit-good" : "profit-bad"}">${profitMoney(event.runningProfit)}</td>
     </tr>
   `).join("");
   const finalPoint = graphPoints[graphPoints.length - 1];
@@ -3117,7 +3118,7 @@ function renderPhoneProfitGraph(events) {
     <div class="profit-chart-card">
       <div class="profit-chart-head">
         <div><strong>Transaction Profit Trend</strong><span>Each bar is one closed transaction. Gift cards are not combined by date.</span></div>
-        <b class="${finalPoint.runningProfit >= 0 ? "profit-good" : "profit-bad"}">${money(finalPoint.runningProfit)}</b>
+        <b class="${finalPoint.runningProfit >= 0 ? "profit-good" : "profit-bad"}">${profitMoney(finalPoint.runningProfit)}</b>
       </div>
       <svg class="profit-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Phone profit graph">
         <line x1="${pad}" y1="${zeroY}" x2="${width - pad}" y2="${zeroY}" class="profit-zero-line"></line>
@@ -3165,7 +3166,7 @@ function renderMoneySourceBreakdown(rows) {
               <td>${row.units}</td>
               <td>${money(row.sale)}</td>
               <td>${money(row.cost)}</td>
-              <td class="${row.profit >= 0 ? "profit-good" : "profit-bad"}">${money(row.profit)}</td>
+              <td class="${row.profit >= 0 ? "profit-good" : "profit-bad"}">${profitMoney(row.profit)}</td>
               <td>${margin.toFixed(1)}%</td>
             </tr>
           `;

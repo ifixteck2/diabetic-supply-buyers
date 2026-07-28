@@ -964,7 +964,7 @@ app.post("/api/phone-gift-cards/closeout", requirePhoneAuth, async (req, res) =>
       `${openCards.rows.length} gift card${openCards.rows.length === 1 ? "" : "s"}`,
       `Cost ${moneyText(totalCost)}`,
       `Value ${moneyText(totalValue)}`,
-      `Profit ${moneyText(totalValue - totalCost)}`,
+      `Profit ${profitMoneyText(totalValue - totalCost)}`,
     ].join(" | ");
     const invoiceResult = await client.query(
       `insert into phone_invoices (buyer, label, notes, status, sale_price, status_updated_at, closed_at)
@@ -3575,7 +3575,7 @@ function createGiftCardCloseoutInvoiceHtml(invoice, purchases = []) {
         <td>${escapeHtml(row.source_label || `Invoice #${row.invoice_id || ""}`)}</td>
         <td class="num">${moneyText(cost)}</td>
         <td class="num">${moneyText(value)}</td>
-        <td class="num ${profit >= 0 ? "good" : "bad"}">${moneyText(profit)}</td>
+        <td class="num ${profit >= 0 ? "good" : "bad"}">${profitMoneyText(profit)}</td>
         <td>${formatBusinessDate(row.gift_card_at)}</td>
       </tr>
     `;
@@ -3604,7 +3604,7 @@ body{font-family:Arial,Helvetica,sans-serif;background:#f4f7f8;color:#132126;mar
 <main class="page">
 <header><div class="brand"><h1>Gift Card Invoice</h1><p>${escapeHtml(invoice.label || "Gift Card Closeout")}</p></div><div class="meta"><strong>Invoice #${invoice.id}</strong><p>Date: ${invoiceDate}</p><p>Status: ${escapeHtml(invoice.status || "Closed")}</p></div></header>
 <section class="blocks"><div class="block"><h2>Company</h2><strong>iFixTeck LLC</strong><p>1612 Lucerne Ave</p><p>Lake Worth, FL 33460</p></div><div class="block"><h2>Batch</h2><strong>Apple Gift Cards</strong><p>${escapeHtml(invoice.notes || "Gift card closeout batch")}</p></div></section>
-<section class="summary"><span><small>Total Cards</small><b>${purchases.length}</b></span><span><small>Total Phones Cost</small><b>${moneyText(totalCost)}</b></span><span><small>Gift Card Value</small><b>${moneyText(totalValue)}</b></span><span><small>Profit</small><b class="${totalProfit >= 0 ? "good" : "bad"}">${moneyText(totalProfit)}</b></span></section>
+<section class="summary"><span><small>Total Cards</small><b>${purchases.length}</b></span><span><small>Total Phones Cost</small><b>${moneyText(totalCost)}</b></span><span><small>Gift Card Value</small><b>${moneyText(totalValue)}</b></span><span><small>Profit</small><b class="${totalProfit >= 0 ? "good" : "bad"}">${profitMoneyText(totalProfit)}</b></span></section>
 <table><thead><tr><th>GC #</th><th>Item #</th><th>Phone</th><th>Location</th><th>Source</th><th>From Invoice</th><th class="num">Cost</th><th class="num">Value</th><th class="num">Profit</th><th>Date</th></tr></thead><tbody>${rows || `<tr><td colspan="10">No gift cards in this closeout.</td></tr>`}</tbody></table>
 <h2 class="media-section-title">Saved Pictures & Receipts</h2>
 ${mediaSections || `<div class="empty-media">No saved pictures or receipts for this closeout.</div>`}
@@ -3685,6 +3685,10 @@ function phoneInvoiceLinesWithPrices(purchases, priceOverrides) {
 
 function moneyText(value) {
   return Number(value || 0).toLocaleString("en-US", { style: "currency", currency: "USD" });
+}
+
+function profitMoneyText(value) {
+  return Math.ceil(Number(value || 0)).toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
 }
 
 function onlineOrderTotalCost(order) {
