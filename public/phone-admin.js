@@ -1422,7 +1422,7 @@ function renderOnlineOrders() {
     <div class="stat"><span>Completed</span><strong>${completed.length}</strong><em>${money(completedCost)} cost</em></div>
     <div class="stat"><span>Completed Profits</span><strong class="${completedProfit >= 0 ? "profit-good" : "profit-bad"}">${money(completedProfit)}</strong><em>${money(completedValue)} money back</em></div>
   `;
-  $("onlineOrderModelSummary").innerHTML = renderOnlineOrderModelSummary(ordered, transit);
+  $("onlineOrderModelSummary").innerHTML = renderOnlineOrderModelSummary(ordered, transit, stock);
   $("onlineOrdersPlacedList").innerHTML = renderOnlineOrderProviderGroups(ordered);
   $("onlineOrdersTransitList").innerHTML = renderOnlineOrderProviderGroups(transit, "No shipped online orders in transit.");
   $("onlineOrdersStockList").innerHTML = stock.map(renderOnlineOrderCard).join("") || `<div class="empty">No received online orders in stock.</div>`;
@@ -1511,31 +1511,34 @@ function formatOnlineOrderAddress(value) {
   return String(value || "").replace(/\s+/g, " ").trim();
 }
 
-function renderOnlineOrderModelSummary(ordered, transit) {
+function renderOnlineOrderModelSummary(ordered, transit, stock) {
   const rows = [
     { label: "iPhone 16e", key: "iphone16e" },
     { label: "Samsung A37", key: "samsunga37" },
   ].map((model) => {
     const pendingOrders = onlineOrdersByModel(ordered, model.key);
     const transitOrders = onlineOrdersByModel(transit, model.key);
+    const stockOrders = onlineOrdersByModel(stock, model.key);
     const pendingCount = pendingOrders.length;
     const transitCount = transitOrders.length;
-    const pendingProfit = [...pendingOrders, ...transitOrders].reduce((sum, order) => {
+    const stockCount = stockOrders.length;
+    const pendingProfit = [...pendingOrders, ...transitOrders, ...stockOrders].reduce((sum, order) => {
       const expectedSale = onlineOrderExpectedSalePrice(order);
       return expectedSale === null ? sum : sum + expectedSale - onlineOrderTotalCost(order);
     }, 0);
-    return { ...model, pendingCount, transitCount, total: pendingCount + transitCount, pendingProfit };
+    return { ...model, pendingCount, transitCount, stockCount, total: pendingCount + transitCount + stockCount, pendingProfit };
   });
   const totalPending = rows.reduce((sum, row) => sum + row.pendingCount, 0);
   const totalTransit = rows.reduce((sum, row) => sum + row.transitCount, 0);
+  const totalStock = rows.reduce((sum, row) => sum + row.stockCount, 0);
   const totalPendingProfit = rows.reduce((sum, row) => sum + row.pendingProfit, 0);
   return `
     <div class="online-order-model-head">
       <div>
         <h3>Phones Ordered By Model</h3>
-        <p>Pending and in-transit phones for the two models you are ordering.</p>
+        <p>Open phones for the two models you are ordering: pending, in transit, and in stock.</p>
       </div>
-      <strong>${totalPending + totalTransit} total / ${money(totalPendingProfit)} pending profit</strong>
+      <strong>${totalPending + totalTransit + totalStock} open / ${money(totalPendingProfit)} open profit</strong>
     </div>
     <div class="online-order-model-grid">
       ${rows.map((row) => `
@@ -1543,14 +1546,16 @@ function renderOnlineOrderModelSummary(ordered, transit) {
           <h4>${escapeHtml(row.label)}</h4>
           <span><small>Pending</small><b>${row.pendingCount}</b></span>
           <span><small>In Transit</small><b>${row.transitCount}</b></span>
-          <span><small>Pending Profit</small><b class="${row.pendingProfit >= 0 ? "profit-good" : "profit-bad"}">${money(row.pendingProfit)}</b></span>
+          <span><small>In Stock</small><b>${row.stockCount}</b></span>
+          <span><small>Open Profit</small><b class="${row.pendingProfit >= 0 ? "profit-good" : "profit-bad"}">${money(row.pendingProfit)}</b></span>
         </div>
       `).join("")}
       <div class="online-order-model-card total">
         <h4>All Two Models</h4>
         <span><small>Pending</small><b>${totalPending}</b></span>
         <span><small>In Transit</small><b>${totalTransit}</b></span>
-        <span><small>Pending Profit</small><b class="${totalPendingProfit >= 0 ? "profit-good" : "profit-bad"}">${money(totalPendingProfit)}</b></span>
+        <span><small>In Stock</small><b>${totalStock}</b></span>
+        <span><small>Open Profit</small><b class="${totalPendingProfit >= 0 ? "profit-good" : "profit-bad"}">${money(totalPendingProfit)}</b></span>
       </div>
     </div>
   `;
