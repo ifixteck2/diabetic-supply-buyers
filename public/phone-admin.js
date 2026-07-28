@@ -152,7 +152,7 @@ function openOnlineOrdersPage() {
   document.querySelector(".admin-shell").classList.add("hidden");
   $("onlineOrdersPage").classList.remove("hidden");
   document.querySelectorAll("[data-phone-tab]").forEach((button) => button.classList.toggle("active", button.dataset.phoneTab === "onlineOrders"));
-  openOnlineOrderTab("pending");
+  openOnlineOrderTab("add");
   renderOnlineOrders();
 }
 
@@ -163,8 +163,8 @@ function closeOnlineOrdersPage(tabName = "dashboard") {
 }
 
 function openOnlineOrderTab(name) {
-  const panelNames = { pending: "Pending", transit: "Transit", stock: "Stock", addresses: "Addresses", completed: "Completed" };
-  const selected = panelNames[name] ? name : "pending";
+  const panelNames = { add: "Add", pending: "Pending", transit: "Transit", stock: "Stock", addresses: "Addresses", completed: "Completed" };
+  const selected = panelNames[name] ? name : "add";
   document.querySelectorAll("[data-online-order-tab]").forEach((button) => {
     button.classList.toggle("active", button.dataset.onlineOrderTab === selected);
   });
@@ -1847,7 +1847,7 @@ window.startOnlineOrderEdit = (id) => {
   $("saveOnlineOrderBtn").textContent = "Save Changes";
   $("cancelOnlineOrderEditBtn").classList.remove("hidden");
   status("onlineOrderStatus", `Editing order ${escapeHtml(order.order_number || `#${order.id}`)}.`);
-  openOnlineOrderTab("pending");
+  openOnlineOrderTab("add");
   window.scrollTo({ top: 0, behavior: "smooth" });
 };
 

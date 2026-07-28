@@ -275,35 +275,36 @@
         </header>
 
         <nav class="online-order-tabs" aria-label="Online order sections">
-          <button class="online-order-tab active" data-online-order-tab="pending">Orders Pending</button>
+          <button class="online-order-tab active" data-online-order-tab="add">Add Order</button>
+          <button class="online-order-tab" data-online-order-tab="pending">Orders Pending</button>
           <button class="online-order-tab" data-online-order-tab="transit">In Transit</button>
           <button class="online-order-tab" data-online-order-tab="stock">In Stock</button>
           <button class="online-order-tab" data-online-order-tab="addresses">Addresses</button>
           <button class="online-order-tab" data-online-order-tab="completed">Completed</button>
         </nav>
 
-        <section id="onlineOrdersPendingPanel" class="online-order-tab-panel">
-          <section class="panel online-order-list-panel">
-            <div class="panel-head"><div><h2>Orders Pending</h2><p>Mark orders shipped when tracking starts moving.</p></div></div>
-            <div id="onlineOrdersPlacedList" class="online-order-list"></div>
-          </section>
-          <section class="panel online-order-entry-panel">
+        <section id="onlineOrdersAddPanel" class="online-order-tab-panel">
+          <section class="panel online-order-entry-panel online-order-add-panel">
             <div class="panel-head">
-              <div><h2>Add Order</h2><p>Enter the order details when you buy phones online.</p></div>
+              <div><h2>Add Online Order</h2><p>Enter the phone order once when it is placed. Tracking and received details can be added later.</p></div>
             </div>
             <div class="online-order-form-sections">
               <div class="online-order-form-section">
-                <h3>Order</h3>
+                <h3>Order Details</h3>
                 <div class="form-grid three">
                   <label>Provider<select id="onlineOrderProvider"><option>Boost Mobile</option><option>Metro PCS</option><option>Cricket</option><option>Other</option></select></label>
                   <label id="onlineOrderOtherProviderWrap" class="hidden">Other Provider<input id="onlineOrderOtherProvider" placeholder="Website or provider name"></label>
                   <label>Order #<input id="onlineOrderNumber" placeholder="Order number"></label>
                 </div>
                 <div class="form-grid three">
-                  <label>Phone Model<input id="onlineOrderModel" placeholder="Example: iPhone 16 Pro Max 256GB"></label>
+                  <label>Phone Model<input id="onlineOrderModel" list="onlineOrderModelOptions" placeholder="Start typing model"></label>
                   <label>Date<div class="inline-input-action"><input id="onlineOrderDate" type="date"><button type="button" class="mini-btn" id="onlineOrderPlacedNowBtn">Order Placed</button></div><input id="onlineOrderPlacedTimestamp" type="hidden"></label>
                   <label>Where Placed<input id="onlineOrderPlacedAt" list="onlineOrderPlacedAtOptions" placeholder="Website, app, phone, store"></label>
                 </div>
+                <datalist id="onlineOrderModelOptions">
+                  <option value="iPhone 16e"></option>
+                  <option value="Samsung A37"></option>
+                </datalist>
                 <datalist id="onlineOrderPlacedAtOptions">
                   <option value="Website"></option>
                   <option value="App"></option>
@@ -314,7 +315,7 @@
                 </datalist>
               </div>
               <div class="online-order-form-section">
-                <h3>Customer</h3>
+                <h3>Customer / Account</h3>
                 <div class="form-grid three">
                   <label>First Name<input id="onlineOrderFirstName" placeholder="First name"></label>
                   <label>Last Name<input id="onlineOrderLastName" placeholder="Last name"></label>
@@ -344,6 +345,13 @@
             </div>
             <div class="actions"><button class="btn phone-btn" id="saveOnlineOrderBtn">Add Order</button><button class="btn secondary hidden" id="cancelOnlineOrderEditBtn">Cancel Edit</button></div>
             <div id="onlineOrderStatus"></div>
+          </section>
+        </section>
+
+        <section id="onlineOrdersPendingPanel" class="online-order-tab-panel hidden">
+          <section class="panel online-order-list-panel">
+            <div class="panel-head"><div><h2>Orders Pending</h2><p>Mark orders shipped when tracking starts moving.</p></div></div>
+            <div id="onlineOrdersPlacedList" class="online-order-list"></div>
           </section>
           <section class="panel online-order-stock-panel">
             <div class="panel-head"><div><h2>Stats</h2><p>Quick view of ordered, received, and completed online order money.</p></div></div>
