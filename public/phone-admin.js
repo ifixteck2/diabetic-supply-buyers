@@ -1426,7 +1426,7 @@ function renderOnlineOrders() {
   `;
   $("onlineOrderModelSummary").innerHTML = renderOnlineOrderModelSummary(ordered, transit, stockItems);
   $("onlineOrdersPlacedList").innerHTML = renderOnlineOrderProviderGroups(ordered);
-  $("onlineOrdersTransitList").innerHTML = renderOnlineOrderProviderGroups(transit, "No shipped online orders in transit.");
+  $("onlineOrdersTransitList").innerHTML = renderOnlineOrderTransitList(transit);
   $("onlineOrdersStockList").innerHTML = renderOnlineOrderModelGroups(stockItems, "No received online orders in stock.");
   $("onlineOrdersAddressList").innerHTML = renderOnlineOrderAddressList(phoneOnlineOrders);
   $("onlineOrdersCompletedList").innerHTML = completed.map(renderOnlineOrderCard).join("") || `<div class="empty">No completed online orders yet.</div>`;
@@ -1597,6 +1597,34 @@ function renderOnlineOrderProviderGroups(orders, emptyMessage = "No open online 
       </div>
     </details>
   `).join("");
+}
+
+function renderOnlineOrderTransitList(orders) {
+  if (!orders.length) return `<div class="empty">No shipped online orders in transit.</div>`;
+  return orders.slice().sort(sortOnlineOrdersNewestFirst).map((order) => {
+    const customerName = onlineOrderCustomerName(order);
+    const metaLine = [
+      order.order_number || `Order #${order.id}`,
+      order.order_date ? formatDate(order.order_date) : "",
+      customerName,
+      order.email || "",
+    ].filter(Boolean).join(" - ");
+    return `
+      <details class="online-order-transit-item">
+        <summary>
+          <div class="online-order-transit-summary">
+            <strong>${escapeHtml(order.phone_model || "No model saved")}</strong>
+            <span>${escapeHtml(metaLine)}</span>
+            <em>${escapeHtml(order.shipping_address || "No shipping address saved")}</em>
+          </div>
+          <span class="pill shipped">In Transit</span>
+        </summary>
+        <div class="online-order-transit-details">
+          ${renderOnlineOrderCard(order)}
+        </div>
+      </details>
+    `;
+  }).join("");
 }
 
 function renderOnlineOrderModelGroups(orders, emptyMessage = "No online orders.") {
