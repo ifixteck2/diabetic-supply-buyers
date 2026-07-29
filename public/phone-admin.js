@@ -2098,7 +2098,7 @@ function renderManualKtReturns() {
     const cost = Number(row.quantity || 0) * Number(row.cost_each || 0);
     const sale = row.sale_price === null || row.sale_price === undefined || row.sale_price === "" ? null : Number(row.sale_price);
     const profit = sale === null ? null : sale - cost;
-    const returnStatuses = ["KT", "Atlas", "Returned", "Sold"];
+    const returnStatuses = ["KT", "Atlas", "Returned", "Sold", "Holding"];
     const statusValue = returnStatuses.includes(String(row.status || "")) ? String(row.status) : "Returned";
     const statusClass = statusValue.toLowerCase().replace(/[^a-z0-9]+/g, "-");
     return `
@@ -2132,6 +2132,7 @@ function renderManualKtReturns() {
             <input id="manualReturnSaleNotes${row.id}" value="${escapeAttr(row.sale_notes || "")}" placeholder="Sale notes">
           </div>
           <button class="mini-btn" onclick="saveManualReturnSale(${row.id})">Save Sale</button>
+          ${statusValue === "Holding" ? "" : `<button class="mini-btn warning" onclick="moveManualReturnToHolding(${row.id})">Move to Holding</button>`}
         </td>
         <td class="${profit === null || profit >= 0 ? "profit-good" : "profit-bad"} return-profit">${profit === null ? "Not Sold" : profitMoney(profit)}</td>
       </tr>
@@ -2180,6 +2181,23 @@ window.saveManualReturnSale = async (id) => {
   return true;
 };
 
+window.moveManualReturnToHolding = async (id) => {
+  const holdingType = promptHoldingType();
+  if (!holdingType) return false;
+  const row = manualPhoneReturns.find((entry) => Number(entry.id) === Number(id));
+  const label = row?.model || "this return";
+  if (!confirm(`Move ${label} to ${holdingType}?`)) return false;
+  const result = await api(`/api/phone-manual-returns/${id}/holding`, {
+    method: "PATCH",
+    body: { holding_type: holdingType },
+  });
+  if (!result?.ok) return alert(result?.error || "Could not move this return to Holding.");
+  await loadManualPhoneReturns();
+  await loadPhoneHolding();
+  openPhoneTab("holding");
+  return true;
+};
+
 window.savePhoneReturnStatus = async (id) => {
   const result = await api(`/api/phone-purchases/${id}/return-status`, {
     method: "PATCH",
@@ -2192,6 +2210,29 @@ window.savePhoneReturnStatus = async (id) => {
   openPhoneTab("ktReturns");
   return true;
 };
+
+window.movePhoneReturnToHolding = async (id) => {
+  const holdingType = promptHoldingType();
+  if (!holdingType) return false;
+  const purchase = phoneInvoices.flatMap((invoice) => invoice.returns || []).find((row) => Number(row.id) === Number(id));
+  const label = purchase?.model || "this return";
+  if (!confirm(`Move ${label} to ${holdingType}?`)) return false;
+  const result = await api(`/api/phone-purchases/${id}/return-holding`, {
+    method: "PATCH",
+    body: { holding_type: holdingType },
+  });
+  if (!result?.ok) return alert(result?.error || "Could not move this return to Holding.");
+  await loadPhoneInvoices();
+  await loadPhoneHolding();
+  openPhoneTab("holding");
+  return true;
+};
+
+function promptHoldingType() {
+  const choice = prompt("Move to Holding:\n1 = Holding For Trade In\n2 = Holding For Sale", "2");
+  if (choice === null) return "";
+  return String(choice || "").trim() === "1" || /trade/i.test(String(choice || "")) ? "Holding For Trade In" : "Holding For Sale";
+}
 
 function renderLocallySold() {
   const list = phoneInvoices
@@ -2662,7 +2703,7 @@ function renderKtReturnCard(invoice) {
   const totalUnits = returns.reduce((sum, row) => sum + Number(row.quantity || 0), 0);
   const rows = returns.map((row) => {
     const cost = Number(row.quantity || 0) * Number(row.cost_each || 0);
-    const returnStatuses = ["KT", "Atlas", "Returned", "Sold"];
+    const returnStatuses = ["KT", "Atlas", "Returned", "Sold", "Holding"];
     const statusValue = returnStatuses.includes(String(row.return_status || "")) ? String(row.return_status) : "Returned";
     const statusClass = statusValue.toLowerCase().replace(/[^a-z0-9]+/g, "-");
     return `
@@ -2690,6 +2731,7 @@ function renderKtReturnCard(invoice) {
             ${returnStatuses.map((status) => `<option ${statusValue === status ? "selected" : ""}>${status}</option>`).join("")}
           </select>
           <button class="mini-btn return-status-save" onclick="savePhoneReturnStatus(${row.id})">Save</button>
+          ${statusValue === "Holding" ? "" : `<button class="mini-btn warning return-status-save" onclick="movePhoneReturnToHolding(${row.id})">Move to Holding</button>`}
         </td>
         <td class="return-reason-cell">${escapeHtml(row.return_reason || row.invoice_removed_reason || "Returned")}</td>
       </tr>
@@ -3417,9 +3459,8 @@ window.removePhonePurchaseFromInvoice = async (id) => {
 };
 
 window.movePhonePurchaseToHolding = async (id) => {
-  const choice = prompt("Move to Holding:\n1 = Holding For Trade In\n2 = Holding For Sale", "2");
-  if (choice === null) return false;
-  const holdingType = String(choice || "").trim() === "1" || /trade/i.test(String(choice || "")) ? "Holding For Trade In" : "Holding For Sale";
+  const holdingType = promptHoldingType();
+  if (!holdingType) return false;
   const purchase = phoneInvoices.flatMap((invoice) => invoice.purchases || []).find((row) => Number(row.id) === Number(id));
   const label = purchase?.model || "this phone";
   if (!confirm(`Move ${label} to ${holdingType}? It will be removed from the active invoice.`)) return false;

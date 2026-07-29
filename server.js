@@ -236,6 +236,60 @@ app.patch("/api/phone-manual-returns/:id/sale", requirePhoneAuth, async (req, re
   res.json({ ok: true, return: result.rows[0] });
 });
 
+app.patch("/api/phone-manual-returns/:id/holding", requirePhoneAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  const holdingType = normalizeHoldingType(req.body?.holding_type || "");
+  if (!id) return res.status(400).json({ error: "Return ID is required." });
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    const existing = await client.query("select * from phone_manual_returns where id = $1 for update", [id]);
+    const row = existing.rows[0];
+    if (!row) {
+      await client.query("rollback");
+      return res.status(404).json({ error: "Manual return not found." });
+    }
+    if (row.status === "Holding") {
+      await client.query("rollback");
+      return res.status(400).json({ error: "This return is already marked Holding." });
+    }
+    const notes = [row.notes, row.reason ? `Return reason: ${row.reason}` : "", `Moved from manual return ${row.old_invoice_label || `#${row.id}`}`].filter(Boolean).join(" | ");
+    const holding = await client.query(
+      `insert into phone_holding_purchases
+         (purchase_date, device_type, condition_type, packaging, grade, model, carrier, quantity, cost_each, placed_at, notes, holding_type)
+       values ($1,'Phone','Used','',$2,$3,$4,$5,$6,$7,$8,$9)
+       returning *`,
+      [
+        row.returned_at || localDateInTimeZone(),
+        row.condition || "Returned",
+        row.model,
+        row.carrier,
+        row.quantity,
+        row.cost_each,
+        row.old_invoice_label || "Manual KT return",
+        notes,
+        holdingType,
+      ]
+    );
+    const updated = await client.query(
+      `update phone_manual_returns
+          set status = 'Holding',
+            notes = $2
+        where id = $1
+        returning *`,
+      [id, notes]
+    );
+    await client.query("commit");
+    res.json({ ok: true, holding: holding.rows[0], return: updated.rows[0] });
+  } catch (error) {
+    await client.query("rollback");
+    console.error(error);
+    res.status(500).json({ error: "Could not move this return to Holding." });
+  } finally {
+    client.release();
+  }
+});
+
 app.get("/api/phone-online-orders", requirePhoneAuth, async (req, res) => {
   const result = await pool.query(
     `select * from phone_online_orders
@@ -1188,9 +1242,9 @@ app.patch("/api/phone-purchases/:id/return", requirePhoneAuth, async (req, res) 
 app.patch("/api/phone-purchases/:id/return-status", requirePhoneAuth, async (req, res) => {
   const id = Number(req.params.id);
   const returnStatus = String(req.body?.status || "").trim();
-  const allowedStatuses = ["KT", "Atlas", "Returned", "Sold"];
+  const allowedStatuses = ["KT", "Atlas", "Returned", "Sold", "Holding"];
   if (!id) return res.status(400).json({ error: "Purchase ID is required." });
-  if (!allowedStatuses.includes(returnStatus)) return res.status(400).json({ error: "Choose KT, Atlas, Returned, or Sold." });
+  if (!allowedStatuses.includes(returnStatus)) return res.status(400).json({ error: "Choose KT, Atlas, Returned, Sold, or Holding." });
   const result = await pool.query(
     `update phone_purchases
      set return_status = $2
@@ -1201,6 +1255,75 @@ app.patch("/api/phone-purchases/:id/return-status", requirePhoneAuth, async (req
   );
   if (!result.rows[0]) return res.status(404).json({ error: "Return item not found." });
   res.json({ ok: true, purchase: result.rows[0] });
+});
+
+app.patch("/api/phone-purchases/:id/return-holding", requirePhoneAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  const holdingType = normalizeHoldingType(req.body?.holding_type || "");
+  if (!id) return res.status(400).json({ error: "Purchase ID is required." });
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    const purchaseResult = await client.query(
+      `select pp.*, pi.buyer as source_buyer, pi.label as source_label
+         from phone_purchases pp
+         join phone_invoices pi on pi.id = pp.invoice_id
+        where pp.id = $1
+          and pp.returned_at is not null
+        for update`,
+      [id]
+    );
+    const purchase = purchaseResult.rows[0];
+    if (!purchase) {
+      await client.query("rollback");
+      return res.status(404).json({ error: "Return item not found." });
+    }
+    if (purchase.return_status === "Holding") {
+      await client.query("rollback");
+      return res.status(400).json({ error: "This return is already marked Holding." });
+    }
+    const sourceNote = `Moved from return on ${purchase.source_buyer} ${purchase.source_label || `Invoice #${purchase.invoice_id}`}`;
+    const notes = [purchase.notes, purchase.return_reason ? `Return reason: ${purchase.return_reason}` : "", sourceNote].filter(Boolean).join(" | ");
+    const holding = await client.query(
+      `insert into phone_holding_purchases
+         (purchase_date, device_type, condition_type, packaging, grade, model, carrier, quantity, cost_each, imei, placed_at, photo_file_name, photo_data_url, notes, holding_type)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+       returning *`,
+      [
+        purchase.purchase_date || localDateInTimeZone(),
+        purchase.device_type,
+        purchase.condition_type,
+        purchase.packaging,
+        purchase.grade,
+        purchase.model,
+        purchase.carrier,
+        purchase.quantity,
+        purchase.cost_each,
+        purchase.imei,
+        purchase.placed_at,
+        purchase.photo_file_name,
+        purchase.photo_data_url,
+        notes,
+        holdingType,
+      ]
+    );
+    const updated = await client.query(
+      `update phone_purchases
+          set return_status = 'Holding',
+            return_reason = $2
+        where id = $1
+        returning *`,
+      [id, purchase.return_reason || holdingType]
+    );
+    await client.query("commit");
+    res.json({ ok: true, holding: holding.rows[0], purchase: updated.rows[0] });
+  } catch (error) {
+    await client.query("rollback");
+    console.error(error);
+    res.status(500).json({ error: "Could not move this return to Holding." });
+  } finally {
+    client.release();
+  }
 });
 
 app.get("/api/phone-invoices/:id/html", requirePhoneAuth, async (req, res) => {
