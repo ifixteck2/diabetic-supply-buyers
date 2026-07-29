@@ -25,6 +25,7 @@
             <button class="tab phone-tab" data-phone-tab="dashboard">Dashboard</button>
             <button class="tab active phone-tab" data-phone-tab="purchase">Add Purchase</button>
             <button class="tab phone-tab" data-phone-tab="priceChecker">Price Checker</button>
+            <button class="tab phone-tab" data-phone-tab="holding">Holding</button>
             <button class="tab phone-tab" data-phone-tab="atlasPending">Atlas Pending</button>
             <button class="tab phone-tab" data-phone-tab="ktPending">KT Pending</button>
             <button class="tab phone-tab" data-phone-tab="locallySold">Locally Sold</button>
@@ -52,7 +53,7 @@
                 <button class="btn secondary" id="clearPhonePurchaseBtn">Clear</button>
               </div>
               <div class="form-grid three">
-                <label>Buyer<select id="phoneBuyer"><option>Atlas</option><option>KT</option></select></label>
+                <label>Buyer<select id="phoneBuyer"><option>Atlas</option><option>KT</option><option>Holding</option></select></label>
                 <label>Add to invoice<select id="phoneInvoiceSelect"></select></label>
                 <label>New invoice name<input id="newPhoneInvoiceLabel" placeholder="Example: Atlas 06-27 phones"></label>
               </div>
@@ -126,6 +127,15 @@
               <div id="phoneEditNotice" class="status ok hidden"></div>
               <div class="actions"><button class="btn phone-btn" id="savePhonePurchaseBtn">Add Purchase To Invoice</button></div>
               <div id="phonePurchaseStatus"></div>
+            </section>
+          </section>
+
+          <section id="holdingPhoneTab" class="tab-panel hidden">
+            <section class="panel">
+              <div class="panel-head">
+                <div><h2>Holding</h2><p>Phones bought and held before deciding where they go.</p></div>
+              </div>
+              <div id="phoneHoldingList" class="invoice-list"></div>
             </section>
           </section>
 

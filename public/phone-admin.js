@@ -8,6 +8,7 @@ const status = (id, message, type = "ok") => {
 let atlasPrices = [];
 let phoneInvoices = [];
 let manualPhoneReturns = [];
+let phoneHoldingItems = [];
 let phoneOnlineOrders = [];
 let editingPhonePurchaseId = null;
 let editingOnlineOrderId = null;
@@ -89,6 +90,7 @@ async function refreshPhonePortal() {
   await loadAtlasPrices();
   await loadPhoneInvoices();
   await loadManualPhoneReturns();
+  await loadPhoneHolding();
   await loadPhoneOnlineOrders();
 }
 
@@ -116,6 +118,12 @@ async function loadManualPhoneReturns() {
   renderInvoiceLists();
 }
 
+async function loadPhoneHolding() {
+  const result = await api("/api/phone-holding", { silent: true });
+  phoneHoldingItems = result?.items || [];
+  renderInvoiceLists();
+}
+
 async function loadPhoneOnlineOrders() {
   const result = await api("/api/phone-online-orders", { silent: true });
   phoneOnlineOrders = result?.orders || [];
@@ -133,6 +141,7 @@ function openPhoneTab(name) {
     dashboard: "Dashboard",
     purchase: "Add Purchase",
     priceChecker: "Price Checker",
+    holding: "Holding",
     atlasPending: "Atlas Pending",
     ktPending: "KT Pending",
     locallySold: "Locally Sold",
@@ -644,6 +653,11 @@ function giftCardImageToDataUrl(file) {
 }
 
 function updateProjectedPrice() {
+  if ($("phoneBuyer").value === "Holding") {
+    $("phoneProjected").value = "";
+    $("phonePricePreview").classList.add("hidden");
+    return;
+  }
   const selectedModel = $("phoneModel").value;
   const selectedStorage = $("phoneStorage").value;
   const carrier = $("phoneCarrier").value;
@@ -690,6 +704,15 @@ function selectedAtlasPurchaseDeductions() {
 
 function renderInvoiceSelect() {
   const buyer = $("phoneBuyer").value;
+  const isHolding = buyer === "Holding";
+  $("phoneInvoiceSelect").disabled = isHolding;
+  $("newPhoneInvoiceLabel").disabled = isHolding;
+  $("createPhoneInvoiceBtn").disabled = isHolding;
+  $("savePhonePurchaseBtn").textContent = editingPhonePurchaseId ? "Save Changes" : isHolding ? "Add To Holding" : "Add Purchase To Invoice";
+  if (isHolding) {
+    $("phoneInvoiceSelect").innerHTML = `<option value="">Holding - no invoice</option>`;
+    return;
+  }
   const pending = phoneInvoices.filter((invoice) => invoice.buyer === buyer && invoice.status === "Pending");
   $("phoneInvoiceSelect").innerHTML = pending.map((invoice) => (
     `<option value="${invoice.id}">#${invoice.id} - ${escapeHtml(invoice.label)} (${invoiceTotals(invoice).units} phones)</option>`
@@ -698,6 +721,7 @@ function renderInvoiceSelect() {
 
 async function createPhoneInvoice() {
   const buyer = $("phoneBuyer").value;
+  if (buyer === "Holding") return status("phonePurchaseStatus", "Holding phones do not need an invoice.", "bad");
   const result = await api("/api/phone-invoices", {
     method: "POST",
     body: { buyer, label: $("newPhoneInvoiceLabel").value.trim() },
@@ -713,6 +737,7 @@ async function savePhonePurchase(options = {}) {
   const photoFile = $("phonePhoto").files?.[0] || null;
   const photo = photoFile ? await imageFileToDataUrl(photoFile) : null;
   const body = phonePurchasePayload(photo);
+  if (!editingPhonePurchaseId && body.buyer === "Holding") return savePhoneHoldingPurchase(body, options);
   const result = await api(editingPhonePurchaseId ? `/api/phone-purchases/${editingPhonePurchaseId}` : "/api/phone-purchases", {
     method: editingPhonePurchaseId ? "PATCH" : "POST",
     body,
@@ -724,6 +749,24 @@ async function savePhonePurchase(options = {}) {
   if (!options.silent) status("phonePurchaseStatus", editingPhonePurchaseId ? `Updated phone on ${result.invoice.buyer} invoice #${result.invoice.id}.` : `Added purchase to ${result.invoice.buyer} invoice #${result.invoice.id}.`);
   if (!options.keepForm) resetPhonePurchase(false);
   if (!options.silent) await loadPhoneInvoices();
+  return result;
+}
+
+async function savePhoneHoldingPurchase(body, options = {}) {
+  const result = await api("/api/phone-holding", {
+    method: "POST",
+    body,
+  });
+  if (!result?.ok) {
+    if (!options.silent) status("phonePurchaseStatus", result?.error || "Could not save holding phone.", "bad");
+    return result;
+  }
+  if (!options.silent) status("phonePurchaseStatus", "Added phone to Holding.");
+  if (!options.keepForm) resetPhonePurchase(false);
+  if (!options.silent) {
+    await loadPhoneHolding();
+    openPhoneTab("holding");
+  }
   return result;
 }
 
@@ -744,7 +787,7 @@ async function parseQuickPhoneText(saveAfterParse) {
     return null;
   }
   await savePhonePurchase();
-  status("quickPhoneStatus", `Added ${escapeHtml(parsed.modelText)} to the selected invoice.`);
+  status("quickPhoneStatus", $("phoneBuyer").value === "Holding" ? `Added ${escapeHtml(parsed.modelText)} to Holding.` : `Added ${escapeHtml(parsed.modelText)} to the selected invoice.`);
   $("quickPhoneText").value = "";
   $("quickPhoneImei").value = "";
   return null;
@@ -785,10 +828,11 @@ async function addQuickPhoneLines(entries) {
     else failures.push(`${typeof entry === "string" ? entry : entry.text} (${result?.error || "not saved"})`);
   }
   await loadPhoneInvoices();
+  await loadPhoneHolding();
   if (failures.length) {
     status("quickPhoneStatus", `Added ${added}. Could not add: ${escapeHtml(failures.join("; "))}`, "bad");
   } else {
-    status("quickPhoneStatus", `Added ${added} phones to the selected invoice.`);
+    status("quickPhoneStatus", $("phoneBuyer").value === "Holding" ? `Added ${added} phones to Holding.` : `Added ${added} phones to the selected invoice.`);
     $("quickPhoneText").value = "";
     $("quickPhoneImei").value = "";
   }
@@ -1335,6 +1379,7 @@ function resetPhonePurchase(clearStatus = true) {
 function renderInvoiceLists() {
   renderInvoiceGroup("atlasPendingList", "Atlas", "Pending");
   renderInvoiceGroup("ktPendingList", "KT", "Pending");
+  renderPhoneHolding();
   renderLocallySold();
   renderGiftCards();
   renderKtReturns();
@@ -1893,6 +1938,55 @@ function renderInvoiceGroup(id, buyer, view) {
   });
   const summary = view === "Pending" && list.length ? renderPendingBuyerSummary(buyer, list) : "";
   $(id).innerHTML = summary + (list.map(renderPhoneInvoiceCard).join("") || `<div class="empty">No ${buyer} ${view.toLowerCase()} invoices yet.</div>`);
+}
+
+function renderPhoneHolding() {
+  if (!$("phoneHoldingList")) return;
+  const totalCost = phoneHoldingItems.reduce((sum, row) => sum + Number(row.quantity || 0) * Number(row.cost_each || 0), 0);
+  const totalPhones = phoneHoldingItems.reduce((sum, row) => sum + Number(row.quantity || 0), 0);
+  const rows = phoneHoldingItems.map((row, index) => {
+    const cost = Number(row.quantity || 0) * Number(row.cost_each || 0);
+    const condition = row.condition_type === "New" ? `New${row.packaging ? ` - ${row.packaging}` : ""}` : row.grade || row.condition_type || "Used";
+    return `
+      <tr>
+        <td><strong>${index + 1}</strong></td>
+        <td class="phone-device-cell">
+          <strong>${escapeHtml(row.model || "Phone")}</strong>
+          <span>${escapeHtml(condition)}</span>
+          ${row.imei ? `<em>IMEI ${escapeHtml(row.imei)}</em>` : ""}
+          ${row.notes ? `<em>${escapeHtml(row.notes)}</em>` : ""}
+        </td>
+        <td>${escapeHtml(row.carrier || "")}</td>
+        <td>${row.quantity || 1}</td>
+        <td>${money(row.cost_each)}</td>
+        <td>${money(cost)}</td>
+        <td>${escapeHtml(row.placed_at || "")}</td>
+        <td>${row.purchase_date ? formatDate(row.purchase_date) : ""}</td>
+        <td><span class="pill pending">Holding</span></td>
+      </tr>
+    `;
+  }).join("");
+  $("phoneHoldingList").innerHTML = `
+    <article class="pending-page-summary holding-summary">
+      <div>
+        <span>Holding</span>
+        <strong>${money(totalCost)}</strong>
+        <em>${totalPhones} phone${totalPhones === 1 ? "" : "s"} being held</em>
+      </div>
+      <div class="pending-page-metrics">
+        <span><small>Records</small><b>${phoneHoldingItems.length}</b></span>
+        <span><small>Phones</small><b>${totalPhones}</b></span>
+        <span><small>Total Cost</small><b>${money(totalCost)}</b></span>
+        <span><small>Status</small><b>Holding</b></span>
+      </div>
+    </article>
+    <div class="table-wrap pending-table-wrap">
+      <table class="phone-profit-table pending-phone-table holding-phone-table">
+        <thead><tr><th>#</th><th>Phone</th><th>Carrier</th><th>Qty</th><th>Cost Each</th><th>Total Cost</th><th>Source</th><th>Date</th><th>Status</th></tr></thead>
+        <tbody>${rows || `<tr><td colspan="9">No phones in Holding yet.</td></tr>`}</tbody>
+      </table>
+    </div>
+  `;
 }
 
 function renderPendingBuyerSummary(buyer, invoices) {

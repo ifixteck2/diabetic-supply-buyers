@@ -140,6 +140,48 @@ app.get("/api/phone-manual-returns", requirePhoneAuth, async (req, res) => {
   res.json({ returns: result.rows });
 });
 
+app.get("/api/phone-holding", requirePhoneAuth, async (req, res) => {
+  const result = await pool.query(
+    `select *
+       from phone_holding_purchases
+      order by purchase_date desc, created_at desc, id desc
+      limit 500`
+  );
+  res.json({ items: result.rows });
+});
+
+app.post("/api/phone-holding", requirePhoneAuth, async (req, res) => {
+  const input = req.body || {};
+  const quantity = Number(input.quantity || 0);
+  const costEach = Number(input.cost_each || 0);
+  if (!quantity || quantity < 1) return res.status(400).json({ error: "Quantity must be at least 1." });
+  if (!Number.isFinite(costEach) || costEach < 0) return res.status(400).json({ error: "Enter your cost." });
+  if (!String(input.model || "").trim()) return res.status(400).json({ error: "Choose a model." });
+  const result = await pool.query(
+    `insert into phone_holding_purchases
+       (purchase_date, device_type, condition_type, packaging, grade, model, carrier, quantity, cost_each, imei, placed_at, photo_file_name, photo_data_url, notes)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+     returning *`,
+    [
+      input.purchase_date || localDateInTimeZone(),
+      normalizeDeviceType(input.device_type || ""),
+      normalizeConditionType(input.condition_type || ""),
+      String(input.packaging || "").trim(),
+      String(input.grade || "").trim(),
+      String(input.model || "").trim(),
+      String(input.carrier || "").trim(),
+      quantity,
+      costEach,
+      String(input.imei || "").trim(),
+      String(input.placed_at || "").trim(),
+      String(input.photo?.file_name || "").slice(0, 160),
+      isAllowedPhotoDataUrl(input.photo?.data_url) ? String(input.photo.data_url) : "",
+      String(input.notes || "").trim(),
+    ]
+  );
+  res.json({ ok: true, item: result.rows[0] });
+});
+
 app.post("/api/phone-manual-returns", requirePhoneAuth, async (req, res) => {
   const input = req.body || {};
   const model = String(input.model || "").trim();
@@ -1944,6 +1986,27 @@ async function migrate() {
       created_at timestamptz not null default now()
     );
 
+    create table if not exists phone_holding_purchases (
+      id serial primary key,
+      purchase_date date not null default current_date,
+      device_type text not null default 'Phone',
+      condition_type text not null default 'Used',
+      packaging text not null default '',
+      grade text not null default '',
+      model text not null default '',
+      carrier text not null default '',
+      quantity integer not null default 1,
+      cost_each numeric(12,2) not null default 0,
+      imei text not null default '',
+      placed_at text not null default '',
+      photo_file_name text not null default '',
+      photo_data_url text not null default '',
+      notes text not null default '',
+      status text not null default 'Holding',
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+
     create table if not exists phone_online_orders (
       id serial primary key,
       provider text not null default '',
@@ -2065,6 +2128,22 @@ async function migrate() {
     alter table phone_manual_returns add column if not exists sale_price numeric(12,2);
     alter table phone_manual_returns add column if not exists sold_at date;
     alter table phone_manual_returns add column if not exists sale_notes text not null default '';
+    alter table phone_holding_purchases add column if not exists purchase_date date not null default current_date;
+    alter table phone_holding_purchases add column if not exists device_type text not null default 'Phone';
+    alter table phone_holding_purchases add column if not exists condition_type text not null default 'Used';
+    alter table phone_holding_purchases add column if not exists packaging text not null default '';
+    alter table phone_holding_purchases add column if not exists grade text not null default '';
+    alter table phone_holding_purchases add column if not exists model text not null default '';
+    alter table phone_holding_purchases add column if not exists carrier text not null default '';
+    alter table phone_holding_purchases add column if not exists quantity integer not null default 1;
+    alter table phone_holding_purchases add column if not exists cost_each numeric(12,2) not null default 0;
+    alter table phone_holding_purchases add column if not exists imei text not null default '';
+    alter table phone_holding_purchases add column if not exists placed_at text not null default '';
+    alter table phone_holding_purchases add column if not exists photo_file_name text not null default '';
+    alter table phone_holding_purchases add column if not exists photo_data_url text not null default '';
+    alter table phone_holding_purchases add column if not exists notes text not null default '';
+    alter table phone_holding_purchases add column if not exists status text not null default 'Holding';
+    alter table phone_holding_purchases add column if not exists updated_at timestamptz not null default now();
     alter table phone_online_orders add column if not exists provider text not null default '';
     alter table phone_online_orders add column if not exists order_number text not null default '';
     alter table phone_online_orders add column if not exists phone_model text not null default '';
