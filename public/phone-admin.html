@@ -303,22 +303,28 @@
           </div>
           <div class="online-orders-header-actions">
             <label class="online-order-search">Search Orders<input id="onlineOrderSearch" placeholder="Last 4, name, address, email, order #"></label>
-            <button class="btn secondary" id="onlineOrdersClearSearchBtn">Clear Search</button>
-            <button class="btn secondary" id="onlineOrdersBackBtn">Back To Phone Portal</button>
-            <button class="btn secondary" id="onlineOrdersRefreshBtn">Refresh</button>
+            <div class="online-orders-buttons">
+              <button class="btn secondary" id="onlineOrdersClearSearchBtn">Clear Search</button>
+              <button class="btn secondary" id="onlineOrdersBackBtn">Back To Phone Portal</button>
+              <button class="btn secondary" id="onlineOrdersRefreshBtn">Refresh</button>
+            </div>
           </div>
         </header>
         <div id="onlineOrderSearchStatus" class="online-order-search-status"></div>
 
-        <nav class="online-order-tabs" aria-label="Online order sections">
-          <button class="online-order-tab active" data-online-order-tab="add">Add Order</button>
-          <button class="online-order-tab" data-online-order-tab="pending">Orders Pending</button>
-          <button class="online-order-tab" data-online-order-tab="transit">In Transit</button>
-          <button class="online-order-tab" data-online-order-tab="stock">In Stock</button>
-          <button class="online-order-tab" data-online-order-tab="addresses">Addresses</button>
-          <button class="online-order-tab" data-online-order-tab="completed">Completed</button>
-        </nav>
+        <div class="online-order-workspace">
+          <aside class="online-order-left">
+            <nav class="online-order-tabs" aria-label="Online order sections">
+              <button class="online-order-tab active" data-online-order-tab="add">Add Order</button>
+              <button class="online-order-tab" data-online-order-tab="pending">Orders Pending</button>
+              <button class="online-order-tab" data-online-order-tab="transit">In Transit</button>
+              <button class="online-order-tab" data-online-order-tab="stock">In Stock</button>
+              <button class="online-order-tab" data-online-order-tab="addresses">Addresses</button>
+              <button class="online-order-tab" data-online-order-tab="completed">Completed</button>
+            </nav>
+          </aside>
 
+          <div class="online-order-content">
         <section id="onlineOrdersAddPanel" class="online-order-tab-panel">
           <section class="panel online-order-entry-panel online-order-add-panel">
             <div class="panel-head">
@@ -423,6 +429,8 @@
             <div id="onlineOrdersCompletedList" class="online-order-list"></div>
           </section>
         </section>
+          </div>
+        </div>
       </section>
     </section>
   </main>
