@@ -708,6 +708,7 @@ function renderInvoiceSelect() {
   $("phoneInvoiceSelect").disabled = isHolding;
   $("newPhoneInvoiceLabel").disabled = isHolding;
   $("createPhoneInvoiceBtn").disabled = isHolding;
+  $("phoneHoldingTypeWrap").classList.toggle("hidden", !isHolding);
   $("savePhonePurchaseBtn").textContent = editingPhonePurchaseId ? "Save Changes" : isHolding ? "Add To Holding" : "Add Purchase To Invoice";
   if (isHolding) {
     $("phoneInvoiceSelect").innerHTML = `<option value="">Holding - no invoice</option>`;
@@ -1339,6 +1340,7 @@ function phonePurchasePayload(photo) {
     imei: $("phoneImei").value.trim(),
     placed_at: $("phonePlacedAt").value.trim(),
     photo,
+    holding_type: $("phoneHoldingType")?.value || "Holding For Sale",
     notes,
   };
 }
@@ -1944,7 +1946,31 @@ function renderPhoneHolding() {
   if (!$("phoneHoldingList")) return;
   const totalCost = phoneHoldingItems.reduce((sum, row) => sum + Number(row.quantity || 0) * Number(row.cost_each || 0), 0);
   const totalPhones = phoneHoldingItems.reduce((sum, row) => sum + Number(row.quantity || 0), 0);
-  const rows = phoneHoldingItems.map((row, index) => {
+  const tradeInItems = phoneHoldingItems.filter((row) => holdingTypeLabel(row.holding_type) === "Holding For Trade In");
+  const saleItems = phoneHoldingItems.filter((row) => holdingTypeLabel(row.holding_type) === "Holding For Sale");
+  $("phoneHoldingList").innerHTML = `
+    <article class="pending-page-summary holding-summary">
+      <div>
+        <span>Holding</span>
+        <strong>${money(totalCost)}</strong>
+        <em>${totalPhones} phone${totalPhones === 1 ? "" : "s"} being held</em>
+      </div>
+      <div class="pending-page-metrics">
+        <span><small>Trade In</small><b>${holdingGroupUnits(tradeInItems)}</b></span>
+        <span><small>For Sale</small><b>${holdingGroupUnits(saleItems)}</b></span>
+        <span><small>Total Cost</small><b>${money(totalCost)}</b></span>
+        <span><small>Records</small><b>${phoneHoldingItems.length}</b></span>
+      </div>
+    </article>
+    ${renderPhoneHoldingGroup("Holding For Trade In", tradeInItems)}
+    ${renderPhoneHoldingGroup("Holding For Sale", saleItems)}
+  `;
+}
+
+function renderPhoneHoldingGroup(title, items) {
+  const totalCost = items.reduce((sum, row) => sum + Number(row.quantity || 0) * Number(row.cost_each || 0), 0);
+  const totalPhones = holdingGroupUnits(items);
+  const rows = items.map((row, index) => {
     const cost = Number(row.quantity || 0) * Number(row.cost_each || 0);
     const condition = row.condition_type === "New" ? `New${row.packaging ? ` - ${row.packaging}` : ""}` : row.grade || row.condition_type || "Used";
     return `
@@ -1962,31 +1988,36 @@ function renderPhoneHolding() {
         <td>${money(cost)}</td>
         <td>${escapeHtml(row.placed_at || "")}</td>
         <td>${row.purchase_date ? formatDate(row.purchase_date) : ""}</td>
-        <td><span class="pill pending">Holding</span></td>
+        <td><span class="pill pending">${escapeHtml(holdingTypeLabel(row.holding_type))}</span></td>
       </tr>
     `;
   }).join("");
-  $("phoneHoldingList").innerHTML = `
-    <article class="pending-page-summary holding-summary">
-      <div>
-        <span>Holding</span>
-        <strong>${money(totalCost)}</strong>
-        <em>${totalPhones} phone${totalPhones === 1 ? "" : "s"} being held</em>
+  return `
+    <article class="invoice-card phone-invoice-card holding-group-card">
+      <div class="invoice-top">
+        <div class="phone-invoice-title">
+          <h3>${escapeHtml(title)}</h3>
+          <p>${totalPhones} phone${totalPhones === 1 ? "" : "s"} - ${money(totalCost)} total cost</p>
+        </div>
+        <span class="pill pending">Holding</span>
       </div>
-      <div class="pending-page-metrics">
-        <span><small>Records</small><b>${phoneHoldingItems.length}</b></span>
-        <span><small>Phones</small><b>${totalPhones}</b></span>
-        <span><small>Total Cost</small><b>${money(totalCost)}</b></span>
-        <span><small>Status</small><b>Holding</b></span>
-      </div>
-    </article>
+      ${items.length ? "" : `<div class="empty">No phones in ${escapeHtml(title)} yet.</div>`}
     <div class="table-wrap pending-table-wrap">
       <table class="phone-profit-table pending-phone-table holding-phone-table">
         <thead><tr><th>#</th><th>Phone</th><th>Carrier</th><th>Qty</th><th>Cost Each</th><th>Total Cost</th><th>Source</th><th>Date</th><th>Status</th></tr></thead>
-        <tbody>${rows || `<tr><td colspan="9">No phones in Holding yet.</td></tr>`}</tbody>
+        <tbody>${rows || `<tr><td colspan="9">No phones here yet.</td></tr>`}</tbody>
       </table>
     </div>
+    </article>
   `;
+}
+
+function holdingTypeLabel(value) {
+  return String(value || "").toLowerCase().includes("trade") ? "Holding For Trade In" : "Holding For Sale";
+}
+
+function holdingGroupUnits(items) {
+  return items.reduce((sum, row) => sum + Number(row.quantity || 0), 0);
 }
 
 function renderPendingBuyerSummary(buyer, invoices) {
@@ -2745,7 +2776,7 @@ function renderPhoneInvoiceCard(invoice, options = {}) {
       <td>${escapeHtml(row.carrier || "")}</td>
       <td>${row.quantity}</td>
       <td>${money(row.cost_each)}</td>
-      <td><div class="phone-row-actions"><button class="mini-btn" onclick="startPhonePurchaseEdit(${row.id})">Edit</button>${canRemove ? `<button class="mini-btn" onclick="movePhonePurchaseToInvoice(${row.id})">Move</button>` : ""}${canRemove ? `<button class="mini-btn" onclick="movePhonePurchaseToGiftCard(${row.id})">Move to GC</button>` : ""}${canReturn ? `<button class="mini-btn warning" onclick="returnPhonePurchaseToKt(${row.id})">Return</button>` : ""}${canRemove ? `<button class="mini-btn danger" onclick="removePhonePurchaseFromInvoice(${row.id})">Locally Sold</button>` : ""}${canDeleteMistake ? `<button class="mini-btn danger" onclick="deletePhonePurchaseFromPastInvoice(${row.id})">Delete</button>` : ""}</div></td>
+      <td><div class="phone-row-actions"><button class="mini-btn" onclick="startPhonePurchaseEdit(${row.id})">Edit</button>${canRemove ? `<button class="mini-btn" onclick="movePhonePurchaseToInvoice(${row.id})">Move</button>` : ""}${canRemove ? `<button class="mini-btn" onclick="movePhonePurchaseToHolding(${row.id})">Hold</button>` : ""}${canRemove ? `<button class="mini-btn" onclick="movePhonePurchaseToGiftCard(${row.id})">Move to GC</button>` : ""}${canReturn ? `<button class="mini-btn warning" onclick="returnPhonePurchaseToKt(${row.id})">Return</button>` : ""}${canRemove ? `<button class="mini-btn danger" onclick="removePhonePurchaseFromInvoice(${row.id})">Locally Sold</button>` : ""}${canDeleteMistake ? `<button class="mini-btn danger" onclick="deletePhonePurchaseFromPastInvoice(${row.id})">Delete</button>` : ""}</div></td>
     </tr>
   `;
   }).join("");
@@ -2771,7 +2802,7 @@ function renderPhoneInvoiceCard(invoice, options = {}) {
       <td>${money(row.cost_each)}</td>
       <td>${money(lineCost)}</td>
       <td>${phoneAddedDate(row)}</td>
-      <td><div class="phone-row-actions"><button class="mini-btn" onclick="startPhonePurchaseEdit(${row.id})">Edit</button>${canRemove ? `<button class="mini-btn" onclick="movePhonePurchaseToInvoice(${row.id})">Move</button>` : ""}${canRemove ? `<button class="mini-btn" onclick="movePhonePurchaseToGiftCard(${row.id})">Move to GC</button>` : ""}${canReturn ? `<button class="mini-btn warning" onclick="returnPhonePurchaseToKt(${row.id})">Return</button>` : ""}${canRemove ? `<button class="mini-btn danger" onclick="removePhonePurchaseFromInvoice(${row.id})">Locally Sold</button>` : ""}${canDeleteMistake ? `<button class="mini-btn danger" onclick="deletePhonePurchaseFromPastInvoice(${row.id})">Delete</button>` : ""}</div></td>
+      <td><div class="phone-row-actions"><button class="mini-btn" onclick="startPhonePurchaseEdit(${row.id})">Edit</button>${canRemove ? `<button class="mini-btn" onclick="movePhonePurchaseToInvoice(${row.id})">Move</button>` : ""}${canRemove ? `<button class="mini-btn" onclick="movePhonePurchaseToHolding(${row.id})">Hold</button>` : ""}${canRemove ? `<button class="mini-btn" onclick="movePhonePurchaseToGiftCard(${row.id})">Move to GC</button>` : ""}${canReturn ? `<button class="mini-btn warning" onclick="returnPhonePurchaseToKt(${row.id})">Return</button>` : ""}${canRemove ? `<button class="mini-btn danger" onclick="removePhonePurchaseFromInvoice(${row.id})">Locally Sold</button>` : ""}${canDeleteMistake ? `<button class="mini-btn danger" onclick="deletePhonePurchaseFromPastInvoice(${row.id})">Delete</button>` : ""}</div></td>
     </tr>
   `;
   }).join("");
@@ -3382,6 +3413,26 @@ window.removePhonePurchaseFromInvoice = async (id) => {
   }
   await loadPhoneInvoices();
   openPhoneTab("locallySold");
+  return true;
+};
+
+window.movePhonePurchaseToHolding = async (id) => {
+  const choice = prompt("Move to Holding:\n1 = Holding For Trade In\n2 = Holding For Sale", "2");
+  if (choice === null) return false;
+  const holdingType = String(choice || "").trim() === "1" || /trade/i.test(String(choice || "")) ? "Holding For Trade In" : "Holding For Sale";
+  const purchase = phoneInvoices.flatMap((invoice) => invoice.purchases || []).find((row) => Number(row.id) === Number(id));
+  const label = purchase?.model || "this phone";
+  if (!confirm(`Move ${label} to ${holdingType}? It will be removed from the active invoice.`)) return false;
+  const result = await api(`/api/phone-purchases/${id}/holding`, {
+    method: "PATCH",
+    body: { holding_type: holdingType },
+  });
+  if (!result?.ok) {
+    return alert(result?.error || "Could not move this phone to Holding.");
+  }
+  await loadPhoneInvoices();
+  await loadPhoneHolding();
+  openPhoneTab("holding");
   return true;
 };
 

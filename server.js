@@ -154,13 +154,14 @@ app.post("/api/phone-holding", requirePhoneAuth, async (req, res) => {
   const input = req.body || {};
   const quantity = Number(input.quantity || 0);
   const costEach = Number(input.cost_each || 0);
+  const holdingType = normalizeHoldingType(input.holding_type || "");
   if (!quantity || quantity < 1) return res.status(400).json({ error: "Quantity must be at least 1." });
   if (!Number.isFinite(costEach) || costEach < 0) return res.status(400).json({ error: "Enter your cost." });
   if (!String(input.model || "").trim()) return res.status(400).json({ error: "Choose a model." });
   const result = await pool.query(
     `insert into phone_holding_purchases
-       (purchase_date, device_type, condition_type, packaging, grade, model, carrier, quantity, cost_each, imei, placed_at, photo_file_name, photo_data_url, notes)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+       (purchase_date, device_type, condition_type, packaging, grade, model, carrier, quantity, cost_each, imei, placed_at, photo_file_name, photo_data_url, notes, holding_type)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
      returning *`,
     [
       input.purchase_date || localDateInTimeZone(),
@@ -177,6 +178,7 @@ app.post("/api/phone-holding", requirePhoneAuth, async (req, res) => {
       String(input.photo?.file_name || "").slice(0, 160),
       isAllowedPhotoDataUrl(input.photo?.data_url) ? String(input.photo.data_url) : "",
       String(input.notes || "").trim(),
+      holdingType,
     ]
   );
   res.json({ ok: true, item: result.rows[0] });
@@ -870,6 +872,81 @@ app.patch("/api/phone-purchases/:id/move-invoice", requirePhoneAuth, async (req,
     await client.query("rollback");
     console.error(error);
     res.status(500).json({ error: "Could not move phone to that invoice." });
+  } finally {
+    client.release();
+  }
+});
+
+app.patch("/api/phone-purchases/:id/holding", requirePhoneAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  const holdingType = normalizeHoldingType(req.body?.holding_type || "");
+  if (!id) return res.status(400).json({ error: "Purchase ID is required." });
+
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    const purchaseResult = await client.query(
+      `select pp.*, pi.buyer as source_buyer, pi.label as source_label
+         from phone_purchases pp
+         join phone_invoices pi on pi.id = pp.invoice_id
+        where pp.id = $1
+          and pp.invoice_removed_at is null
+          and pi.status = 'Pending'
+        for update`,
+      [id]
+    );
+    const purchase = purchaseResult.rows[0];
+    if (!purchase) {
+      await client.query("rollback");
+      return res.status(404).json({ error: "Pending invoice item not found." });
+    }
+    const reason = holdingType;
+    const sourceNote = `Moved from ${purchase.source_buyer} ${purchase.source_label || `Invoice #${purchase.invoice_id}`}`;
+    const notes = [purchase.notes, sourceNote].filter(Boolean).join(" | ");
+    const holding = await client.query(
+      `insert into phone_holding_purchases
+         (purchase_date, device_type, condition_type, packaging, grade, model, carrier, quantity, cost_each, imei, placed_at, photo_file_name, photo_data_url, notes, holding_type)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+       returning *`,
+      [
+        purchase.purchase_date || localDateInTimeZone(),
+        purchase.device_type,
+        purchase.condition_type,
+        purchase.packaging,
+        purchase.grade,
+        purchase.model,
+        purchase.carrier,
+        purchase.quantity,
+        purchase.cost_each,
+        purchase.imei,
+        purchase.placed_at,
+        purchase.photo_file_name,
+        purchase.photo_data_url,
+        notes,
+        holdingType,
+      ]
+    );
+    const updated = await client.query(
+      `update phone_purchases
+          set invoice_removed_at = now(),
+            invoice_removed_reason = $2,
+            local_sale_price = null,
+            local_sold_at = null,
+            local_sale_notes = '',
+            gift_card_value = null,
+            gift_card_at = null,
+            gift_card_notes = '',
+            gift_card_location = ''
+        where id = $1
+        returning *`,
+      [id, reason]
+    );
+    await client.query("commit");
+    res.json({ ok: true, holding: holding.rows[0], purchase: updated.rows[0] });
+  } catch (error) {
+    await client.query("rollback");
+    console.error(error);
+    res.status(500).json({ error: "Could not move this phone to Holding." });
   } finally {
     client.release();
   }
@@ -1979,6 +2056,7 @@ async function migrate() {
       cost_each numeric(12,2) not null default 0,
       reason text not null default '',
       notes text not null default '',
+      holding_type text not null default 'Holding For Sale',
       status text not null default 'Holding',
       sale_price numeric(12,2),
       sold_at date,
@@ -2142,6 +2220,7 @@ async function migrate() {
     alter table phone_holding_purchases add column if not exists photo_file_name text not null default '';
     alter table phone_holding_purchases add column if not exists photo_data_url text not null default '';
     alter table phone_holding_purchases add column if not exists notes text not null default '';
+    alter table phone_holding_purchases add column if not exists holding_type text not null default 'Holding For Sale';
     alter table phone_holding_purchases add column if not exists status text not null default 'Holding';
     alter table phone_holding_purchases add column if not exists updated_at timestamptz not null default now();
     alter table phone_online_orders add column if not exists provider text not null default '';
@@ -3582,6 +3661,12 @@ function normalizeBuyer(value) {
   if (text === "kt") return "KT";
   if (text === "atlas") return "Atlas";
   return "";
+}
+
+function normalizeHoldingType(value) {
+  const text = String(value || "").trim().toLowerCase();
+  if (text.includes("trade")) return "Holding For Trade In";
+  return "Holding For Sale";
 }
 
 function normalizeDeviceType(value) {
