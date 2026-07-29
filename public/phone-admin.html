@@ -302,10 +302,13 @@
             <p>Track orders from Boost Mobile, Metro PCS, Cricket, and other websites from order placed to stock.</p>
           </div>
           <div class="online-orders-header-actions">
+            <label class="online-order-search">Search Orders<input id="onlineOrderSearch" placeholder="Last 4, name, address, email, order #"></label>
+            <button class="btn secondary" id="onlineOrdersClearSearchBtn">Clear Search</button>
             <button class="btn secondary" id="onlineOrdersBackBtn">Back To Phone Portal</button>
             <button class="btn secondary" id="onlineOrdersRefreshBtn">Refresh</button>
           </div>
         </header>
+        <div id="onlineOrderSearchStatus" class="online-order-search-status"></div>
 
         <nav class="online-order-tabs" aria-label="Online order sections">
           <button class="online-order-tab active" data-online-order-tab="add">Add Order</button>

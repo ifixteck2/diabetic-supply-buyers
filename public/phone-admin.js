@@ -49,6 +49,11 @@ function bindPhoneEvents() {
   $("onlineOrderPlacedNowBtn").onclick = stampOnlineOrderPlacedNow;
   $("onlineOrdersBackBtn").onclick = () => closeOnlineOrdersPage("dashboard");
   $("onlineOrdersRefreshBtn").onclick = loadPhoneOnlineOrders;
+  $("onlineOrderSearch").addEventListener("input", renderOnlineOrders);
+  $("onlineOrdersClearSearchBtn").onclick = () => {
+    $("onlineOrderSearch").value = "";
+    renderOnlineOrders();
+  };
   $("onlineOrderProvider").addEventListener("change", toggleOnlineOrderProvider);
   document.querySelectorAll("[data-online-order-tab]").forEach((button) => {
     button.onclick = () => openOnlineOrderTab(button.dataset.onlineOrderTab);
@@ -1482,11 +1487,17 @@ function stampOnlineOrderPlacedNow(showMessage = true) {
 
 function renderOnlineOrders() {
   if (!$("onlineOrderStats")) return;
-  const ordered = phoneOnlineOrders.filter((order) => order.status === "Ordered");
-  const transit = phoneOnlineOrders.filter((order) => order.status === "Shipped");
-  const stock = phoneOnlineOrders.filter((order) => order.status === "Received");
+  const searchTerm = $("onlineOrderSearch")?.value || "";
+  const filteredOrders = onlineOrderSearchResults(phoneOnlineOrders, searchTerm);
+  const searchActive = onlineOrderSearchTokens(searchTerm).length > 0;
+  $("onlineOrderSearchStatus").innerHTML = searchActive
+    ? `<span>Showing ${filteredOrders.length} of ${phoneOnlineOrders.length} orders matching "${escapeHtml(searchTerm.trim())}"</span>`
+    : "";
+  const ordered = filteredOrders.filter((order) => order.status === "Ordered");
+  const transit = filteredOrders.filter((order) => order.status === "Shipped");
+  const stock = filteredOrders.filter((order) => order.status === "Received");
   const stockItems = onlineOrderStockItems(stock);
-  const completed = phoneOnlineOrders.filter((order) => order.status === "Sold Local" || order.status === "Gift Card");
+  const completed = filteredOrders.filter((order) => order.status === "Sold Local" || order.status === "Gift Card");
   const orderedCost = ordered.reduce((sum, order) => sum + onlineOrderTotalCost(order), 0);
   const transitCost = transit.reduce((sum, order) => sum + onlineOrderTotalCost(order), 0);
   const stockCost = stockItems.reduce((sum, order) => sum + onlineOrderTotalCost(order), 0);
@@ -1512,8 +1523,67 @@ function renderOnlineOrders() {
   $("onlineOrdersPlacedList").innerHTML = renderOnlineOrderCompactList(ordered, "No pending online orders.");
   $("onlineOrdersTransitList").innerHTML = renderOnlineOrderTransitList(transit);
   $("onlineOrdersStockList").innerHTML = renderOnlineOrderModelGroups(stockItems, "No received online orders in stock.");
-  $("onlineOrdersAddressList").innerHTML = renderOnlineOrderAddressList(phoneOnlineOrders);
+  $("onlineOrdersAddressList").innerHTML = renderOnlineOrderAddressList(filteredOrders);
   $("onlineOrdersCompletedList").innerHTML = completed.map(renderOnlineOrderCard).join("") || `<div class="empty">No completed online orders yet.</div>`;
+}
+
+function onlineOrderSearchResults(orders, searchTerm) {
+  const tokens = onlineOrderSearchTokens(searchTerm);
+  if (!tokens.length) return orders;
+  return orders.filter((order) => {
+    const haystack = onlineOrderSearchText(order);
+    const digits = onlineOrderSearchDigits(order);
+    return tokens.every((token) => haystack.includes(token.text) || (token.digits && digits.includes(token.digits)));
+  });
+}
+
+function onlineOrderSearchTokens(value) {
+  return String(value || "")
+    .toLowerCase()
+    .split(/\s+/)
+    .map((text) => ({ text: text.trim(), digits: text.replace(/\D/g, "") }))
+    .filter((token) => token.text);
+}
+
+function onlineOrderSearchText(order) {
+  return [
+    order.id,
+    order.provider,
+    order.order_number,
+    order.phone_model,
+    order.first_name,
+    order.last_name,
+    onlineOrderCustomerName(order),
+    order.email,
+    order.shipping_address,
+    order.cc_used,
+    order.phone_number,
+    order.call_phone_number,
+    order.account_pin,
+    order.tracking_info,
+    order.received_info,
+    order.placed_at,
+    order.status,
+    order.local_sale_notes,
+    order.gift_card_location,
+    order.gift_card_notes,
+    ...(onlineOrderLineItems(order).flatMap((line) => [line.id, line.phone_model, line.status, line.notes])),
+  ].join(" ").toLowerCase();
+}
+
+function onlineOrderSearchDigits(order) {
+  return [
+    order.id,
+    order.order_number,
+    order.phone_number,
+    order.call_phone_number,
+    order.account_pin,
+    order.tracking_info,
+    order.received_info,
+    order.shipping_address,
+    order.email,
+    ...(onlineOrderLineItems(order).flatMap((line) => [line.id, line.phone_model, line.notes])),
+  ].join(" ").replace(/\D/g, "");
 }
 
 function renderOnlineOrderAddressList(orders) {
