@@ -132,6 +132,28 @@
           </section>
 
           <section id="holdingPhoneTab" class="tab-panel hidden">
+            <section class="panel holding-entry-panel">
+              <div class="panel-head">
+                <div><h2>Add Phone To Holding</h2><p>Add phones directly to Holding without putting them on an invoice.</p></div>
+              </div>
+              <div class="form-grid three">
+                <label>Holding Type<select id="directHoldingType"><option>Holding For Trade In</option><option>Holding For Sale</option></select></label>
+                <label>Model<input id="directHoldingModel" placeholder="Example: iPhone 16e 128GB"></label>
+                <label>Cost Each<input id="directHoldingCost" type="number" min="0" step="0.01"></label>
+              </div>
+              <div class="form-grid three">
+                <label>Quantity<input id="directHoldingQuantity" type="number" min="1" value="1"></label>
+                <label>Date<input id="directHoldingDate" type="date"></label>
+                <label>Carrier<input id="directHoldingCarrier" placeholder="Unlocked, Locked, AT&T"></label>
+              </div>
+              <div class="form-grid three">
+                <label>IMEI / Serial<input id="directHoldingImei" placeholder="Optional"></label>
+                <label>Source<input id="directHoldingSource" placeholder="Facebook, return, person, store"></label>
+                <label>Notes<input id="directHoldingNotes" placeholder="Optional notes"></label>
+              </div>
+              <div class="actions"><button class="btn phone-btn" id="addDirectHoldingBtn">Add To Holding</button></div>
+              <div id="directHoldingStatus"></div>
+            </section>
             <section class="panel">
               <div class="panel-head">
                 <div><h2>Holding</h2><p>Phones bought and held before deciding where they go.</p></div>

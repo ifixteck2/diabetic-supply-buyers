@@ -19,6 +19,7 @@ async function initPhonePortal() {
   $("phonePurchaseDate").value = localTodayInput();
   $("manualReturnDate").value = localTodayInput();
   $("manualGiftCardDate").value = localTodayInput();
+  $("directHoldingDate").value = localTodayInput();
   $("onlineOrderDate").value = localTodayInput();
   bindPhoneEvents();
   const me = await api("/api/phone-me", { silent: true });
@@ -41,6 +42,7 @@ function bindPhoneEvents() {
   $("moveLatestPhonesBtn").onclick = moveLatestPhones;
   $("addManualReturnBtn").onclick = addManualKtReturn;
   $("addManualGiftCardBtn").onclick = addManualGiftCard;
+  $("addDirectHoldingBtn").onclick = addDirectHoldingPhone;
   $("closeGiftCardBatchBtn").onclick = closeCurrentGiftCardBatch;
   $("saveOnlineOrderBtn").onclick = saveOnlineOrder;
   $("cancelOnlineOrderEditBtn").onclick = () => resetOnlineOrderForm();
@@ -769,6 +771,41 @@ async function savePhoneHoldingPurchase(body, options = {}) {
     openPhoneTab("holding");
   }
   return result;
+}
+
+async function addDirectHoldingPhone() {
+  const model = $("directHoldingModel").value.trim();
+  const costEach = Number($("directHoldingCost").value || 0);
+  const quantity = Number($("directHoldingQuantity").value || 1);
+  if (!model) return status("directHoldingStatus", "Enter the phone model.", "bad");
+  if (!Number.isFinite(costEach) || costEach < 0) return status("directHoldingStatus", "Enter your cost.", "bad");
+  if (!Number.isInteger(quantity) || quantity < 1) return status("directHoldingStatus", "Quantity must be at least 1.", "bad");
+  const result = await api("/api/phone-holding", {
+    method: "POST",
+    body: {
+      purchase_date: $("directHoldingDate").value,
+      device_type: "Phone",
+      condition_type: "Used",
+      packaging: "",
+      grade: "Holding",
+      model,
+      carrier: $("directHoldingCarrier").value.trim(),
+      quantity,
+      cost_each: costEach,
+      imei: $("directHoldingImei").value.trim(),
+      placed_at: $("directHoldingSource").value.trim(),
+      notes: $("directHoldingNotes").value.trim(),
+      holding_type: $("directHoldingType").value,
+    },
+  });
+  if (!result?.ok) return status("directHoldingStatus", result?.error || "Could not add this phone to Holding.", "bad");
+  ["directHoldingModel", "directHoldingCost", "directHoldingCarrier", "directHoldingImei", "directHoldingSource", "directHoldingNotes"].forEach((id) => { $(id).value = ""; });
+  $("directHoldingQuantity").value = "1";
+  $("directHoldingDate").value = localTodayInput();
+  status("directHoldingStatus", "Added phone to Holding.");
+  await loadPhoneHolding();
+  openPhoneTab("holding");
+  return true;
 }
 
 async function parseQuickPhoneText(saveAfterParse) {
