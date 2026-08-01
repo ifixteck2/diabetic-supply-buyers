@@ -324,18 +324,33 @@ app.get("/api/phone-prepaid-ports", requirePhoneAuth, async (req, res) => {
   const result = await pool.query(
     `select *,
        case
-         when status = 'Failed' and failed_at <= now() - interval '24 hours' then 'Available'
+         when record_type <> '' then record_type
+         when prepaid_card <> '' and port_number = '' then 'Prepaid Card'
+         else 'Port Number'
+       end as display_type,
+       case
+         when (case when record_type <> '' then record_type when prepaid_card <> '' and port_number = '' then 'Prepaid Card' else 'Port Number' end) = 'Port Number'
+           and status = 'Failed'
+           and failed_at <= now() - interval '24 hours' then 'Available'
          else status
        end as usable_status,
        case
-         when status = 'Failed' and failed_at > now() - interval '24 hours' then failed_at + interval '24 hours'
+         when (case when record_type <> '' then record_type when prepaid_card <> '' and port_number = '' then 'Prepaid Card' else 'Port Number' end) = 'Port Number'
+           and status = 'Failed'
+           and failed_at > now() - interval '24 hours' then failed_at + interval '24 hours'
          else null
        end as usable_after
      from phone_prepaid_ports
      order by
        case
+         when (case when record_type <> '' then record_type when prepaid_card <> '' and port_number = '' then 'Prepaid Card' else 'Port Number' end) = 'Port Number' then 1
+         else 2
+       end,
+       case
          when status = 'Available' then 1
-         when status = 'Failed' and failed_at <= now() - interval '24 hours' then 1
+         when (case when record_type <> '' then record_type when prepaid_card <> '' and port_number = '' then 'Prepaid Card' else 'Port Number' end) = 'Port Number'
+           and status = 'Failed'
+           and failed_at <= now() - interval '24 hours' then 1
          when status = 'Failed' then 2
          when status = 'Used' then 3
          else 4
@@ -349,6 +364,7 @@ app.get("/api/phone-prepaid-ports", requirePhoneAuth, async (req, res) => {
 
 app.post("/api/phone-prepaid-ports", requirePhoneAuth, async (req, res) => {
   const input = req.body || {};
+  const recordType = String(input.record_type || "").trim() === "Prepaid Card" ? "Prepaid Card" : "Port Number";
   const provider = String(input.provider || "").trim();
   const portNumber = String(input.port_number || "").trim();
   const prepaidCard = String(input.prepaid_card || "").trim();
@@ -359,14 +375,15 @@ app.post("/api/phone-prepaid-ports", requirePhoneAuth, async (req, res) => {
   const cost = Number(input.cost || 0);
   const notes = String(input.notes || "").trim();
   if (!provider) return res.status(400).json({ error: "Enter the provider." });
-  if (!portNumber && !prepaidCard) return res.status(400).json({ error: "Enter a port number or prepaid card." });
+  if (recordType === "Port Number" && !portNumber) return res.status(400).json({ error: "Enter the port number." });
+  if (recordType === "Prepaid Card" && !prepaidCard) return res.status(400).json({ error: "Enter the prepaid card number." });
   if (!Number.isFinite(cost) || cost < 0) return res.status(400).json({ error: "Enter a valid cost." });
   const result = await pool.query(
     `insert into phone_prepaid_ports
-       (provider, port_number, prepaid_card, pin, expiration_month, expiration_year, cvv, cost, notes)
-     values ($1, $2, $3, $4, $5, $6, $7, $8::numeric, $9)
+       (record_type, provider, port_number, prepaid_card, pin, expiration_month, expiration_year, cvv, cost, notes)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9::numeric, $10)
      returning *`,
-    [provider, portNumber, prepaidCard, pin, expirationMonth, expirationYear, cvv, cost, notes]
+    [recordType, provider, portNumber, prepaidCard, pin, expirationMonth, expirationYear, cvv, cost, notes]
   );
   res.json({ ok: true, port: result.rows[0] });
 });
@@ -376,6 +393,7 @@ app.post("/api/phone-prepaid-ports/bulk", requirePhoneAuth, async (req, res) => 
   if (!records.length) return res.status(400).json({ error: "Paste at least one prepaid card line." });
   if (records.length > 300) return res.status(400).json({ error: "Add 300 or fewer cards at a time." });
   const cleanRecords = records.map((record) => ({
+    recordType: "Prepaid Card",
     provider: String(record.provider || "Prepaid Card").trim() || "Prepaid Card",
     portNumber: String(record.port_number || "").trim(),
     prepaidCard: String(record.prepaid_card || "").trim(),
@@ -390,13 +408,13 @@ app.post("/api/phone-prepaid-ports/bulk", requirePhoneAuth, async (req, res) => 
   if (invalid) return res.status(400).json({ error: "Every bulk card needs a card number and valid cost." });
   const values = [];
   const placeholders = cleanRecords.map((record, index) => {
-    const offset = index * 9;
-    values.push(record.provider, record.portNumber, record.prepaidCard, record.pin, record.expirationMonth, record.expirationYear, record.cvv, record.cost, record.notes);
-    return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}::numeric, $${offset + 9})`;
+    const offset = index * 10;
+    values.push(record.recordType, record.provider, record.portNumber, record.prepaidCard, record.pin, record.expirationMonth, record.expirationYear, record.cvv, record.cost, record.notes);
+    return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}::numeric, $${offset + 10})`;
   });
   const result = await pool.query(
     `insert into phone_prepaid_ports
-       (provider, port_number, prepaid_card, pin, expiration_month, expiration_year, cvv, cost, notes)
+       (record_type, provider, port_number, prepaid_card, pin, expiration_month, expiration_year, cvv, cost, notes)
      values ${placeholders.join(",")}
      returning *`,
     values
@@ -2364,6 +2382,7 @@ async function migrate() {
 
     create table if not exists phone_prepaid_ports (
       id serial primary key,
+      record_type text not null default 'Port Number',
       provider text not null default '',
       port_number text not null default '',
       prepaid_card text not null default '',
@@ -2508,6 +2527,7 @@ async function migrate() {
     alter table phone_online_order_lines add column if not exists notes text not null default '';
     alter table phone_online_order_lines add column if not exists updated_at timestamptz not null default now();
     alter table phone_prepaid_ports add column if not exists provider text not null default '';
+    alter table phone_prepaid_ports add column if not exists record_type text not null default 'Port Number';
     alter table phone_prepaid_ports add column if not exists port_number text not null default '';
     alter table phone_prepaid_ports add column if not exists prepaid_card text not null default '';
     alter table phone_prepaid_ports add column if not exists pin text not null default '';
@@ -2520,6 +2540,9 @@ async function migrate() {
     alter table phone_prepaid_ports add column if not exists used_at timestamptz;
     alter table phone_prepaid_ports add column if not exists notes text not null default '';
     alter table phone_prepaid_ports add column if not exists updated_at timestamptz not null default now();
+    update phone_prepaid_ports
+       set record_type = case when prepaid_card <> '' and port_number = '' then 'Prepaid Card' else 'Port Number' end
+     where record_type is null or record_type = '';
     alter table phone_invoices add column if not exists sale_price numeric(12,2);
     alter table phone_invoices add column if not exists sale_notes text not null default '';
     alter table phone_invoices add column if not exists status_updated_at timestamptz not null default now();

@@ -428,20 +428,14 @@
             <div class="panel-head"><div><h2>Prepaid Cards & Port Numbers</h2><p>Track port numbers and prepaid cards for online orders. Failed ports become usable again after 24 hours.</p></div></div>
             <div class="online-order-form-sections prepaid-port-form">
               <div class="online-order-form-section">
-                <h3>Add Record</h3>
+                <h3>Add Port Number</h3>
                 <div class="form-grid three">
                   <label>Provider<input id="prepaidPortProvider" list="prepaidPortProviderOptions" placeholder="Metro, Cricket, Boost"></label>
                   <label>Port Number<input id="prepaidPortNumber" placeholder="Phone / port number"></label>
-                  <label>Prepaid Card<input id="prepaidCardNumber" placeholder="Card number"></label>
+                  <label>Cost<input id="prepaidPortCost" type="number" min="0" step="0.01"></label>
                 </div>
                 <div class="form-grid three">
                   <label>PIN<input id="prepaidPortPin" placeholder="PIN"></label>
-                  <label>Exp Month<input id="prepaidCardExpMonth" placeholder="MM"></label>
-                  <label>Exp Year<input id="prepaidCardExpYear" placeholder="YYYY"></label>
-                </div>
-                <div class="form-grid three">
-                  <label>CVV<input id="prepaidCardCvv" placeholder="CVV"></label>
-                  <label>Cost<input id="prepaidPortCost" type="number" min="0" step="0.01"></label>
                   <label>Notes<input id="prepaidPortNotes" placeholder="Where bought, account, reminder"></label>
                 </div>
                 <datalist id="prepaidPortProviderOptions">
@@ -450,8 +444,27 @@
                   <option value="Boost Mobile"></option>
                   <option value="Other"></option>
                 </datalist>
-                <div class="actions"><button class="btn phone-btn" id="savePrepaidPortBtn">Add Prepaid / Port</button></div>
+                <div class="actions"><button class="btn phone-btn" id="savePrepaidPortBtn">Add Port Number</button></div>
                 <div id="prepaidPortStatus"></div>
+              </div>
+              <div class="online-order-form-section">
+                <h3>Add Prepaid Card</h3>
+                <div class="form-grid three">
+                  <label>Provider<input id="singlePrepaidProvider" list="prepaidPortProviderOptions" placeholder="Prepaid Card"></label>
+                  <label>Prepaid Card<input id="prepaidCardNumber" placeholder="Card number"></label>
+                  <label>Cost<input id="singlePrepaidCost" type="number" min="0" step="0.01"></label>
+                </div>
+                <div class="form-grid three">
+                  <label>Exp Month<input id="prepaidCardExpMonth" placeholder="MM"></label>
+                  <label>Exp Year<input id="prepaidCardExpYear" placeholder="YYYY"></label>
+                  <label>CVV<input id="prepaidCardCvv" placeholder="CVV"></label>
+                </div>
+                <div class="form-grid two">
+                  <label>PIN<input id="singlePrepaidPin" placeholder="PIN"></label>
+                  <label>Notes<input id="singlePrepaidNotes" placeholder="Where bought, account, reminder"></label>
+                </div>
+                <div class="actions"><button class="btn phone-btn" id="saveSinglePrepaidCardBtn">Add Prepaid Card</button></div>
+                <div id="singlePrepaidStatus"></div>
               </div>
               <div class="online-order-form-section">
                 <h3>Bulk Add Cards</h3>
@@ -467,7 +480,7 @@
             </div>
           </section>
           <section class="panel online-order-list-panel">
-            <div class="panel-head"><div><h2>Port Inventory</h2><p>Available, used, and failed port records.</p></div><button class="btn secondary" id="refreshPrepaidPortsBtn">Refresh</button></div>
+            <div class="panel-head"><div><h2>Prepaid & Port Inventory</h2><p>Cards and port numbers are listed separately.</p></div><button class="btn secondary" id="refreshPrepaidPortsBtn">Refresh</button></div>
             <div id="prepaidPortStats" class="stats online-order-stats prepaid-port-stats"></div>
             <div id="prepaidPortList" class="prepaid-port-list"></div>
           </section>
