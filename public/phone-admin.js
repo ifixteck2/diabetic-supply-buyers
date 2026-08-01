@@ -1564,7 +1564,7 @@ function renderOnlineOrderStatsCards(stats) {
     <div class="stat"><span>Ordered</span><strong>${stats.orderedCount}</strong><em>${money(stats.orderedCost)} not shipped</em></div>
     <div class="stat"><span>In Transit</span><strong>${stats.transitCount}</strong><em>${money(stats.transitCost)} shipped</em></div>
     <div class="stat"><span>In Stock</span><strong>${stats.stockCount}</strong><em>${money(stats.stockCost)} ready</em></div>
-    <div class="stat"><span>Expected Open Value</span><strong>${money(stats.openExpectedValue)}</strong><em>16e $310 / A37 $200</em></div>
+    <div class="stat"><span>Expected Open Value</span><strong>${money(stats.openExpectedValue)}</strong><em>16e $310 / A37 $200 / A17 $95</em></div>
     <div class="stat"><span>Pending Profit</span><strong class="${stats.pendingProfit >= 0 ? "profit-good" : "profit-bad"}">${profitMoney(stats.pendingProfit)}</strong><em>open expected profit</em></div>
     <div class="stat"><span>Completed Profit</span><strong class="${stats.completedProfit >= 0 ? "profit-good" : "profit-bad"}">${profitMoney(stats.completedProfit)}</strong><em>${money(stats.completedValue)} collected</em></div>
     <div class="stat"><span>All Profit</span><strong class="${stats.totalProfit >= 0 ? "profit-good" : "profit-bad"}">${profitMoney(stats.totalProfit)}</strong><em>open + completed</em></div>
@@ -2124,6 +2124,7 @@ function onlineOrderExpectedSalePrice(order) {
   const key = onlineOrderModelKey(order?.phone_model);
   if (key === "iphone16e") return 310;
   if (key === "samsunga37") return 200;
+  if (key === "samsunga17") return 95;
   return null;
 }
 
