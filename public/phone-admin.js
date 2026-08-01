@@ -1807,6 +1807,7 @@ function renderOnlineOrderModelSummary(ordered, transit, stock) {
   const rows = [
     { label: "iPhone 16e", key: "iphone16e" },
     { label: "Samsung A37", key: "samsunga37" },
+    { label: "Samsung A17", key: "samsunga17" },
   ].map((model) => {
     const pendingOrders = onlineOrdersByModel(ordered, model.key);
     const transitOrders = onlineOrdersByModel(transit, model.key);
@@ -1828,7 +1829,7 @@ function renderOnlineOrderModelSummary(ordered, transit, stock) {
     <div class="online-order-model-head">
       <div>
         <h3>Phones Ordered By Model</h3>
-        <p>Open phones for the two models you are ordering: pending, in transit, and in stock.</p>
+        <p>Open phones for the models you are ordering: pending, in transit, and in stock.</p>
       </div>
       <strong>${totalPending + totalTransit + totalStock} open / ${profitMoney(totalPendingProfit)} open profit</strong>
     </div>
@@ -1843,7 +1844,7 @@ function renderOnlineOrderModelSummary(ordered, transit, stock) {
         </div>
       `).join("")}
       <div class="online-order-model-card total">
-        <h4>All Two Models</h4>
+        <h4>All Models</h4>
         <span><small>Pending</small><b>${totalPending}</b></span>
         <span><small>In Transit</small><b>${totalTransit}</b></span>
         <span><small>In Stock</small><b>${totalStock}</b></span>
@@ -1864,6 +1865,7 @@ function onlineOrdersByModel(orders, modelKey) {
 function onlineOrderModelKey(value) {
   const text = String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
   if (text.includes("iphone16e") || text.includes("16e")) return "iphone16e";
+  if (text.includes("samsunga17") || text.includes("galaxya17") || text.includes("a17")) return "samsunga17";
   if (text.includes("samsunga37") || text.includes("galaxya37") || text.includes("a37")) return "samsunga37";
   return "other";
 }
@@ -1990,7 +1992,7 @@ function groupOnlineOrdersByStockModel(orders) {
     if (expectedSale !== null) group.profit += expectedSale - totalCost;
     groups.set(model, group);
   });
-  const priority = ["iphone16e", "samsunga37"];
+  const priority = ["iphone16e", "samsunga37", "samsunga17"];
   return Array.from(groups.values())
     .map((group) => ({ ...group, orders: group.orders.slice().sort(sortOnlineOrdersNewestFirst) }))
     .sort((a, b) => {
@@ -2135,6 +2137,7 @@ function onlineOrderModelLabel(value) {
   const key = onlineOrderModelKey(value);
   if (key === "iphone16e") return "iPhone 16e";
   if (key === "samsunga37") return "Samsung A37";
+  if (key === "samsunga17") return "Samsung A17";
   return String(value || "Other Model").trim() || "Other Model";
 }
 
@@ -3810,11 +3813,21 @@ window.markOnlineOrderShipped = async (id) => {
 };
 
 window.addOnlineOrderLine = async (id) => {
-  const modelInput = prompt("Add line phone model:\n1 = iPhone 16e\n2 = Samsung A37", "1");
+  const modelInput = prompt("Add line phone model:\n1 = iPhone 16e\n2 = Samsung A37\n3 = Samsung A17", "1");
   if (modelInput === null) return false;
   const cleanModel = String(modelInput || "").trim().toLowerCase();
-  const phoneModel = cleanModel === "2" || cleanModel.includes("samsung") || cleanModel.includes("a37") ? "Samsung A37" : "iPhone 16e";
-  const costInput = prompt(`Your cost for the added ${phoneModel} line?`);
+  let phoneModel = "iPhone 16e";
+  if (cleanModel === "2" || cleanModel.includes("a37")) phoneModel = "Samsung A37";
+  if (cleanModel === "3" || cleanModel.includes("a17")) phoneModel = "Samsung A17";
+  if (cleanModel.includes("samsung") && !cleanModel.includes("a17")) phoneModel = "Samsung A37";
+  const quantityInput = prompt(`How many ${phoneModel} lines did you add?`, "1");
+  if (quantityInput === null) return false;
+  const quantity = Math.floor(Number(String(quantityInput || "").replace(/[^\d.]/g, "")));
+  if (!Number.isFinite(quantity) || quantity < 1 || quantity > 100) {
+    alert("Enter a valid quantity between 1 and 100.");
+    return false;
+  }
+  const costInput = prompt(`Your cost per ${phoneModel}?`);
   if (costInput === null) return false;
   const cleanCost = String(costInput || "").replace(/[$,\s]/g, "");
   if (!cleanCost || Number.isNaN(Number(cleanCost)) || Number(cleanCost) < 0) {
@@ -3826,6 +3839,7 @@ window.addOnlineOrderLine = async (id) => {
     body: {
       phone_model: phoneModel,
       cost: cleanCost,
+      quantity,
     },
   });
   if (!result?.ok) return alert(result?.error || "Could not add this line.");

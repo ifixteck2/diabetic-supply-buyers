@@ -462,19 +462,22 @@ app.post("/api/phone-online-orders/:id/lines", requirePhoneAuth, async (req, res
   const id = Number(req.params.id);
   const phoneModel = String(req.body?.phone_model || "").trim();
   const cost = Number(req.body?.cost || 0);
+  const quantity = Math.floor(Number(req.body?.quantity || 1));
   if (!id) return res.status(400).json({ error: "Order ID is required." });
   if (!phoneModel) return res.status(400).json({ error: "Choose the phone model for the added line." });
   if (!Number.isFinite(cost) || cost < 0) return res.status(400).json({ error: "Enter a valid line cost." });
+  if (!Number.isFinite(quantity) || quantity < 1 || quantity > 100) return res.status(400).json({ error: "Enter a valid line quantity." });
   const parent = await pool.query("select id from phone_online_orders where id = $1 and status = 'Received'", [id]);
   if (!parent.rows[0]) return res.status(404).json({ error: "Received online order not found." });
   const result = await pool.query(
     `insert into phone_online_order_lines
        (online_order_id, phone_model, cost, status)
-     values ($1, $2, $3::numeric, 'Line Added')
+     select $1, $2, $3::numeric, 'Line Added'
+     from generate_series(1, $4::int)
      returning *`,
-    [id, phoneModel, cost]
+    [id, phoneModel, cost, quantity]
   );
-  res.json({ ok: true, line: result.rows[0] });
+  res.json({ ok: true, lines: result.rows });
 });
 
 app.patch("/api/phone-online-orders/:id/local-sale", requirePhoneAuth, async (req, res) => {
