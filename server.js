@@ -324,21 +324,21 @@ app.get("/api/phone-prepaid-ports", requirePhoneAuth, async (req, res) => {
   const result = await pool.query(
     `select *,
        case
+         when prepaid_card <> '' then 'Prepaid Card'
          when record_type <> '' then record_type
-         when prepaid_card <> '' and port_number = '' then 'Prepaid Card'
          else 'Port Number'
        end as display_type,
        case
-         when (case when record_type <> '' then record_type when prepaid_card <> '' and port_number = '' then 'Prepaid Card' else 'Port Number' end) = 'Port Number'
+         when (case when prepaid_card <> '' then 'Prepaid Card' when record_type <> '' then record_type else 'Port Number' end) = 'Port Number'
            and status <> 'Used'
            and created_at < now() - interval '5 days' then 'Expired'
-         when (case when record_type <> '' then record_type when prepaid_card <> '' and port_number = '' then 'Prepaid Card' else 'Port Number' end) = 'Port Number'
+         when (case when prepaid_card <> '' then 'Prepaid Card' when record_type <> '' then record_type else 'Port Number' end) = 'Port Number'
            and status = 'Failed'
            and failed_at <= now() - interval '24 hours' then 'Available'
          else status
        end as usable_status,
        case
-         when (case when record_type <> '' then record_type when prepaid_card <> '' and port_number = '' then 'Prepaid Card' else 'Port Number' end) = 'Port Number'
+         when (case when prepaid_card <> '' then 'Prepaid Card' when record_type <> '' then record_type else 'Port Number' end) = 'Port Number'
            and status = 'Failed'
            and failed_at > now() - interval '24 hours' then failed_at + interval '24 hours'
          else null
@@ -346,15 +346,15 @@ app.get("/api/phone-prepaid-ports", requirePhoneAuth, async (req, res) => {
      from phone_prepaid_ports
      order by
        case
-         when (case when record_type <> '' then record_type when prepaid_card <> '' and port_number = '' then 'Prepaid Card' else 'Port Number' end) = 'Port Number' then 1
+         when (case when prepaid_card <> '' then 'Prepaid Card' when record_type <> '' then record_type else 'Port Number' end) = 'Port Number' then 1
          else 2
        end,
        case
-         when (case when record_type <> '' then record_type when prepaid_card <> '' and port_number = '' then 'Prepaid Card' else 'Port Number' end) = 'Port Number'
+         when (case when prepaid_card <> '' then 'Prepaid Card' when record_type <> '' then record_type else 'Port Number' end) = 'Port Number'
            and status <> 'Used'
            and created_at < now() - interval '5 days' then 4
          when status = 'Available' then 1
-         when (case when record_type <> '' then record_type when prepaid_card <> '' and port_number = '' then 'Prepaid Card' else 'Port Number' end) = 'Port Number'
+         when (case when prepaid_card <> '' then 'Prepaid Card' when record_type <> '' then record_type else 'Port Number' end) = 'Port Number'
            and status = 'Failed'
            and failed_at <= now() - interval '24 hours' then 1
          when status = 'Failed' then 2
@@ -2581,6 +2581,9 @@ async function migrate() {
     alter table phone_prepaid_ports add column if not exists used_at timestamptz;
     alter table phone_prepaid_ports add column if not exists notes text not null default '';
     alter table phone_prepaid_ports add column if not exists updated_at timestamptz not null default now();
+    update phone_prepaid_ports
+       set record_type = 'Prepaid Card', updated_at = now()
+     where prepaid_card <> '';
     update phone_prepaid_ports
        set record_type = case when prepaid_card <> '' and port_number = '' then 'Prepaid Card' else 'Port Number' end
      where record_type is null or record_type = '';
