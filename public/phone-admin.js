@@ -1506,7 +1506,7 @@ function renderOnlineOrders() {
   $("onlineOrdersTransitList").innerHTML = renderOnlineOrderTransitList(transit);
   $("onlineOrdersStockList").innerHTML = renderOnlineOrderModelGroups(stockItems, "No received online orders in stock.");
   $("onlineOrdersAddressList").innerHTML = renderOnlineOrderAddressList(filteredOrders);
-  $("onlineOrdersCompletedList").innerHTML = completed.map(renderOnlineOrderCard).join("") || `<div class="empty">No completed online orders yet.</div>`;
+  $("onlineOrdersCompletedList").innerHTML = renderOnlineOrderCompactList(completed, "No completed online orders yet.");
 }
 
 function onlineOrderStatsSnapshot(allOrders, ordered, transit, stockItems, completed) {
@@ -1901,21 +1901,29 @@ function renderOnlineOrderCompactList(orders, emptyMessage = "No online orders."
 function renderOnlineOrderCompactItem(order, statusLabel = "") {
   const customerName = onlineOrderCustomerName(order);
   const label = statusLabel || order.status || "Ordered";
-  const metaLine = [
-    order.order_number || `Order #${order.id}`,
-    order.order_date ? formatDate(order.order_date) : "",
-    customerName,
-    order.email || "",
-  ].filter(Boolean).join(" - ");
+  const value = onlineOrderOrderValue(order);
+  const totalCost = order.status === "Sold Local" || order.status === "Gift Card" ? onlineOrderCompletedTotalCost(order) : onlineOrderTotalCost(order);
+  const profit = value === null ? null : value - totalCost;
+  const orderDate = order.order_date ? formatDate(order.order_date) : "";
   return `
     <details class="online-order-transit-item">
       <summary>
-        <div class="online-order-transit-summary">
-          <strong>${escapeHtml(order.phone_model || "No model saved")}</strong>
-          <span>${escapeHtml(metaLine)}</span>
-          <em>${escapeHtml(order.shipping_address || "No shipping address saved")}</em>
+        <div class="online-order-row-summary">
+          <div class="online-order-row-model">
+            <strong>${escapeHtml(order.phone_model || "No model saved")}</strong>
+            <span>${escapeHtml(order.provider || "Online Order")}</span>
+          </div>
+          <div class="online-order-row-info">
+            <b>${escapeHtml(order.order_number || `Order #${order.id}`)}</b>
+            <span>${escapeHtml([orderDate, customerName, order.email || ""].filter(Boolean).join(" - "))}</span>
+          </div>
+          <div class="online-order-row-address">${escapeHtml(order.shipping_address || "No shipping address saved")}</div>
+          <div class="online-order-row-money">
+            <span><small>Cost</small><b>${money(totalCost)}</b></span>
+            <span><small>Profit</small><b class="${profit === null || profit >= 0 ? "profit-good" : "profit-bad"}">${profit === null ? "-" : profitMoney(profit)}</b></span>
+          </div>
+          <span class="pill ${onlineOrderStatusClass(order.status)}">${escapeHtml(label)}</span>
         </div>
-        <span class="pill ${onlineOrderStatusClass(order.status)}">${escapeHtml(label)}</span>
       </summary>
       <div class="online-order-transit-details">
         ${renderOnlineOrderCard(order)}
@@ -2115,6 +2123,12 @@ function onlineOrderExpectedSalePrice(order) {
   if (key === "iphone16e") return 310;
   if (key === "samsunga37") return 200;
   return null;
+}
+
+function onlineOrderOrderValue(order) {
+  if (order?.status === "Sold Local") return Number(order.local_sale_price || 0);
+  if (order?.status === "Gift Card") return Number(order.gift_card_value || 0);
+  return onlineOrderExpectedSalePrice(order);
 }
 
 function onlineOrderModelLabel(value) {
