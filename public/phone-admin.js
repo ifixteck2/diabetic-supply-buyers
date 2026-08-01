@@ -1705,7 +1705,10 @@ function renderPrepaidPortRow(record) {
         <span>${escapeHtml([recordType, record.provider, record.account_number ? `Account: ${record.account_number}` : "", record.prepaid_card ? `Card: ${record.prepaid_card}` : "", prepaidCardExpiration(record), record.cvv ? `CVV: ${record.cvv}` : "", record.pin ? `PIN: ${record.pin}` : ""].filter(Boolean).join(" - "))}</span>
         ${record.notes ? `<em>${escapeHtml(record.notes)}</em>` : ""}
       </div>
-      <div class="prepaid-port-money"><small>Cost</small><b>${money(record.cost)}</b></div>
+      <div class="prepaid-port-money">
+        <small>Cost</small><b>${money(record.cost)}</b>
+        ${record.used_amount !== null && record.used_amount !== undefined && record.used_amount !== "" ? `<small>Used For</small><b>${money(record.used_amount)}</b>` : ""}
+      </div>
       <div class="prepaid-port-status">
         <span class="pill ${usableStatus === "Available" ? "sold" : usableStatus === "Failed" ? "pending" : usableStatus === "Expired" ? "active" : "shipped"}">${escapeHtml(usableStatus)}</span>
         ${waitLabel ? `<small>${escapeHtml(waitLabel)}</small>` : ""}
@@ -1743,11 +1746,22 @@ function prepaidCardExpiration(record) {
 }
 
 window.setPrepaidPortStatus = async (id, nextStatus) => {
+  const record = prepaidPortRecords.find((entry) => Number(entry.id) === Number(id));
+  let usedAmount = null;
+  if (nextStatus === "Used" && prepaidPortType(record) === "Prepaid Card") {
+    const amountInput = prompt("Amount used on this prepaid card?", record?.used_amount || "");
+    if (amountInput === null) return false;
+    usedAmount = String(amountInput || "").replace(/[$,\s]/g, "");
+    if (!usedAmount || Number.isNaN(Number(usedAmount)) || Number(usedAmount) < 0) {
+      alert("Enter a valid amount used.");
+      return false;
+    }
+  }
   const note = nextStatus === "Failed" ? prompt("Why did it fail? Optional.", "") : "";
   if (note === null) return false;
   const result = await api(`/api/phone-prepaid-ports/${id}/status`, {
     method: "PATCH",
-    body: { status: nextStatus, notes: note },
+    body: { status: nextStatus, notes: note, used_amount: usedAmount },
   });
   if (!result?.ok) return alert(result?.error || "Could not update prepaid card / port number.");
   await loadPrepaidPorts();

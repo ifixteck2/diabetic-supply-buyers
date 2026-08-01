@@ -462,18 +462,23 @@ app.patch("/api/phone-prepaid-ports/:id/status", requirePhoneAuth, async (req, r
   const id = Number(req.params.id);
   const nextStatus = String(req.body?.status || "").trim();
   const notes = String(req.body?.notes || "").trim();
+  const usedAmount = req.body?.used_amount === "" || req.body?.used_amount === undefined || req.body?.used_amount === null
+    ? null
+    : Number(req.body.used_amount);
   if (!id) return res.status(400).json({ error: "Record ID is required." });
   if (!["Available", "Used", "Failed"].includes(nextStatus)) return res.status(400).json({ error: "Choose Available, Used, or Failed." });
+  if (usedAmount !== null && (!Number.isFinite(usedAmount) || usedAmount < 0)) return res.status(400).json({ error: "Enter a valid used amount." });
   const result = await pool.query(
     `update phone_prepaid_ports
      set status = $2::text,
        failed_at = case when $2::text = 'Failed' then now() else null end,
        used_at = case when $2::text = 'Used' then coalesce(used_at, now()) else null end,
+       used_amount = case when $2::text = 'Used' then $4::numeric else null end,
        notes = case when $3 = '' then notes else $3 end,
        updated_at = now()
      where id = $1
      returning *`,
-    [id, nextStatus, notes]
+    [id, nextStatus, notes, usedAmount]
   );
   if (!result.rows[0]) return res.status(404).json({ error: "Prepaid card or port number not found." });
   res.json({ ok: true, port: result.rows[0] });
@@ -2428,6 +2433,7 @@ async function migrate() {
       expiration_year text not null default '',
       cvv text not null default '',
       cost numeric(12,2) not null default 0,
+      used_amount numeric(12,2),
       status text not null default 'Available',
       failed_at timestamptz,
       used_at timestamptz,
@@ -2573,6 +2579,7 @@ async function migrate() {
     alter table phone_prepaid_ports add column if not exists expiration_year text not null default '';
     alter table phone_prepaid_ports add column if not exists cvv text not null default '';
     alter table phone_prepaid_ports add column if not exists cost numeric(12,2) not null default 0;
+    alter table phone_prepaid_ports add column if not exists used_amount numeric(12,2);
     alter table phone_prepaid_ports add column if not exists status text not null default 'Available';
     alter table phone_prepaid_ports add column if not exists failed_at timestamptz;
     alter table phone_prepaid_ports add column if not exists used_at timestamptz;
