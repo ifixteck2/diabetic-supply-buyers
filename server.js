@@ -330,6 +330,9 @@ app.get("/api/phone-prepaid-ports", requirePhoneAuth, async (req, res) => {
        end as display_type,
        case
          when (case when record_type <> '' then record_type when prepaid_card <> '' and port_number = '' then 'Prepaid Card' else 'Port Number' end) = 'Port Number'
+           and status <> 'Used'
+           and created_at < now() - interval '5 days' then 'Expired'
+         when (case when record_type <> '' then record_type when prepaid_card <> '' and port_number = '' then 'Prepaid Card' else 'Port Number' end) = 'Port Number'
            and status = 'Failed'
            and failed_at <= now() - interval '24 hours' then 'Available'
          else status
@@ -347,12 +350,16 @@ app.get("/api/phone-prepaid-ports", requirePhoneAuth, async (req, res) => {
          else 2
        end,
        case
+         when (case when record_type <> '' then record_type when prepaid_card <> '' and port_number = '' then 'Prepaid Card' else 'Port Number' end) = 'Port Number'
+           and status <> 'Used'
+           and created_at < now() - interval '5 days' then 4
          when status = 'Available' then 1
          when (case when record_type <> '' then record_type when prepaid_card <> '' and port_number = '' then 'Prepaid Card' else 'Port Number' end) = 'Port Number'
            and status = 'Failed'
            and failed_at <= now() - interval '24 hours' then 1
          when status = 'Failed' then 2
          when status = 'Used' then 3
+         when status = 'Expired' then 4
          else 4
        end,
        created_at desc,
@@ -367,6 +374,7 @@ app.post("/api/phone-prepaid-ports", requirePhoneAuth, async (req, res) => {
   const recordType = String(input.record_type || "").trim() === "Prepaid Card" ? "Prepaid Card" : "Port Number";
   const provider = String(input.provider || "").trim();
   const portNumber = String(input.port_number || "").trim();
+  const accountNumber = String(input.account_number || "").trim();
   const prepaidCard = String(input.prepaid_card || "").trim();
   const pin = String(input.pin || "").trim();
   const expirationMonth = String(input.expiration_month || "").trim();
@@ -380,10 +388,10 @@ app.post("/api/phone-prepaid-ports", requirePhoneAuth, async (req, res) => {
   if (!Number.isFinite(cost) || cost < 0) return res.status(400).json({ error: "Enter a valid cost." });
   const result = await pool.query(
     `insert into phone_prepaid_ports
-       (record_type, provider, port_number, prepaid_card, pin, expiration_month, expiration_year, cvv, cost, notes)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9::numeric, $10)
+       (record_type, provider, port_number, account_number, prepaid_card, pin, expiration_month, expiration_year, cvv, cost, notes)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::numeric, $11)
      returning *`,
-    [recordType, provider, portNumber, prepaidCard, pin, expirationMonth, expirationYear, cvv, cost, notes]
+    [recordType, provider, portNumber, accountNumber, prepaidCard, pin, expirationMonth, expirationYear, cvv, cost, notes]
   );
   res.json({ ok: true, port: result.rows[0] });
 });
@@ -415,6 +423,37 @@ app.post("/api/phone-prepaid-ports/bulk", requirePhoneAuth, async (req, res) => 
   const result = await pool.query(
     `insert into phone_prepaid_ports
        (record_type, provider, port_number, prepaid_card, pin, expiration_month, expiration_year, cvv, cost, notes)
+     values ${placeholders.join(",")}
+     returning *`,
+    values
+  );
+  res.json({ ok: true, ports: result.rows });
+});
+
+app.post("/api/phone-prepaid-ports/bulk-ports", requirePhoneAuth, async (req, res) => {
+  const records = Array.isArray(req.body?.records) ? req.body.records : [];
+  if (!records.length) return res.status(400).json({ error: "Paste at least one port number line." });
+  if (records.length > 300) return res.status(400).json({ error: "Add 300 or fewer port numbers at a time." });
+  const provider = String(req.body?.provider || "Port Number").trim() || "Port Number";
+  const cost = Number(req.body?.cost || 0);
+  const notes = String(req.body?.notes || "").trim();
+  if (!Number.isFinite(cost) || cost < 0) return res.status(400).json({ error: "Enter a valid cost each." });
+  const cleanRecords = records.map((record) => ({
+    portNumber: String(record.port_number || "").trim(),
+    accountNumber: String(record.account_number || "").trim(),
+    pin: String(record.pin || "").trim(),
+  }));
+  const invalid = cleanRecords.find((record) => !record.portNumber);
+  if (invalid) return res.status(400).json({ error: "Every bulk port line needs a phone number." });
+  const values = [];
+  const placeholders = cleanRecords.map((record, index) => {
+    const offset = index * 7;
+    values.push("Port Number", provider, record.portNumber, record.accountNumber, record.pin, cost, notes);
+    return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}::numeric, $${offset + 7})`;
+  });
+  const result = await pool.query(
+    `insert into phone_prepaid_ports
+       (record_type, provider, port_number, account_number, pin, cost, notes)
      values ${placeholders.join(",")}
      returning *`,
     values
@@ -2385,6 +2424,7 @@ async function migrate() {
       record_type text not null default 'Port Number',
       provider text not null default '',
       port_number text not null default '',
+      account_number text not null default '',
       prepaid_card text not null default '',
       pin text not null default '',
       expiration_month text not null default '',
@@ -2529,6 +2569,7 @@ async function migrate() {
     alter table phone_prepaid_ports add column if not exists provider text not null default '';
     alter table phone_prepaid_ports add column if not exists record_type text not null default 'Port Number';
     alter table phone_prepaid_ports add column if not exists port_number text not null default '';
+    alter table phone_prepaid_ports add column if not exists account_number text not null default '';
     alter table phone_prepaid_ports add column if not exists prepaid_card text not null default '';
     alter table phone_prepaid_ports add column if not exists pin text not null default '';
     alter table phone_prepaid_ports add column if not exists expiration_month text not null default '';
