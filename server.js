@@ -332,14 +332,12 @@ app.get("/api/phone-prepaid-ports", requirePhoneAuth, async (req, res) => {
          when (case when prepaid_card <> '' then 'Prepaid Card' when record_type <> '' then record_type else 'Port Number' end) = 'Port Number'
            and status <> 'Used'
            and created_at < now() - interval '5 days' then 'Expired'
-         when (case when prepaid_card <> '' then 'Prepaid Card' when record_type <> '' then record_type else 'Port Number' end) = 'Port Number'
-           and status = 'Failed'
+         when status = 'Failed'
            and failed_at <= now() - interval '24 hours' then 'Available'
          else status
        end as usable_status,
        case
-         when (case when prepaid_card <> '' then 'Prepaid Card' when record_type <> '' then record_type else 'Port Number' end) = 'Port Number'
-           and status = 'Failed'
+         when status = 'Failed'
            and failed_at > now() - interval '24 hours' then failed_at + interval '24 hours'
          else null
        end as usable_after
@@ -354,8 +352,7 @@ app.get("/api/phone-prepaid-ports", requirePhoneAuth, async (req, res) => {
            and status <> 'Used'
            and created_at < now() - interval '5 days' then 4
          when status = 'Available' then 1
-         when (case when prepaid_card <> '' then 'Prepaid Card' when record_type <> '' then record_type else 'Port Number' end) = 'Port Number'
-           and status = 'Failed'
+         when status = 'Failed'
            and failed_at <= now() - interval '24 hours' then 1
          when status = 'Failed' then 2
          when status = 'Used' then 3

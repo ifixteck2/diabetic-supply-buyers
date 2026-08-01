@@ -1677,7 +1677,7 @@ function renderPrepaidPorts() {
     ${renderPrepaidPortGroup("Port Numbers Expired", expiredPorts, "No expired port numbers.")}
     ${renderPrepaidPortGroup("Port Numbers Used", usedPorts, "No used port numbers yet.")}
     ${renderPrepaidPortGroup("Prepaid Cards Available", availableCards, "No available prepaid cards.")}
-    ${renderPrepaidPortGroup("Prepaid Cards Failed", failedCards, "No failed prepaid cards.")}
+    ${renderPrepaidPortGroup("Prepaid Cards Failed / Waiting 24 Hours", failedCards, "No failed prepaid cards waiting.")}
     ${renderPrepaidPortGroup("Prepaid Cards Used", usedCards, "No used prepaid cards yet.")}
   `;
 }
@@ -1696,7 +1696,7 @@ function renderPrepaidPortGroup(title, records, emptyMessage) {
 function renderPrepaidPortRow(record) {
   const usableStatus = prepaidPortUsableStatus(record);
   const recordType = prepaidPortType(record);
-  const waitLabel = recordType === "Port Number" && usableStatus === "Failed" && record.usable_after ? `Usable after ${formatDateTime(record.usable_after)}` : "";
+  const waitLabel = usableStatus === "Failed" && record.usable_after ? `Usable after ${formatDateTime(record.usable_after)}` : "";
   const expiresLabel = recordType === "Port Number" && usableStatus === "Available" ? prepaidPortExpiresLabel(record) : "";
   return `
     <article class="prepaid-port-row ${escapeAttr(usableStatus.toLowerCase())}">
