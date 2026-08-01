@@ -406,11 +406,11 @@ app.post("/api/phone-prepaid-ports/bulk", requirePhoneAuth, async (req, res) => 
     expirationMonth: String(record.expiration_month || "").trim(),
     expirationYear: String(record.expiration_year || "").trim(),
     cvv: String(record.cvv || "").trim(),
-    cost: Number(record.cost || 0),
+    cost: 0,
     notes: String(record.notes || "").trim(),
   }));
-  const invalid = cleanRecords.find((record) => !record.prepaidCard || !Number.isFinite(record.cost) || record.cost < 0);
-  if (invalid) return res.status(400).json({ error: "Every bulk card needs a card number and valid cost." });
+  const invalid = cleanRecords.find((record) => !record.prepaidCard);
+  if (invalid) return res.status(400).json({ error: "Every bulk card needs a card number." });
   const values = [];
   const placeholders = cleanRecords.map((record, index) => {
     const offset = index * 10;

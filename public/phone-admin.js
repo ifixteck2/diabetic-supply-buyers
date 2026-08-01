@@ -1573,12 +1573,12 @@ async function saveSinglePrepaidCard() {
       expiration_month: $("prepaidCardExpMonth").value.trim(),
       expiration_year: $("prepaidCardExpYear").value.trim(),
       cvv: $("prepaidCardCvv").value.trim(),
-      cost: Number($("singlePrepaidCost").value || 0),
+      cost: 0,
       notes: $("singlePrepaidNotes").value.trim(),
     },
   });
   if (!result?.ok) return status("singlePrepaidStatus", result?.error || "Could not save prepaid card.", "bad");
-  ["prepaidCardNumber", "singlePrepaidPin", "prepaidCardExpMonth", "prepaidCardExpYear", "prepaidCardCvv", "singlePrepaidCost", "singlePrepaidNotes"].forEach((id) => { $(id).value = ""; });
+  ["prepaidCardNumber", "singlePrepaidPin", "prepaidCardExpMonth", "prepaidCardExpYear", "prepaidCardCvv", "singlePrepaidNotes"].forEach((id) => { $(id).value = ""; });
   status("singlePrepaidStatus", "Prepaid card added.");
   await loadPrepaidPorts();
 }
@@ -1587,14 +1587,12 @@ async function saveBulkPrepaidCards() {
   const parsed = parseBulkPrepaidCards($("bulkPrepaidCards").value);
   if (parsed.errors.length) return status("bulkPrepaidStatus", parsed.errors.join("<br>"), "bad");
   const provider = $("bulkPrepaidProvider").value.trim() || "Prepaid Card";
-  const cost = Number($("bulkPrepaidCost").value || 0);
   const notes = $("bulkPrepaidNotes").value.trim();
   if (!parsed.records.length) return status("bulkPrepaidStatus", "Paste at least one prepaid card line.", "bad");
-  if (!Number.isFinite(cost) || cost < 0) return status("bulkPrepaidStatus", "Enter a valid cost each.", "bad");
   const result = await api("/api/phone-prepaid-ports/bulk", {
     method: "POST",
     body: {
-      records: parsed.records.map((record) => ({ ...record, provider, cost, notes })),
+      records: parsed.records.map((record) => ({ ...record, provider, cost: 0, notes })),
     },
   });
   if (!result?.ok) return status("bulkPrepaidStatus", result?.error || "Could not save bulk prepaid cards.", "bad");
@@ -1705,10 +1703,7 @@ function renderPrepaidPortRow(record) {
         <span>${escapeHtml([recordType, record.provider, record.account_number ? `Account: ${record.account_number}` : "", record.prepaid_card ? `Card: ${record.prepaid_card}` : "", prepaidCardExpiration(record), record.cvv ? `CVV: ${record.cvv}` : "", record.pin ? `PIN: ${record.pin}` : ""].filter(Boolean).join(" - "))}</span>
         ${record.notes ? `<em>${escapeHtml(record.notes)}</em>` : ""}
       </div>
-      <div class="prepaid-port-money">
-        <small>Cost</small><b>${money(record.cost)}</b>
-        ${record.used_amount !== null && record.used_amount !== undefined && record.used_amount !== "" ? `<small>Used For</small><b>${money(record.used_amount)}</b>` : ""}
-      </div>
+      ${renderPrepaidMoneyBlock(record, recordType)}
       <div class="prepaid-port-status">
         <span class="pill ${usableStatus === "Available" ? "sold" : usableStatus === "Failed" ? "pending" : usableStatus === "Expired" ? "active" : "shipped"}">${escapeHtml(usableStatus)}</span>
         ${waitLabel ? `<small>${escapeHtml(waitLabel)}</small>` : ""}
@@ -1729,6 +1724,19 @@ function prepaidPortUsableStatus(record) {
 
 function prepaidPortType(record) {
   return record.display_type || record.record_type || (record.prepaid_card && !record.port_number ? "Prepaid Card" : "Port Number");
+}
+
+function renderPrepaidMoneyBlock(record, recordType) {
+  const usedAmount = record.used_amount !== null && record.used_amount !== undefined && record.used_amount !== "" ? `<small>Used For</small><b>${money(record.used_amount)}</b>` : "";
+  if (recordType === "Prepaid Card") {
+    return `<div class="prepaid-port-money prepaid-card-value">${usedAmount || `<small>Value Used</small><b>-</b>`}</div>`;
+  }
+  return `
+    <div class="prepaid-port-money">
+      <small>Cost</small><b>${money(record.cost)}</b>
+      ${usedAmount}
+    </div>
+  `;
 }
 
 function prepaidPortExpiresLabel(record) {
