@@ -320,6 +320,7 @@
               <button class="online-order-tab" data-online-order-tab="pending">Orders Pending</button>
               <button class="online-order-tab" data-online-order-tab="transit">In Transit</button>
               <button class="online-order-tab" data-online-order-tab="stock">In Stock</button>
+              <button class="online-order-tab" data-online-order-tab="prepaid">Prepaid / Ports</button>
               <button class="online-order-tab" data-online-order-tab="addresses">Addresses</button>
               <button class="online-order-tab" data-online-order-tab="completed">Completed</button>
             </nav>
@@ -419,6 +420,40 @@
           <section class="panel online-order-list-panel">
             <div class="panel-head"><div><h2>In Stock</h2><p>Received orders ready to sell locally or move to Apple gift cards.</p></div></div>
             <div id="onlineOrdersStockList" class="online-order-list"></div>
+          </section>
+        </section>
+
+        <section id="onlineOrdersPrepaidPanel" class="online-order-tab-panel hidden">
+          <section class="panel online-order-entry-panel online-order-prepaid-panel">
+            <div class="panel-head"><div><h2>Prepaid Cards & Port Numbers</h2><p>Track port numbers and prepaid cards for online orders. Failed ports become usable again after 24 hours.</p></div></div>
+            <div class="online-order-form-sections prepaid-port-form">
+              <div class="online-order-form-section">
+                <h3>Add Record</h3>
+                <div class="form-grid three">
+                  <label>Provider<input id="prepaidPortProvider" list="prepaidPortProviderOptions" placeholder="Metro, Cricket, Boost"></label>
+                  <label>Port Number<input id="prepaidPortNumber" placeholder="Phone / port number"></label>
+                  <label>Prepaid Card<input id="prepaidCardNumber" placeholder="Card number"></label>
+                </div>
+                <div class="form-grid three">
+                  <label>PIN<input id="prepaidPortPin" placeholder="PIN"></label>
+                  <label>Cost<input id="prepaidPortCost" type="number" min="0" step="0.01"></label>
+                  <label>Notes<input id="prepaidPortNotes" placeholder="Where bought, account, reminder"></label>
+                </div>
+                <datalist id="prepaidPortProviderOptions">
+                  <option value="Metro PCS"></option>
+                  <option value="Cricket"></option>
+                  <option value="Boost Mobile"></option>
+                  <option value="Other"></option>
+                </datalist>
+                <div class="actions"><button class="btn phone-btn" id="savePrepaidPortBtn">Add Prepaid / Port</button></div>
+                <div id="prepaidPortStatus"></div>
+              </div>
+            </div>
+          </section>
+          <section class="panel online-order-list-panel">
+            <div class="panel-head"><div><h2>Port Inventory</h2><p>Available, used, and failed port records.</p></div><button class="btn secondary" id="refreshPrepaidPortsBtn">Refresh</button></div>
+            <div id="prepaidPortStats" class="stats online-order-stats prepaid-port-stats"></div>
+            <div id="prepaidPortList" class="prepaid-port-list"></div>
           </section>
         </section>
 

@@ -10,6 +10,7 @@ let phoneInvoices = [];
 let manualPhoneReturns = [];
 let phoneHoldingItems = [];
 let phoneOnlineOrders = [];
+let prepaidPortRecords = [];
 let editingPhonePurchaseId = null;
 let editingOnlineOrderId = null;
 
@@ -45,10 +46,15 @@ function bindPhoneEvents() {
   $("addDirectHoldingBtn").onclick = addDirectHoldingPhone;
   $("closeGiftCardBatchBtn").onclick = closeCurrentGiftCardBatch;
   $("saveOnlineOrderBtn").onclick = saveOnlineOrder;
+  $("savePrepaidPortBtn").onclick = savePrepaidPort;
+  $("refreshPrepaidPortsBtn").onclick = loadPrepaidPorts;
   $("cancelOnlineOrderEditBtn").onclick = () => resetOnlineOrderForm();
   $("onlineOrderPlacedNowBtn").onclick = stampOnlineOrderPlacedNow;
   $("onlineOrdersBackBtn").onclick = () => closeOnlineOrdersPage("dashboard");
-  $("onlineOrdersRefreshBtn").onclick = loadPhoneOnlineOrders;
+  $("onlineOrdersRefreshBtn").onclick = async () => {
+    await loadPhoneOnlineOrders();
+    await loadPrepaidPorts();
+  };
   $("onlineOrderSearch").addEventListener("input", renderOnlineOrders);
   $("onlineOrdersClearSearchBtn").onclick = () => {
     $("onlineOrderSearch").value = "";
@@ -99,6 +105,7 @@ async function refreshPhonePortal() {
   await loadManualPhoneReturns();
   await loadPhoneHolding();
   await loadPhoneOnlineOrders();
+  await loadPrepaidPorts();
 }
 
 async function loadAtlasPrices() {
@@ -135,6 +142,12 @@ async function loadPhoneOnlineOrders() {
   const result = await api("/api/phone-online-orders", { silent: true });
   phoneOnlineOrders = result?.orders || [];
   renderOnlineOrders();
+}
+
+async function loadPrepaidPorts() {
+  const result = await api("/api/phone-prepaid-ports", { silent: true });
+  prepaidPortRecords = result?.ports || [];
+  renderPrepaidPorts();
 }
 
 function openPhoneTab(name) {
@@ -179,7 +192,7 @@ function closeOnlineOrdersPage(tabName = "dashboard") {
 }
 
 function openOnlineOrderTab(name) {
-  const panelNames = { add: "Add", stats: "Stats", pending: "Pending", transit: "Transit", stock: "Stock", addresses: "Addresses", completed: "Completed" };
+  const panelNames = { add: "Add", stats: "Stats", pending: "Pending", transit: "Transit", stock: "Stock", prepaid: "Prepaid", addresses: "Addresses", completed: "Completed" };
   const selected = panelNames[name] ? name : "add";
   document.querySelectorAll("[data-online-order-tab]").forEach((button) => {
     button.classList.toggle("active", button.dataset.onlineOrderTab === selected);
@@ -1508,6 +1521,94 @@ function renderOnlineOrders() {
   $("onlineOrdersAddressList").innerHTML = renderOnlineOrderAddressList(filteredOrders);
   $("onlineOrdersCompletedList").innerHTML = renderOnlineOrderCompactList(completed, "No completed online orders yet.");
 }
+
+async function savePrepaidPort() {
+  const result = await api("/api/phone-prepaid-ports", {
+    method: "POST",
+    body: {
+      provider: $("prepaidPortProvider").value.trim(),
+      port_number: $("prepaidPortNumber").value.trim(),
+      prepaid_card: $("prepaidCardNumber").value.trim(),
+      pin: $("prepaidPortPin").value.trim(),
+      cost: Number($("prepaidPortCost").value || 0),
+      notes: $("prepaidPortNotes").value.trim(),
+    },
+  });
+  if (!result?.ok) return status("prepaidPortStatus", result?.error || "Could not save prepaid card or port number.", "bad");
+  ["prepaidPortNumber", "prepaidCardNumber", "prepaidPortPin", "prepaidPortCost", "prepaidPortNotes"].forEach((id) => { $(id).value = ""; });
+  status("prepaidPortStatus", "Prepaid card / port number added.");
+  await loadPrepaidPorts();
+}
+
+function renderPrepaidPorts() {
+  if (!$("prepaidPortList")) return;
+  const available = prepaidPortRecords.filter((record) => prepaidPortUsableStatus(record) === "Available");
+  const failed = prepaidPortRecords.filter((record) => prepaidPortUsableStatus(record) === "Failed");
+  const used = prepaidPortRecords.filter((record) => prepaidPortUsableStatus(record) === "Used");
+  const totalCost = prepaidPortRecords.reduce((sum, record) => sum + Number(record.cost || 0), 0);
+  $("prepaidPortStats").innerHTML = `
+    <div class="stat"><span>Available</span><strong>${available.length}</strong><em>ready to use</em></div>
+    <div class="stat"><span>Failed</span><strong>${failed.length}</strong><em>locked for 24 hours</em></div>
+    <div class="stat"><span>Used</span><strong>${used.length}</strong><em>already used</em></div>
+    <div class="stat"><span>Total Cost</span><strong>${money(totalCost)}</strong><em>all records</em></div>
+  `;
+  $("prepaidPortList").innerHTML = `
+    ${renderPrepaidPortGroup("Available Now", available, "No available prepaid cards or port numbers.")}
+    ${renderPrepaidPortGroup("Failed / Waiting 24 Hours", failed, "No failed records waiting.")}
+    ${renderPrepaidPortGroup("Used", used, "No used records yet.")}
+  `;
+}
+
+function renderPrepaidPortGroup(title, records, emptyMessage) {
+  return `
+    <section class="prepaid-port-group">
+      <div class="prepaid-port-group-head"><h3>${escapeHtml(title)}</h3><span>${records.length}</span></div>
+      <div class="prepaid-port-rows">
+        ${records.length ? records.map(renderPrepaidPortRow).join("") : `<div class="empty">${escapeHtml(emptyMessage)}</div>`}
+      </div>
+    </section>
+  `;
+}
+
+function renderPrepaidPortRow(record) {
+  const usableStatus = prepaidPortUsableStatus(record);
+  const waitLabel = usableStatus === "Failed" && record.usable_after ? `Usable after ${formatDateTime(record.usable_after)}` : "";
+  return `
+    <article class="prepaid-port-row ${escapeAttr(usableStatus.toLowerCase())}">
+      <div>
+        <strong>${escapeHtml(record.port_number || record.prepaid_card || `Record #${record.id}`)}</strong>
+        <span>${escapeHtml([record.provider, record.prepaid_card ? `Card: ${record.prepaid_card}` : "", record.pin ? `PIN: ${record.pin}` : ""].filter(Boolean).join(" - "))}</span>
+        ${record.notes ? `<em>${escapeHtml(record.notes)}</em>` : ""}
+      </div>
+      <div class="prepaid-port-money"><small>Cost</small><b>${money(record.cost)}</b></div>
+      <div class="prepaid-port-status">
+        <span class="pill ${usableStatus === "Available" ? "sold" : usableStatus === "Failed" ? "pending" : "shipped"}">${escapeHtml(usableStatus)}</span>
+        ${waitLabel ? `<small>${escapeHtml(waitLabel)}</small>` : ""}
+      </div>
+      <div class="phone-row-actions prepaid-port-actions">
+        ${usableStatus !== "Used" ? `<button class="mini-btn" onclick="setPrepaidPortStatus(${record.id}, 'Used')">Used</button>` : ""}
+        ${usableStatus !== "Failed" ? `<button class="mini-btn danger" onclick="setPrepaidPortStatus(${record.id}, 'Failed')">Failed</button>` : ""}
+        ${usableStatus !== "Available" ? `<button class="mini-btn" onclick="setPrepaidPortStatus(${record.id}, 'Available')">Available</button>` : ""}
+      </div>
+    </article>
+  `;
+}
+
+function prepaidPortUsableStatus(record) {
+  return record.usable_status || record.status || "Available";
+}
+
+window.setPrepaidPortStatus = async (id, nextStatus) => {
+  const note = nextStatus === "Failed" ? prompt("Why did it fail? Optional.", "") : "";
+  if (note === null) return false;
+  const result = await api(`/api/phone-prepaid-ports/${id}/status`, {
+    method: "PATCH",
+    body: { status: nextStatus, notes: note },
+  });
+  if (!result?.ok) return alert(result?.error || "Could not update prepaid card / port number.");
+  await loadPrepaidPorts();
+  return true;
+};
 
 function onlineOrderStatsSnapshot(allOrders, ordered, transit, stockItems, completed) {
   const orderedCost = ordered.reduce((sum, order) => sum + onlineOrderTotalCost(order), 0);
