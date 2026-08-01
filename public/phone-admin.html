@@ -316,6 +316,7 @@
           <aside class="online-order-left">
             <nav class="online-order-tabs" aria-label="Online order sections">
               <button class="online-order-tab active" data-online-order-tab="add">Add Order</button>
+              <button class="online-order-tab" data-online-order-tab="stats">Stats</button>
               <button class="online-order-tab" data-online-order-tab="pending">Orders Pending</button>
               <button class="online-order-tab" data-online-order-tab="transit">In Transit</button>
               <button class="online-order-tab" data-online-order-tab="stock">In Stock</button>
@@ -390,15 +391,19 @@
           </section>
         </section>
 
+        <section id="onlineOrdersStatsPanel" class="online-order-tab-panel hidden">
+          <section class="panel online-order-stats-panel">
+            <div class="panel-head"><div><h2>Online Order Stats</h2><p>Full money view for pending, in transit, in stock, and completed online orders.</p></div></div>
+            <div id="onlineOrderStats" class="stats online-order-stats"></div>
+            <div id="onlineOrderStatsDetail" class="online-order-stats-detail"></div>
+            <div id="onlineOrderModelSummary" class="online-order-model-summary"></div>
+          </section>
+        </section>
+
         <section id="onlineOrdersPendingPanel" class="online-order-tab-panel hidden">
           <section class="panel online-order-list-panel">
             <div class="panel-head"><div><h2>Orders Pending</h2><p>Mark orders shipped when tracking starts moving.</p></div></div>
             <div id="onlineOrdersPlacedList" class="online-order-list"></div>
-          </section>
-          <section class="panel online-order-stock-panel">
-            <div class="panel-head"><div><h2>Stats</h2><p>Quick view of ordered, received, and completed online order money.</p></div></div>
-            <div id="onlineOrderStats" class="stats online-order-stats"></div>
-            <div id="onlineOrderModelSummary" class="online-order-model-summary"></div>
           </section>
         </section>
 

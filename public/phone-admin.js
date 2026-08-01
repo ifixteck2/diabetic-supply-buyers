@@ -179,7 +179,7 @@ function closeOnlineOrdersPage(tabName = "dashboard") {
 }
 
 function openOnlineOrderTab(name) {
-  const panelNames = { add: "Add", pending: "Pending", transit: "Transit", stock: "Stock", addresses: "Addresses", completed: "Completed" };
+  const panelNames = { add: "Add", stats: "Stats", pending: "Pending", transit: "Transit", stock: "Stock", addresses: "Addresses", completed: "Completed" };
   const selected = panelNames[name] ? name : "add";
   document.querySelectorAll("[data-online-order-tab]").forEach((button) => {
     button.classList.toggle("active", button.dataset.onlineOrderTab === selected);
@@ -1498,33 +1498,169 @@ function renderOnlineOrders() {
   const stock = filteredOrders.filter((order) => order.status === "Received");
   const stockItems = onlineOrderStockItems(stock);
   const completed = filteredOrders.filter((order) => order.status === "Sold Local" || order.status === "Gift Card");
-  const orderedCost = ordered.reduce((sum, order) => sum + onlineOrderTotalCost(order), 0);
-  const transitCost = transit.reduce((sum, order) => sum + onlineOrderTotalCost(order), 0);
-  const stockCost = stockItems.reduce((sum, order) => sum + onlineOrderTotalCost(order), 0);
-  const completedCost = completed.reduce((sum, order) => sum + onlineOrderTotalCost(order), 0);
-  const localSales = completed.reduce((sum, order) => sum + Number(order.local_sale_price || 0), 0);
-  const giftCards = completed.reduce((sum, order) => sum + Number(order.gift_card_value || 0), 0);
-  const completedValue = localSales + giftCards;
-  const openOrders = [...ordered, ...transit, ...stockItems];
-  const pendingProfit = openOrders.reduce((sum, order) => {
-    const expectedSale = onlineOrderExpectedSalePrice(order);
-    return expectedSale === null ? sum : sum + expectedSale - onlineOrderTotalCost(order);
-  }, 0);
-  const completedProfit = completedValue - completedCost;
-  $("onlineOrderStats").innerHTML = `
-    <div class="stat"><span>Ordered</span><strong>${ordered.length}</strong><em>${money(orderedCost)} pending</em></div>
-    <div class="stat"><span>In Transit</span><strong>${transit.length}</strong><em>${money(transitCost)} shipped</em></div>
-    <div class="stat"><span>In Stock</span><strong>${stockItems.length}</strong><em>${money(stockCost)} cost</em></div>
-    <div class="stat"><span>Pending Profits</span><strong class="${pendingProfit >= 0 ? "profit-good" : "profit-bad"}">${profitMoney(pendingProfit)}</strong><em>Expected: 16e $310 / A37 $200</em></div>
-    <div class="stat"><span>Completed</span><strong>${completed.length}</strong><em>${money(completedCost)} cost</em></div>
-    <div class="stat"><span>Completed Profits</span><strong class="${completedProfit >= 0 ? "profit-good" : "profit-bad"}">${profitMoney(completedProfit)}</strong><em>${money(completedValue)} money back</em></div>
-  `;
+  const stats = onlineOrderStatsSnapshot(filteredOrders, ordered, transit, stockItems, completed);
+  $("onlineOrderStats").innerHTML = renderOnlineOrderStatsCards(stats);
+  $("onlineOrderStatsDetail").innerHTML = renderOnlineOrderStatsDetail(filteredOrders, ordered, transit, stockItems, completed, stats);
   $("onlineOrderModelSummary").innerHTML = renderOnlineOrderModelSummary(ordered, transit, stockItems);
   $("onlineOrdersPlacedList").innerHTML = renderOnlineOrderCompactList(ordered, "No pending online orders.");
   $("onlineOrdersTransitList").innerHTML = renderOnlineOrderTransitList(transit);
   $("onlineOrdersStockList").innerHTML = renderOnlineOrderModelGroups(stockItems, "No received online orders in stock.");
   $("onlineOrdersAddressList").innerHTML = renderOnlineOrderAddressList(filteredOrders);
   $("onlineOrdersCompletedList").innerHTML = completed.map(renderOnlineOrderCard).join("") || `<div class="empty">No completed online orders yet.</div>`;
+}
+
+function onlineOrderStatsSnapshot(allOrders, ordered, transit, stockItems, completed) {
+  const orderedCost = ordered.reduce((sum, order) => sum + onlineOrderTotalCost(order), 0);
+  const transitCost = transit.reduce((sum, order) => sum + onlineOrderTotalCost(order), 0);
+  const stockCost = stockItems.reduce((sum, order) => sum + onlineOrderTotalCost(order), 0);
+  const completedCost = completed.reduce((sum, order) => sum + onlineOrderCompletedTotalCost(order), 0);
+  const localSales = completed.reduce((sum, order) => sum + Number(order.local_sale_price || 0), 0);
+  const giftCards = completed.reduce((sum, order) => sum + Number(order.gift_card_value || 0), 0);
+  const completedValue = localSales + giftCards;
+  const openItems = [...ordered, ...transit, ...stockItems];
+  const openExpectedValue = openItems.reduce((sum, order) => {
+    const expectedSale = onlineOrderExpectedSalePrice(order);
+    return expectedSale === null ? sum : sum + expectedSale;
+  }, 0);
+  const openCost = orderedCost + transitCost + stockCost;
+  const pendingProfit = onlineOrderPendingProfit(openItems);
+  const completedProfit = completedValue - completedCost;
+  const todayKey = localTodayInput();
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
+  sevenDaysAgo.setHours(0, 0, 0, 0);
+  const todayOrders = allOrders.filter((order) => String(order.order_date || "").slice(0, 10) === todayKey);
+  const weekOrders = allOrders.filter((order) => onlineOrderDateTime(order) >= sevenDaysAgo.getTime());
+  return {
+    totalOrders: allOrders.length,
+    openPhoneCount: openItems.length,
+    orderedCount: ordered.length,
+    transitCount: transit.length,
+    stockCount: stockItems.length,
+    completedCount: completed.length,
+    orderedCost,
+    transitCost,
+    stockCost,
+    completedCost,
+    openCost,
+    openExpectedValue,
+    pendingProfit,
+    localSales,
+    giftCards,
+    completedValue,
+    completedProfit,
+    todayCount: todayOrders.length,
+    weekCount: weekOrders.length,
+    totalCost: openCost + completedCost,
+    totalValue: openExpectedValue + completedValue,
+    totalProfit: pendingProfit + completedProfit,
+    avgCompletedProfit: completed.length ? completedProfit / completed.length : 0,
+  };
+}
+
+function renderOnlineOrderStatsCards(stats) {
+  return `
+    <div class="stat"><span>Open Phones</span><strong>${stats.openPhoneCount}</strong><em>${money(stats.openCost)} total cost</em></div>
+    <div class="stat"><span>Ordered</span><strong>${stats.orderedCount}</strong><em>${money(stats.orderedCost)} not shipped</em></div>
+    <div class="stat"><span>In Transit</span><strong>${stats.transitCount}</strong><em>${money(stats.transitCost)} shipped</em></div>
+    <div class="stat"><span>In Stock</span><strong>${stats.stockCount}</strong><em>${money(stats.stockCost)} ready</em></div>
+    <div class="stat"><span>Expected Open Value</span><strong>${money(stats.openExpectedValue)}</strong><em>16e $310 / A37 $200</em></div>
+    <div class="stat"><span>Pending Profit</span><strong class="${stats.pendingProfit >= 0 ? "profit-good" : "profit-bad"}">${profitMoney(stats.pendingProfit)}</strong><em>open expected profit</em></div>
+    <div class="stat"><span>Completed Profit</span><strong class="${stats.completedProfit >= 0 ? "profit-good" : "profit-bad"}">${profitMoney(stats.completedProfit)}</strong><em>${money(stats.completedValue)} collected</em></div>
+    <div class="stat"><span>All Profit</span><strong class="${stats.totalProfit >= 0 ? "profit-good" : "profit-bad"}">${profitMoney(stats.totalProfit)}</strong><em>open + completed</em></div>
+  `;
+}
+
+function renderOnlineOrderStatsDetail(allOrders, ordered, transit, stockItems, completed, stats) {
+  const statusRows = [
+    { label: "Ordered", count: ordered.length, cost: stats.orderedCost, value: onlineOrderExpectedValue(ordered), profit: onlineOrderPendingProfit(ordered) },
+    { label: "In Transit", count: transit.length, cost: stats.transitCost, value: onlineOrderExpectedValue(transit), profit: onlineOrderPendingProfit(transit) },
+    { label: "In Stock", count: stockItems.length, cost: stats.stockCost, value: onlineOrderExpectedValue(stockItems), profit: onlineOrderPendingProfit(stockItems) },
+    { label: "Sold Local", count: completed.filter((order) => order.status === "Sold Local").length, cost: completed.filter((order) => order.status === "Sold Local").reduce((sum, order) => sum + onlineOrderCompletedTotalCost(order), 0), value: stats.localSales, profit: stats.localSales - completed.filter((order) => order.status === "Sold Local").reduce((sum, order) => sum + onlineOrderCompletedTotalCost(order), 0) },
+    { label: "Gift Cards", count: completed.filter((order) => order.status === "Gift Card").length, cost: completed.filter((order) => order.status === "Gift Card").reduce((sum, order) => sum + onlineOrderCompletedTotalCost(order), 0), value: stats.giftCards, profit: stats.giftCards - completed.filter((order) => order.status === "Gift Card").reduce((sum, order) => sum + onlineOrderCompletedTotalCost(order), 0) },
+  ];
+  return `
+    <div class="online-order-stats-layout">
+      <section class="online-order-stats-block">
+        <h3>Money Summary</h3>
+        <div class="online-order-ledger">
+          <span><small>Total Cost Tracked</small><b>${money(stats.totalCost)}</b></span>
+          <span><small>Total Value Tracked</small><b>${money(stats.totalValue)}</b></span>
+          <span><small>Completed Orders</small><b>${stats.completedCount}</b></span>
+          <span><small>Average Completed Profit</small><b class="${stats.avgCompletedProfit >= 0 ? "profit-good" : "profit-bad"}">${profitMoney(stats.avgCompletedProfit)}</b></span>
+          <span><small>Orders Today</small><b>${stats.todayCount}</b></span>
+          <span><small>Orders Last 7 Days</small><b>${stats.weekCount}</b></span>
+        </div>
+      </section>
+      <section class="online-order-stats-block">
+        <h3>Status Breakdown</h3>
+        ${renderOnlineOrderStatsTable(statusRows)}
+      </section>
+      <section class="online-order-stats-block">
+        <h3>Provider Breakdown</h3>
+        ${renderOnlineOrderStatsTable(onlineOrderProviderStatsRows(allOrders))}
+      </section>
+    </div>
+  `;
+}
+
+function renderOnlineOrderStatsTable(rows) {
+  return `
+    <div class="online-order-stats-table">
+      <div class="online-order-stats-table-head"><span>Name</span><span>Phones</span><span>Cost</span><span>Value</span><span>Profit</span></div>
+      ${rows.map((row) => `
+        <div class="online-order-stats-table-row">
+          <span>${escapeHtml(row.label)}</span>
+          <span>${row.count}</span>
+          <span>${money(row.cost)}</span>
+          <span>${money(row.value)}</span>
+          <span class="${row.profit >= 0 ? "profit-good" : "profit-bad"}">${profitMoney(row.profit)}</span>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+function onlineOrderProviderStatsRows(orders) {
+  const groups = new Map();
+  orders.forEach((order) => {
+    const provider = onlineOrderProviderLabel(order.provider);
+    const completed = order.status === "Sold Local" || order.status === "Gift Card";
+    const items = order.status === "Received" ? onlineOrderStockItems([order]) : [order];
+    const group = groups.get(provider) || { label: provider, count: 0, cost: 0, value: 0, profit: 0 };
+    if (completed) {
+      const value = order.status === "Sold Local" ? Number(order.local_sale_price || 0) : Number(order.gift_card_value || 0);
+      const cost = onlineOrderCompletedTotalCost(order);
+      group.count += 1;
+      group.cost += cost;
+      group.value += value;
+      group.profit += value - cost;
+    } else {
+      items.forEach((item) => {
+        const expectedSale = onlineOrderExpectedSalePrice(item);
+        const cost = onlineOrderTotalCost(item);
+        group.count += 1;
+        group.cost += cost;
+        if (expectedSale !== null) {
+          group.value += expectedSale;
+          group.profit += expectedSale - cost;
+        }
+      });
+    }
+    groups.set(provider, group);
+  });
+  return Array.from(groups.values()).sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+}
+
+function onlineOrderExpectedValue(orders) {
+  return orders.reduce((sum, order) => sum + (onlineOrderExpectedSalePrice(order) || 0), 0);
+}
+
+function onlineOrderPendingProfit(orders) {
+  return orders.reduce((sum, order) => {
+    const expectedSale = onlineOrderExpectedSalePrice(order);
+    return expectedSale === null ? sum : sum + expectedSale - onlineOrderTotalCost(order);
+  }, 0);
 }
 
 function onlineOrderSearchResults(orders, searchTerm) {
@@ -1967,6 +2103,11 @@ function onlineOrderCustomerName(order) {
 
 function onlineOrderTotalCost(order) {
   return Number(order?.cost || 0) + Number(order?.port_number_cost || 0);
+}
+
+function onlineOrderCompletedTotalCost(order) {
+  const lineCost = onlineOrderLineItems(order).reduce((sum, line) => sum + Number(line.cost || 0), 0);
+  return onlineOrderTotalCost(order) + lineCost;
 }
 
 function onlineOrderExpectedSalePrice(order) {
