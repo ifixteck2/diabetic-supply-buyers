@@ -353,6 +353,9 @@ app.post("/api/phone-prepaid-ports", requirePhoneAuth, async (req, res) => {
   const portNumber = String(input.port_number || "").trim();
   const prepaidCard = String(input.prepaid_card || "").trim();
   const pin = String(input.pin || "").trim();
+  const expirationMonth = String(input.expiration_month || "").trim();
+  const expirationYear = String(input.expiration_year || "").trim();
+  const cvv = String(input.cvv || "").trim();
   const cost = Number(input.cost || 0);
   const notes = String(input.notes || "").trim();
   if (!provider) return res.status(400).json({ error: "Enter the provider." });
@@ -360,12 +363,45 @@ app.post("/api/phone-prepaid-ports", requirePhoneAuth, async (req, res) => {
   if (!Number.isFinite(cost) || cost < 0) return res.status(400).json({ error: "Enter a valid cost." });
   const result = await pool.query(
     `insert into phone_prepaid_ports
-       (provider, port_number, prepaid_card, pin, cost, notes)
-     values ($1, $2, $3, $4, $5::numeric, $6)
+       (provider, port_number, prepaid_card, pin, expiration_month, expiration_year, cvv, cost, notes)
+     values ($1, $2, $3, $4, $5, $6, $7, $8::numeric, $9)
      returning *`,
-    [provider, portNumber, prepaidCard, pin, cost, notes]
+    [provider, portNumber, prepaidCard, pin, expirationMonth, expirationYear, cvv, cost, notes]
   );
   res.json({ ok: true, port: result.rows[0] });
+});
+
+app.post("/api/phone-prepaid-ports/bulk", requirePhoneAuth, async (req, res) => {
+  const records = Array.isArray(req.body?.records) ? req.body.records : [];
+  if (!records.length) return res.status(400).json({ error: "Paste at least one prepaid card line." });
+  if (records.length > 300) return res.status(400).json({ error: "Add 300 or fewer cards at a time." });
+  const cleanRecords = records.map((record) => ({
+    provider: String(record.provider || "Prepaid Card").trim() || "Prepaid Card",
+    portNumber: String(record.port_number || "").trim(),
+    prepaidCard: String(record.prepaid_card || "").trim(),
+    pin: String(record.pin || "").trim(),
+    expirationMonth: String(record.expiration_month || "").trim(),
+    expirationYear: String(record.expiration_year || "").trim(),
+    cvv: String(record.cvv || "").trim(),
+    cost: Number(record.cost || 0),
+    notes: String(record.notes || "").trim(),
+  }));
+  const invalid = cleanRecords.find((record) => !record.prepaidCard || !Number.isFinite(record.cost) || record.cost < 0);
+  if (invalid) return res.status(400).json({ error: "Every bulk card needs a card number and valid cost." });
+  const values = [];
+  const placeholders = cleanRecords.map((record, index) => {
+    const offset = index * 9;
+    values.push(record.provider, record.portNumber, record.prepaidCard, record.pin, record.expirationMonth, record.expirationYear, record.cvv, record.cost, record.notes);
+    return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}::numeric, $${offset + 9})`;
+  });
+  const result = await pool.query(
+    `insert into phone_prepaid_ports
+       (provider, port_number, prepaid_card, pin, expiration_month, expiration_year, cvv, cost, notes)
+     values ${placeholders.join(",")}
+     returning *`,
+    values
+  );
+  res.json({ ok: true, ports: result.rows });
 });
 
 app.patch("/api/phone-prepaid-ports/:id/status", requirePhoneAuth, async (req, res) => {
@@ -2332,6 +2368,9 @@ async function migrate() {
       port_number text not null default '',
       prepaid_card text not null default '',
       pin text not null default '',
+      expiration_month text not null default '',
+      expiration_year text not null default '',
+      cvv text not null default '',
       cost numeric(12,2) not null default 0,
       status text not null default 'Available',
       failed_at timestamptz,
@@ -2472,6 +2511,9 @@ async function migrate() {
     alter table phone_prepaid_ports add column if not exists port_number text not null default '';
     alter table phone_prepaid_ports add column if not exists prepaid_card text not null default '';
     alter table phone_prepaid_ports add column if not exists pin text not null default '';
+    alter table phone_prepaid_ports add column if not exists expiration_month text not null default '';
+    alter table phone_prepaid_ports add column if not exists expiration_year text not null default '';
+    alter table phone_prepaid_ports add column if not exists cvv text not null default '';
     alter table phone_prepaid_ports add column if not exists cost numeric(12,2) not null default 0;
     alter table phone_prepaid_ports add column if not exists status text not null default 'Available';
     alter table phone_prepaid_ports add column if not exists failed_at timestamptz;

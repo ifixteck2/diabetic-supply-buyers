@@ -47,6 +47,7 @@ function bindPhoneEvents() {
   $("closeGiftCardBatchBtn").onclick = closeCurrentGiftCardBatch;
   $("saveOnlineOrderBtn").onclick = saveOnlineOrder;
   $("savePrepaidPortBtn").onclick = savePrepaidPort;
+  $("bulkPrepaidCardsBtn").onclick = saveBulkPrepaidCards;
   $("refreshPrepaidPortsBtn").onclick = loadPrepaidPorts;
   $("cancelOnlineOrderEditBtn").onclick = () => resetOnlineOrderForm();
   $("onlineOrderPlacedNowBtn").onclick = stampOnlineOrderPlacedNow;
@@ -1530,14 +1531,66 @@ async function savePrepaidPort() {
       port_number: $("prepaidPortNumber").value.trim(),
       prepaid_card: $("prepaidCardNumber").value.trim(),
       pin: $("prepaidPortPin").value.trim(),
+      expiration_month: $("prepaidCardExpMonth").value.trim(),
+      expiration_year: $("prepaidCardExpYear").value.trim(),
+      cvv: $("prepaidCardCvv").value.trim(),
       cost: Number($("prepaidPortCost").value || 0),
       notes: $("prepaidPortNotes").value.trim(),
     },
   });
   if (!result?.ok) return status("prepaidPortStatus", result?.error || "Could not save prepaid card or port number.", "bad");
-  ["prepaidPortNumber", "prepaidCardNumber", "prepaidPortPin", "prepaidPortCost", "prepaidPortNotes"].forEach((id) => { $(id).value = ""; });
+  ["prepaidPortNumber", "prepaidCardNumber", "prepaidPortPin", "prepaidCardExpMonth", "prepaidCardExpYear", "prepaidCardCvv", "prepaidPortCost", "prepaidPortNotes"].forEach((id) => { $(id).value = ""; });
   status("prepaidPortStatus", "Prepaid card / port number added.");
   await loadPrepaidPorts();
+}
+
+async function saveBulkPrepaidCards() {
+  const parsed = parseBulkPrepaidCards($("bulkPrepaidCards").value);
+  if (parsed.errors.length) return status("bulkPrepaidStatus", parsed.errors.join("<br>"), "bad");
+  const provider = $("bulkPrepaidProvider").value.trim() || "Prepaid Card";
+  const cost = Number($("bulkPrepaidCost").value || 0);
+  const notes = $("bulkPrepaidNotes").value.trim();
+  if (!parsed.records.length) return status("bulkPrepaidStatus", "Paste at least one prepaid card line.", "bad");
+  if (!Number.isFinite(cost) || cost < 0) return status("bulkPrepaidStatus", "Enter a valid cost each.", "bad");
+  const result = await api("/api/phone-prepaid-ports/bulk", {
+    method: "POST",
+    body: {
+      records: parsed.records.map((record) => ({ ...record, provider, cost, notes })),
+    },
+  });
+  if (!result?.ok) return status("bulkPrepaidStatus", result?.error || "Could not save bulk prepaid cards.", "bad");
+  $("bulkPrepaidCards").value = "";
+  status("bulkPrepaidStatus", `Added ${result.ports?.length || parsed.records.length} prepaid cards.`);
+  await loadPrepaidPorts();
+}
+
+function parseBulkPrepaidCards(value) {
+  const errors = [];
+  const records = String(value || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line, index) => {
+      const parts = line.split(/\s+/);
+      const card = (parts[0] || "").replace(/\D/g, "");
+      const month = (parts[1] || "").replace(/\D/g, "").padStart(2, "0");
+      const fullYear = (parts[2] || "").replace(/\D/g, "");
+      const slashExp = parts.find((part) => /^\d{1,2}\/\d{2,4}$/.test(part));
+      const cvv = (parts[parts.length - 1] || "").replace(/\D/g, "");
+      let expMonth = month;
+      let expYear = fullYear;
+      if (slashExp) {
+        const [slashMonth, slashYear] = slashExp.split("/");
+        expMonth = slashMonth.replace(/\D/g, "").padStart(2, "0");
+        expYear = slashYear.length === 2 ? `20${slashYear}` : slashYear;
+      }
+      if (!/^\d{12,19}$/.test(card)) errors.push(`Line ${index + 1}: card number is missing or invalid.`);
+      if (!/^(0[1-9]|1[0-2])$/.test(expMonth)) errors.push(`Line ${index + 1}: expiration month is invalid.`);
+      if (!/^\d{4}$/.test(expYear)) errors.push(`Line ${index + 1}: expiration year is invalid.`);
+      if (!/^\d{3,4}$/.test(cvv)) errors.push(`Line ${index + 1}: CVV is missing or invalid.`);
+      return { prepaid_card: card, expiration_month: expMonth, expiration_year: expYear, cvv };
+    });
+  return { records, errors };
 }
 
 function renderPrepaidPorts() {
@@ -1577,7 +1630,7 @@ function renderPrepaidPortRow(record) {
     <article class="prepaid-port-row ${escapeAttr(usableStatus.toLowerCase())}">
       <div>
         <strong>${escapeHtml(record.port_number || record.prepaid_card || `Record #${record.id}`)}</strong>
-        <span>${escapeHtml([record.provider, record.prepaid_card ? `Card: ${record.prepaid_card}` : "", record.pin ? `PIN: ${record.pin}` : ""].filter(Boolean).join(" - "))}</span>
+        <span>${escapeHtml([record.provider, record.prepaid_card ? `Card: ${record.prepaid_card}` : "", prepaidCardExpiration(record), record.cvv ? `CVV: ${record.cvv}` : "", record.pin ? `PIN: ${record.pin}` : ""].filter(Boolean).join(" - "))}</span>
         ${record.notes ? `<em>${escapeHtml(record.notes)}</em>` : ""}
       </div>
       <div class="prepaid-port-money"><small>Cost</small><b>${money(record.cost)}</b></div>
@@ -1596,6 +1649,12 @@ function renderPrepaidPortRow(record) {
 
 function prepaidPortUsableStatus(record) {
   return record.usable_status || record.status || "Available";
+}
+
+function prepaidCardExpiration(record) {
+  if (!record.expiration_month && !record.expiration_year) return "";
+  const year = String(record.expiration_year || "").slice(-2);
+  return `Exp: ${record.expiration_month || ""}/${year}`;
 }
 
 window.setPrepaidPortStatus = async (id, nextStatus) => {
