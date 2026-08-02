@@ -1513,7 +1513,7 @@ function renderOnlineOrders() {
   const transit = filteredOrders.filter((order) => order.status === "Shipped");
   const stock = filteredOrders.filter((order) => order.status === "Received");
   const stockItems = onlineOrderStockItems(stock);
-  const completed = filteredOrders.filter((order) => order.status === "Sold Local" || order.status === "Gift Card");
+  const completed = filteredOrders.filter((order) => isOnlineOrderCompleted(order));
   const stats = onlineOrderStatsSnapshot(filteredOrders, ordered, transit, stockItems, completed);
   $("onlineOrderStats").innerHTML = renderOnlineOrderStatsCards(stats);
   $("onlineOrderStatsDetail").innerHTML = renderOnlineOrderStatsDetail(filteredOrders, ordered, transit, stockItems, completed, stats);
@@ -1785,6 +1785,7 @@ function onlineOrderStatsSnapshot(allOrders, ordered, transit, stockItems, compl
   const completedCost = completed.reduce((sum, order) => sum + onlineOrderCompletedTotalCost(order), 0);
   const localSales = completed.reduce((sum, order) => sum + Number(order.local_sale_price || 0), 0);
   const giftCards = completed.reduce((sum, order) => sum + Number(order.gift_card_value || 0), 0);
+  const lostCost = completed.filter((order) => order.status === "Lost").reduce((sum, order) => sum + onlineOrderCompletedTotalCost(order), 0);
   const completedValue = localSales + giftCards;
   const openItems = [...ordered, ...transit, ...stockItems];
   const openExpectedValue = openItems.reduce((sum, order) => {
@@ -1816,6 +1817,7 @@ function onlineOrderStatsSnapshot(allOrders, ordered, transit, stockItems, compl
     pendingProfit,
     localSales,
     giftCards,
+    lostCost,
     completedValue,
     completedProfit,
     todayCount: todayOrders.length,
@@ -1835,7 +1837,7 @@ function renderOnlineOrderStatsCards(stats) {
     <div class="stat"><span>In Stock</span><strong>${stats.stockCount}</strong><em>${money(stats.stockCost)} ready</em></div>
     <div class="stat"><span>Expected Open Value</span><strong>${money(stats.openExpectedValue)}</strong><em>16e $310 / A37 $200 / A17 $95</em></div>
     <div class="stat"><span>Pending Profit</span><strong class="${stats.pendingProfit >= 0 ? "profit-good" : "profit-bad"}">${profitMoney(stats.pendingProfit)}</strong><em>open expected profit</em></div>
-    <div class="stat"><span>Completed Profit</span><strong class="${stats.completedProfit >= 0 ? "profit-good" : "profit-bad"}">${profitMoney(stats.completedProfit)}</strong><em>${money(stats.completedValue)} collected</em></div>
+    <div class="stat"><span>Completed Profit</span><strong class="${stats.completedProfit >= 0 ? "profit-good" : "profit-bad"}">${profitMoney(stats.completedProfit)}</strong><em>${money(stats.completedValue)} collected / ${money(stats.lostCost)} lost</em></div>
     <div class="stat"><span>All Profit</span><strong class="${stats.totalProfit >= 0 ? "profit-good" : "profit-bad"}">${profitMoney(stats.totalProfit)}</strong><em>open + completed</em></div>
   `;
 }
@@ -1847,6 +1849,7 @@ function renderOnlineOrderStatsDetail(allOrders, ordered, transit, stockItems, c
     { label: "In Stock", count: stockItems.length, cost: stats.stockCost, value: onlineOrderExpectedValue(stockItems), profit: onlineOrderPendingProfit(stockItems) },
     { label: "Sold Local", count: completed.filter((order) => order.status === "Sold Local").length, cost: completed.filter((order) => order.status === "Sold Local").reduce((sum, order) => sum + onlineOrderCompletedTotalCost(order), 0), value: stats.localSales, profit: stats.localSales - completed.filter((order) => order.status === "Sold Local").reduce((sum, order) => sum + onlineOrderCompletedTotalCost(order), 0) },
     { label: "Gift Cards", count: completed.filter((order) => order.status === "Gift Card").length, cost: completed.filter((order) => order.status === "Gift Card").reduce((sum, order) => sum + onlineOrderCompletedTotalCost(order), 0), value: stats.giftCards, profit: stats.giftCards - completed.filter((order) => order.status === "Gift Card").reduce((sum, order) => sum + onlineOrderCompletedTotalCost(order), 0) },
+    { label: "Lost Packages", count: completed.filter((order) => order.status === "Lost").length, cost: stats.lostCost, value: 0, profit: -stats.lostCost },
   ];
   return `
     <div class="online-order-stats-layout">
@@ -1894,11 +1897,11 @@ function onlineOrderProviderStatsRows(orders) {
   const groups = new Map();
   orders.forEach((order) => {
     const provider = onlineOrderProviderLabel(order.provider);
-    const completed = order.status === "Sold Local" || order.status === "Gift Card";
+    const completed = isOnlineOrderCompleted(order);
     const items = order.status === "Received" ? onlineOrderStockItems([order]) : [order];
     const group = groups.get(provider) || { label: provider, count: 0, cost: 0, value: 0, profit: 0 };
     if (completed) {
-      const value = order.status === "Sold Local" ? Number(order.local_sale_price || 0) : Number(order.gift_card_value || 0);
+      const value = order.status === "Lost" ? 0 : order.status === "Sold Local" ? Number(order.local_sale_price || 0) : Number(order.gift_card_value || 0);
       const cost = onlineOrderCompletedTotalCost(order);
       group.count += 1;
       group.cost += cost;
@@ -2219,7 +2222,7 @@ function renderOnlineOrderCompactItem(order, statusLabel = "") {
   const customerName = onlineOrderCustomerName(order);
   const label = statusLabel || order.status || "Ordered";
   const value = onlineOrderOrderValue(order);
-  const totalCost = order.status === "Sold Local" || order.status === "Gift Card" ? onlineOrderCompletedTotalCost(order) : onlineOrderTotalCost(order);
+  const totalCost = isOnlineOrderCompleted(order) ? onlineOrderCompletedTotalCost(order) : onlineOrderTotalCost(order);
   const profit = value === null ? null : value - totalCost;
   const orderDate = order.order_date ? formatDate(order.order_date) : "";
   return `
@@ -2348,8 +2351,8 @@ function isNewerOnlineOrderDate(candidate, current) {
 
 function renderOnlineOrderCard(order) {
   const isLineItem = Boolean(order.is_line_item);
-  const completedOrder = order.status === "Sold Local" || order.status === "Gift Card";
-  const value = order.status === "Sold Local" ? Number(order.local_sale_price || 0) : order.status === "Gift Card" ? Number(order.gift_card_value || 0) : onlineOrderExpectedSalePrice(order);
+  const completedOrder = isOnlineOrderCompleted(order);
+  const value = order.status === "Lost" ? 0 : order.status === "Sold Local" ? Number(order.local_sale_price || 0) : order.status === "Gift Card" ? Number(order.gift_card_value || 0) : onlineOrderExpectedSalePrice(order);
   const totalCost = onlineOrderTotalCost(order);
   const profit = value === null ? null : value - totalCost;
   const profitLabel = completedOrder ? "Completed Profit" : "Pending Profit";
@@ -2382,9 +2385,10 @@ function renderOnlineOrderCard(order) {
       ${isLineItem ? `<div class="online-order-result">Added line under ${escapeHtml(order.parent_order_label || "received order")}.</div>` : ""}
       ${order.status === "Gift Card" ? `<div class="online-order-result">Gift Card: ${money(order.gift_card_value)}${order.gift_card_location ? ` - ${escapeHtml(order.gift_card_location)}` : ""}</div>` : ""}
       ${order.status === "Sold Local" ? `<div class="online-order-result">Sold Local: ${money(order.local_sale_price)}${order.local_sale_notes ? ` - ${escapeHtml(order.local_sale_notes)}` : ""}</div>` : ""}
+      ${order.status === "Lost" ? `<div class="online-order-result online-order-lost-result">Lost Package: ${escapeHtml(order.received_info || "No note saved")}</div>` : ""}
       <div class="phone-row-actions online-order-actions">
         ${!isLineItem && order.status === "Ordered" ? `<button class="mini-btn" onclick="startOnlineOrderEdit(${order.id})">Edit</button><button class="mini-btn" onclick="markOnlineOrderShipped(${order.id})">Shipped</button>` : ""}
-        ${!isLineItem && order.status === "Shipped" ? `<button class="mini-btn" onclick="markOnlineOrderReceived(${order.id})">Received</button>` : ""}
+        ${!isLineItem && order.status === "Shipped" ? `<button class="mini-btn" onclick="markOnlineOrderReceived(${order.id})">Received</button><button class="mini-btn danger" onclick="markOnlineOrderLost(${order.id})">Lost</button>` : ""}
         ${!isLineItem && order.status === "Received" ? `<button class="mini-btn" onclick="addOnlineOrderLine(${order.id})">Add Line</button><button class="mini-btn danger" onclick="sellOnlineOrderLocal(${order.id})">Sell Local</button><button class="mini-btn" onclick="moveOnlineOrderToGiftCard(${order.id})">Move to Gift Cards</button>` : ""}
       </div>
     </article>
@@ -2392,9 +2396,14 @@ function renderOnlineOrderCard(order) {
 }
 
 function onlineOrderStatusClass(statusText) {
+  if (statusText === "Lost") return "lost";
   if (statusText === "Shipped" || statusText === "Received" || statusText === "Line Added") return "shipped";
   if (statusText === "Sold Local" || statusText === "Gift Card") return "sold";
   return "pending";
+}
+
+function isOnlineOrderCompleted(order) {
+  return ["Sold Local", "Gift Card", "Lost"].includes(order?.status);
 }
 
 function onlineOrderStockItems(stockOrders) {
@@ -2444,6 +2453,7 @@ function onlineOrderExpectedSalePrice(order) {
 }
 
 function onlineOrderOrderValue(order) {
+  if (order?.status === "Lost") return 0;
   if (order?.status === "Sold Local") return Number(order.local_sale_price || 0);
   if (order?.status === "Gift Card") return Number(order.gift_card_value || 0);
   return onlineOrderExpectedSalePrice(order);
@@ -4125,6 +4135,24 @@ window.markOnlineOrderShipped = async (id) => {
   if (!result?.ok) return alert(result?.error || "Could not mark this order shipped.");
   await loadPhoneOnlineOrders();
   openOnlineOrderTab("transit");
+  return true;
+};
+
+window.markOnlineOrderLost = async (id) => {
+  const existing = phoneOnlineOrders.find((order) => Number(order.id) === Number(id));
+  const noteInput = prompt("Lost package note", existing?.tracking_info || existing?.received_info || "");
+  if (noteInput === null) return false;
+  const ok = confirm("Mark this in-transit package LOST? This will count the order cost as a loss in profits.");
+  if (!ok) return false;
+  const result = await api(`/api/phone-online-orders/${id}/lost`, {
+    method: "PATCH",
+    body: {
+      lost_note: noteInput.trim(),
+    },
+  });
+  if (!result?.ok) return alert(result?.error || "Could not mark this package lost.");
+  await loadPhoneOnlineOrders();
+  openOnlineOrderTab("completed");
   return true;
 };
 

@@ -622,6 +622,24 @@ app.patch("/api/phone-online-orders/:id/received", requirePhoneAuth, async (req,
   res.json({ ok: true, order: result.rows[0] });
 });
 
+app.patch("/api/phone-online-orders/:id/lost", requirePhoneAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!id) return res.status(400).json({ error: "Order ID is required." });
+  const lostNote = String(req.body?.lost_note || "").trim();
+  const result = await pool.query(
+    `update phone_online_orders
+     set status = 'Lost',
+       received_info = coalesce(nullif($2,''), received_info),
+       updated_at = now()
+     where id = $1
+       and status = 'Shipped'
+     returning *`,
+    [id, lostNote]
+  );
+  if (!result.rows[0]) return res.status(404).json({ error: "In-transit online order not found." });
+  res.json({ ok: true, order: result.rows[0] });
+});
+
 app.post("/api/phone-online-orders/:id/lines", requirePhoneAuth, async (req, res) => {
   const id = Number(req.params.id);
   const phoneModel = String(req.body?.phone_model || "").trim();
