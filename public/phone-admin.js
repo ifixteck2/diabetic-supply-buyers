@@ -1534,12 +1534,13 @@ async function savePrepaidPort() {
       port_number: $("prepaidPortNumber").value.trim(),
       account_number: $("prepaidPortAccount").value.trim(),
       pin: $("prepaidPortPin").value.trim(),
-      cost: Number($("prepaidPortCost").value || 0),
+      cost: Number($("prepaidPortCost").value || 15),
       notes: $("prepaidPortNotes").value.trim(),
     },
   });
   if (!result?.ok) return status("prepaidPortStatus", result?.error || "Could not save port number.", "bad");
-  ["prepaidPortNumber", "prepaidPortAccount", "prepaidPortPin", "prepaidPortCost", "prepaidPortNotes"].forEach((id) => { $(id).value = ""; });
+  ["prepaidPortNumber", "prepaidPortAccount", "prepaidPortPin", "prepaidPortNotes"].forEach((id) => { $(id).value = ""; });
+  $("prepaidPortCost").value = "15";
   status("prepaidPortStatus", "Port number added.");
   await loadPrepaidPorts();
 }
@@ -1548,7 +1549,7 @@ async function saveBulkPortNumbers() {
   const parsed = parseBulkPortNumbers($("bulkPortNumbers").value);
   if (parsed.errors.length) return status("bulkPortStatus", parsed.errors.join("<br>"), "bad");
   const provider = $("bulkPortProvider").value.trim() || "Port Number";
-  const cost = Number($("bulkPortCost").value || 0);
+  const cost = Number($("bulkPortCost").value || 15);
   const notes = $("bulkPortNotes").value.trim();
   if (!parsed.records.length) return status("bulkPortStatus", "Paste at least one port number line.", "bad");
   if (!Number.isFinite(cost) || cost < 0) return status("bulkPortStatus", "Enter a valid cost each.", "bad");
@@ -1558,6 +1559,7 @@ async function saveBulkPortNumbers() {
   });
   if (!result?.ok) return status("bulkPortStatus", result?.error || "Could not save bulk port numbers.", "bad");
   $("bulkPortNumbers").value = "";
+  $("bulkPortCost").value = "15";
   status("bulkPortStatus", `Added ${result.ports?.length || parsed.records.length} port numbers.`);
   await loadPrepaidPorts();
 }

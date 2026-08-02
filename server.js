@@ -2441,6 +2441,11 @@ async function migrate() {
       created_at timestamptz not null default now(),
       updated_at timestamptz not null default now()
     );
+
+    create table if not exists app_migrations (
+      migration_key text primary key,
+      created_at timestamptz not null default now()
+    );
   `);
 
   await pool.query(`
@@ -2591,6 +2596,16 @@ async function migrate() {
     update phone_prepaid_ports
        set record_type = case when prepaid_card <> '' and port_number = '' then 'Prepaid Card' else 'Port Number' end
      where record_type is null or record_type = '';
+    with applied as (
+      insert into app_migrations (migration_key)
+      values ('set_existing_port_costs_15_20260801')
+      on conflict do nothing
+      returning migration_key
+    )
+    update phone_prepaid_ports
+       set cost = 15, updated_at = now()
+     where exists (select 1 from applied)
+       and (record_type = 'Port Number' or (prepaid_card = '' and port_number <> ''));
     alter table phone_invoices add column if not exists sale_price numeric(12,2);
     alter table phone_invoices add column if not exists sale_notes text not null default '';
     alter table phone_invoices add column if not exists status_updated_at timestamptz not null default now();
