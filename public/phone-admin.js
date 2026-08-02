@@ -2051,6 +2051,8 @@ function groupOnlineOrdersByAddress(orders) {
     const key = normalizeOnlineOrderAddress(order.shipping_address);
     if (!key) return;
     const group = groups.get(key) || { address: formatOnlineOrderAddress(order.shipping_address), orders: [], total: 0, pending: 0, transit: 0, stock: 0, completed: 0 };
+    const formattedAddress = formatOnlineOrderAddress(order.shipping_address);
+    if (formattedAddress && formattedAddress.length < group.address.length) group.address = formattedAddress;
     group.orders.push(order);
     group.total += 1;
     if (order.status === "Ordered") group.pending += 1;
@@ -2065,7 +2067,51 @@ function groupOnlineOrdersByAddress(orders) {
 }
 
 function normalizeOnlineOrderAddress(value) {
-  return String(value || "").toLowerCase().replace(/\s+/g, " ").replace(/[.,]+/g, "").trim();
+  let address = String(value || "").toLowerCase();
+  address = address
+    .replace(/[#]/g, " apt ")
+    .replace(/[.,;:()\r\n]+/g, " ")
+    .replace(/\b(united states|usa|us)\b/g, " ")
+    .replace(/\b(florida|fl)\b/g, " ")
+    .replace(/\b\d{5}(?:-\d{4})?\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!address) return "";
+
+  const replacements = [
+    [/\b(apartment|apt\.?|unit|suite|ste)\b/g, "apt"],
+    [/\b(street|st\.?)\b/g, "st"],
+    [/\b(avenue|ave\.?)\b/g, "ave"],
+    [/\b(road|rd\.?)\b/g, "rd"],
+    [/\b(drive|dr\.?)\b/g, "dr"],
+    [/\b(lane|ln\.?)\b/g, "ln"],
+    [/\b(court|ct\.?)\b/g, "ct"],
+    [/\b(place|pl\.?)\b/g, "pl"],
+    [/\b(boulevard|blvd\.?)\b/g, "blvd"],
+    [/\b(terrace|ter\.?)\b/g, "ter"],
+    [/\b(circle|cir\.?)\b/g, "cir"],
+    [/\b(trail|trl\.?)\b/g, "trl"],
+    [/\b(parkway|pkwy\.?)\b/g, "pkwy"],
+    [/\b(highway|hwy\.?)\b/g, "hwy"],
+    [/\b(north|n\.?)\b/g, "n"],
+    [/\b(south|s\.?)\b/g, "s"],
+    [/\b(east|e\.?)\b/g, "e"],
+    [/\b(west|w\.?)\b/g, "w"],
+  ];
+  replacements.forEach(([pattern, replacement]) => {
+    address = address.replace(pattern, replacement);
+  });
+
+  address = address.replace(/\s+/g, " ").trim();
+  const start = address.match(/^(\d+[a-z]?)\s+(.+)$/);
+  if (!start) return address;
+  const tokens = start[2].split(" ");
+  const aptIndex = tokens.findIndex((token) => token === "apt");
+  const streetTokens = aptIndex >= 0 ? tokens.slice(0, aptIndex) : tokens;
+  const aptToken = aptIndex >= 0 ? tokens[aptIndex + 1] || "" : "";
+  const streetEnd = streetTokens.findIndex((token) => ["st", "ave", "rd", "dr", "ln", "ct", "pl", "blvd", "ter", "cir", "trl", "pkwy", "hwy", "way"].includes(token));
+  const street = streetEnd >= 0 ? streetTokens.slice(0, streetEnd + 1).join(" ") : streetTokens.join(" ");
+  return [start[1], street, aptToken ? `apt ${aptToken}` : ""].filter(Boolean).join(" ").trim();
 }
 
 function formatOnlineOrderAddress(value) {
