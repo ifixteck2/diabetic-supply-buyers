@@ -1975,7 +1975,7 @@ function onlineOrderSearchText(order) {
     order.local_sale_notes,
     order.gift_card_location,
     order.gift_card_notes,
-    ...(onlineOrderLineItems(order).flatMap((line) => [line.id, line.phone_model, line.status, line.notes])),
+    ...(onlineOrderLineItems(order).flatMap((line) => [line.id, line.phone_model, line.confirmation_number, line.status, line.notes])),
   ].join(" ").toLowerCase();
 }
 
@@ -1990,7 +1990,7 @@ function onlineOrderSearchDigits(order) {
     order.received_info,
     order.shipping_address,
     order.email,
-    ...(onlineOrderLineItems(order).flatMap((line) => [line.id, line.phone_model, line.notes])),
+    ...(onlineOrderLineItems(order).flatMap((line) => [line.id, line.phone_model, line.confirmation_number, line.notes])),
   ].join(" ").replace(/\D/g, "");
 }
 
@@ -2382,7 +2382,7 @@ function renderOnlineOrderCard(order) {
         <span><small>${profitLabel}</small><b class="${profit === null || profit >= 0 ? "profit-good" : "profit-bad"}">${profit === null ? "-" : profitMoney(profit)}</b></span>
       </div>
       <div class="online-order-address">${escapeHtml(order.shipping_address || "No shipping address saved")}</div>
-      ${isLineItem ? `<div class="online-order-result">Added line under ${escapeHtml(order.parent_order_label || "received order")}.</div>` : ""}
+      ${isLineItem ? `<div class="online-order-result">Added line under ${escapeHtml(order.parent_order_label || "received order")}${order.confirmation_number ? ` - Confirmation #${escapeHtml(order.confirmation_number)}` : ""}.</div>` : ""}
       ${order.status === "Gift Card" ? `<div class="online-order-result">Gift Card: ${money(order.gift_card_value)}${order.gift_card_location ? ` - ${escapeHtml(order.gift_card_location)}` : ""}</div>` : ""}
       ${order.status === "Sold Local" ? `<div class="online-order-result">Sold Local: ${money(order.local_sale_price)}${order.local_sale_notes ? ` - ${escapeHtml(order.local_sale_notes)}` : ""}</div>` : ""}
       ${order.status === "Lost" ? `<div class="online-order-result online-order-lost-result">Lost Package: ${escapeHtml(order.received_info || "No note saved")}</div>` : ""}
@@ -2421,7 +2421,8 @@ function onlineOrderStockItems(stockOrders) {
       status: line.status || "Line Added",
       created_at: line.created_at || order.created_at,
       order_placed_at: line.created_at || order.order_placed_at,
-      order_number: `${order.order_number || `Order #${order.id}`} / Line #${line.id}`,
+      order_number: line.confirmation_number || `${order.order_number || `Order #${order.id}`} / Line #${line.id}`,
+      confirmation_number: line.confirmation_number || "",
       is_line_item: true,
     })),
   ]);
@@ -4171,6 +4172,13 @@ window.addOnlineOrderLine = async (id) => {
     alert("Enter a valid quantity between 1 and 100.");
     return false;
   }
+  const confirmationInput = prompt(`Confirmation number for the added ${phoneModel} line${quantity === 1 ? "" : "s"}?`);
+  if (confirmationInput === null) return false;
+  const confirmationNumber = String(confirmationInput || "").trim();
+  if (!confirmationNumber) {
+    alert("Enter the confirmation number for the added line.");
+    return false;
+  }
   const costInput = prompt(`Your cost per ${phoneModel}?`);
   if (costInput === null) return false;
   const cleanCost = String(costInput || "").replace(/[$,\s]/g, "");
@@ -4182,6 +4190,7 @@ window.addOnlineOrderLine = async (id) => {
     method: "POST",
     body: {
       phone_model: phoneModel,
+      confirmation_number: confirmationNumber,
       cost: cleanCost,
       quantity,
     },

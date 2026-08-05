@@ -643,21 +643,23 @@ app.patch("/api/phone-online-orders/:id/lost", requirePhoneAuth, async (req, res
 app.post("/api/phone-online-orders/:id/lines", requirePhoneAuth, async (req, res) => {
   const id = Number(req.params.id);
   const phoneModel = String(req.body?.phone_model || "").trim();
+  const confirmationNumber = String(req.body?.confirmation_number || "").trim();
   const cost = Number(req.body?.cost || 0);
   const quantity = Math.floor(Number(req.body?.quantity || 1));
   if (!id) return res.status(400).json({ error: "Order ID is required." });
   if (!phoneModel) return res.status(400).json({ error: "Choose the phone model for the added line." });
+  if (!confirmationNumber) return res.status(400).json({ error: "Enter the added line confirmation number." });
   if (!Number.isFinite(cost) || cost < 0) return res.status(400).json({ error: "Enter a valid line cost." });
   if (!Number.isFinite(quantity) || quantity < 1 || quantity > 100) return res.status(400).json({ error: "Enter a valid line quantity." });
   const parent = await pool.query("select id from phone_online_orders where id = $1 and status = 'Received'", [id]);
   if (!parent.rows[0]) return res.status(404).json({ error: "Received online order not found." });
   const result = await pool.query(
     `insert into phone_online_order_lines
-       (online_order_id, phone_model, cost, status)
-     select $1, $2, $3::numeric, 'Line Added'
-     from generate_series(1, $4::int)
+       (online_order_id, phone_model, confirmation_number, cost, status)
+     select $1, $2, $3, $4::numeric, 'Line Added'
+     from generate_series(1, $5::int)
      returning *`,
-    [id, phoneModel, cost, quantity]
+    [id, phoneModel, confirmationNumber, cost, quantity]
   );
   res.json({ ok: true, lines: result.rows });
 });
@@ -2432,6 +2434,7 @@ async function migrate() {
       id serial primary key,
       online_order_id integer not null references phone_online_orders(id) on delete cascade,
       phone_model text not null default '',
+      confirmation_number text not null default '',
       cost numeric(12,2) not null default 0,
       status text not null default 'Line Added',
       notes text not null default '',
@@ -2588,6 +2591,7 @@ async function migrate() {
     alter table phone_online_orders add column if not exists gift_card_phone_purchase_id integer references phone_purchases(id) on delete set null;
     alter table phone_online_orders add column if not exists updated_at timestamptz not null default now();
     alter table phone_online_order_lines add column if not exists phone_model text not null default '';
+    alter table phone_online_order_lines add column if not exists confirmation_number text not null default '';
     alter table phone_online_order_lines add column if not exists cost numeric(12,2) not null default 0;
     alter table phone_online_order_lines add column if not exists status text not null default 'Line Added';
     alter table phone_online_order_lines add column if not exists notes text not null default '';
