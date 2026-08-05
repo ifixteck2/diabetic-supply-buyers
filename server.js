@@ -656,7 +656,7 @@ app.post("/api/phone-online-orders/:id/lines", requirePhoneAuth, async (req, res
   const result = await pool.query(
     `insert into phone_online_order_lines
        (online_order_id, phone_model, confirmation_number, cost, status)
-     select $1, $2, $3, $4::numeric, 'Line Added'
+     select $1, $2, $3, $4::numeric, 'Ordered'
      from generate_series(1, $5::int)
      returning *`,
     [id, phoneModel, confirmationNumber, cost, quantity]
@@ -687,6 +687,25 @@ app.patch("/api/phone-online-order-lines/:id", requirePhoneAuth, async (req, res
     [id, phoneModel, confirmationNumber, cost]
   );
   if (!result.rows[0]) return res.status(404).json({ error: "Added line not found in stock." });
+  res.json({ ok: true, line: result.rows[0] });
+});
+
+app.patch("/api/phone-online-order-lines/:id/received", requirePhoneAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!id) return res.status(400).json({ error: "Line ID is required." });
+  const result = await pool.query(
+    `update phone_online_order_lines line
+     set status = 'Received',
+       updated_at = now()
+     from phone_online_orders orders
+     where line.id = $1
+       and orders.id = line.online_order_id
+       and orders.status = 'Received'
+       and line.status = 'Ordered'
+     returning line.*`,
+    [id]
+  );
+  if (!result.rows[0]) return res.status(404).json({ error: "Pending added line not found." });
   res.json({ ok: true, line: result.rows[0] });
 });
 
@@ -2462,7 +2481,7 @@ async function migrate() {
       phone_model text not null default '',
       confirmation_number text not null default '',
       cost numeric(12,2) not null default 0,
-      status text not null default 'Line Added',
+      status text not null default 'Ordered',
       notes text not null default '',
       created_at timestamptz not null default now(),
       updated_at timestamptz not null default now()
@@ -2619,7 +2638,8 @@ async function migrate() {
     alter table phone_online_order_lines add column if not exists phone_model text not null default '';
     alter table phone_online_order_lines add column if not exists confirmation_number text not null default '';
     alter table phone_online_order_lines add column if not exists cost numeric(12,2) not null default 0;
-    alter table phone_online_order_lines add column if not exists status text not null default 'Line Added';
+    alter table phone_online_order_lines add column if not exists status text not null default 'Ordered';
+    alter table phone_online_order_lines alter column status set default 'Ordered';
     alter table phone_online_order_lines add column if not exists notes text not null default '';
     alter table phone_online_order_lines add column if not exists updated_at timestamptz not null default now();
     alter table phone_prepaid_ports add column if not exists provider text not null default '';
@@ -2654,6 +2674,22 @@ async function migrate() {
        set cost = 15, updated_at = now()
      where exists (select 1 from applied)
        and (record_type = 'Port Number' or (prepaid_card = '' and port_number <> ''));
+    with applied as (
+      insert into app_migrations (migration_key)
+      values ('move_latest_two_added_lines_to_pending_20260805')
+      on conflict do nothing
+      returning migration_key
+    ), latest_lines as (
+      select id
+      from phone_online_order_lines
+      where status in ('Line Added', 'Received')
+      order by created_at desc, id desc
+      limit 2
+    )
+    update phone_online_order_lines
+       set status = 'Ordered', updated_at = now()
+     where exists (select 1 from applied)
+       and id in (select id from latest_lines);
     alter table phone_invoices add column if not exists sale_price numeric(12,2);
     alter table phone_invoices add column if not exists sale_notes text not null default '';
     alter table phone_invoices add column if not exists status_updated_at timestamptz not null default now();

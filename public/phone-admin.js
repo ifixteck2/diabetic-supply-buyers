@@ -1509,7 +1509,10 @@ function renderOnlineOrders() {
   $("onlineOrderSearchStatus").innerHTML = searchActive
     ? `<span>Showing ${filteredOrders.length} of ${phoneOnlineOrders.length} orders matching "${escapeHtml(searchTerm.trim())}"</span>`
     : "";
-  const ordered = filteredOrders.filter((order) => order.status === "Ordered");
+  const ordered = [
+    ...filteredOrders.filter((order) => order.status === "Ordered"),
+    ...onlineOrderLineStatusItems(filteredOrders, "Ordered"),
+  ];
   const transit = filteredOrders.filter((order) => order.status === "Shipped");
   const stock = filteredOrders.filter((order) => order.status === "Received");
   const stockItems = onlineOrderStockItems(stock);
@@ -2388,6 +2391,7 @@ function renderOnlineOrderCard(order) {
       ${order.status === "Lost" ? `<div class="online-order-result online-order-lost-result">Lost Package: ${escapeHtml(order.received_info || "No note saved")}</div>` : ""}
       <div class="phone-row-actions online-order-actions">
         ${isLineItem ? `<button class="mini-btn" onclick="editOnlineOrderLine(${order.line_id})">Edit Line</button>` : ""}
+        ${isLineItem && order.status === "Ordered" ? `<button class="mini-btn" onclick="markOnlineOrderLineReceived(${order.line_id})">Received</button>` : ""}
         ${!isLineItem && order.status === "Ordered" ? `<button class="mini-btn" onclick="startOnlineOrderEdit(${order.id})">Edit</button><button class="mini-btn" onclick="markOnlineOrderShipped(${order.id})">Shipped</button>` : ""}
         ${!isLineItem && order.status === "Shipped" ? `<button class="mini-btn" onclick="markOnlineOrderReceived(${order.id})">Received</button><button class="mini-btn danger" onclick="markOnlineOrderLost(${order.id})">Lost</button>` : ""}
         ${!isLineItem && order.status === "Received" ? `<button class="mini-btn" onclick="addOnlineOrderLine(${order.id})">Add Line</button><button class="mini-btn danger" onclick="sellOnlineOrderLocal(${order.id})">Sell Local</button><button class="mini-btn" onclick="moveOnlineOrderToGiftCard(${order.id})">Move to Gift Cards</button>` : ""}
@@ -2410,7 +2414,17 @@ function isOnlineOrderCompleted(order) {
 function onlineOrderStockItems(stockOrders) {
   return stockOrders.flatMap((order) => [
     order,
-    ...onlineOrderLineItems(order).map((line) => ({
+    ...onlineOrderLineStatusItems([order], "Received", true),
+  ]);
+}
+
+function onlineOrderLineStatusItems(orders, statusText, includeLegacyReceived = false) {
+  return orders.flatMap((order) => onlineOrderLineItems(order)
+    .filter((line) => {
+      const lineStatus = line.status || "Line Added";
+      return lineStatus === statusText || (includeLegacyReceived && statusText === "Received" && lineStatus === "Line Added");
+    })
+    .map((line) => ({
       ...order,
       id: `line-${line.id}`,
       line_id: line.id,
@@ -2426,8 +2440,7 @@ function onlineOrderStockItems(stockOrders) {
       order_number: line.confirmation_number || `${order.order_number || `Order #${order.id}`} / Line #${line.id}`,
       confirmation_number: line.confirmation_number || "",
       is_line_item: true,
-    })),
-  ]);
+    })));
 }
 
 function onlineOrderLineItems(order) {
@@ -4125,6 +4138,22 @@ window.markOnlineOrderReceived = async (id) => {
   return true;
 };
 
+window.markOnlineOrderLineReceived = async (lineId) => {
+  const line = onlineOrderLineStatusItems(phoneOnlineOrders, "Ordered")
+    .find((item) => Number(item.line_id) === Number(lineId));
+  if (!line) return alert("Could not find this pending line.");
+  const ok = confirm(`Mark ${line.phone_model || "this added line"} received?`);
+  if (!ok) return false;
+  const result = await api(`/api/phone-online-order-lines/${lineId}/received`, {
+    method: "PATCH",
+    body: {},
+  });
+  if (!result?.ok) return alert(result?.error || "Could not mark this added line received.");
+  await loadPhoneOnlineOrders();
+  openOnlineOrderTab("stock");
+  return true;
+};
+
 window.markOnlineOrderShipped = async (id) => {
   const existing = phoneOnlineOrders.find((order) => Number(order.id) === Number(id));
   const trackingInput = prompt("Tracking number or shipped note", existing?.tracking_info || "");
@@ -4204,7 +4233,10 @@ window.addOnlineOrderLine = async (id) => {
 };
 
 window.editOnlineOrderLine = async (lineId) => {
-  const line = onlineOrderStockItems(phoneOnlineOrders.filter((order) => order.status === "Received"))
+  const line = [
+    ...onlineOrderLineStatusItems(phoneOnlineOrders, "Ordered"),
+    ...onlineOrderLineStatusItems(phoneOnlineOrders, "Received", true),
+  ]
     .find((item) => Number(item.line_id) === Number(lineId));
   if (!line) return alert("Could not find this added line.");
   const modelInput = prompt("Line phone model:\n1 = iPhone 16e\n2 = Samsung A37\n3 = Samsung A17", line.phone_model || "iPhone 16e");
