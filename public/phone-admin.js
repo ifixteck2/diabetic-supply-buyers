@@ -2223,7 +2223,7 @@ function renderOnlineOrderCompactList(orders, emptyMessage = "No online orders."
 
 function renderOnlineOrderCompactItem(order, statusLabel = "") {
   const customerName = onlineOrderCustomerName(order);
-  const label = statusLabel || order.status || "Ordered";
+  const label = order.is_line_item && order.status === "Ordered" ? "LINE ADDED" : statusLabel || order.status || "Ordered";
   const value = onlineOrderOrderValue(order);
   const totalCost = isOnlineOrderCompleted(order) ? onlineOrderCompletedTotalCost(order) : onlineOrderTotalCost(order);
   const profit = value === null ? null : value - totalCost;
