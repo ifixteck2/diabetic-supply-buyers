@@ -664,6 +664,32 @@ app.post("/api/phone-online-orders/:id/lines", requirePhoneAuth, async (req, res
   res.json({ ok: true, lines: result.rows });
 });
 
+app.patch("/api/phone-online-order-lines/:id", requirePhoneAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  const phoneModel = String(req.body?.phone_model || "").trim();
+  const confirmationNumber = String(req.body?.confirmation_number || "").trim();
+  const cost = Number(req.body?.cost || 0);
+  if (!id) return res.status(400).json({ error: "Line ID is required." });
+  if (!phoneModel) return res.status(400).json({ error: "Choose the phone model for this line." });
+  if (!confirmationNumber) return res.status(400).json({ error: "Enter the line confirmation number." });
+  if (!Number.isFinite(cost) || cost < 0) return res.status(400).json({ error: "Enter a valid line cost." });
+  const result = await pool.query(
+    `update phone_online_order_lines line
+     set phone_model = $2,
+       confirmation_number = $3,
+       cost = $4::numeric,
+       updated_at = now()
+     from phone_online_orders orders
+     where line.id = $1
+       and orders.id = line.online_order_id
+       and orders.status = 'Received'
+     returning line.*`,
+    [id, phoneModel, confirmationNumber, cost]
+  );
+  if (!result.rows[0]) return res.status(404).json({ error: "Added line not found in stock." });
+  res.json({ ok: true, line: result.rows[0] });
+});
+
 app.patch("/api/phone-online-orders/:id/local-sale", requirePhoneAuth, async (req, res) => {
   const id = Number(req.params.id);
   const salePrice = req.body?.sale_price === "" || req.body?.sale_price === undefined || req.body?.sale_price === null

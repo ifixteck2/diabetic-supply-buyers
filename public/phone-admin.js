@@ -2387,6 +2387,7 @@ function renderOnlineOrderCard(order) {
       ${order.status === "Sold Local" ? `<div class="online-order-result">Sold Local: ${money(order.local_sale_price)}${order.local_sale_notes ? ` - ${escapeHtml(order.local_sale_notes)}` : ""}</div>` : ""}
       ${order.status === "Lost" ? `<div class="online-order-result online-order-lost-result">Lost Package: ${escapeHtml(order.received_info || "No note saved")}</div>` : ""}
       <div class="phone-row-actions online-order-actions">
+        ${isLineItem ? `<button class="mini-btn" onclick="editOnlineOrderLine(${order.line_id})">Edit Line</button>` : ""}
         ${!isLineItem && order.status === "Ordered" ? `<button class="mini-btn" onclick="startOnlineOrderEdit(${order.id})">Edit</button><button class="mini-btn" onclick="markOnlineOrderShipped(${order.id})">Shipped</button>` : ""}
         ${!isLineItem && order.status === "Shipped" ? `<button class="mini-btn" onclick="markOnlineOrderReceived(${order.id})">Received</button><button class="mini-btn danger" onclick="markOnlineOrderLost(${order.id})">Lost</button>` : ""}
         ${!isLineItem && order.status === "Received" ? `<button class="mini-btn" onclick="addOnlineOrderLine(${order.id})">Add Line</button><button class="mini-btn danger" onclick="sellOnlineOrderLocal(${order.id})">Sell Local</button><button class="mini-btn" onclick="moveOnlineOrderToGiftCard(${order.id})">Move to Gift Cards</button>` : ""}
@@ -2417,6 +2418,7 @@ function onlineOrderStockItems(stockOrders) {
       parent_order_label: order.order_number || `Order #${order.id}`,
       phone_model: line.phone_model,
       cost: Number(line.cost || 0),
+      line_cost: Number(line.cost || 0),
       port_number_cost: 0,
       status: line.status || "Line Added",
       created_at: line.created_at || order.created_at,
@@ -4196,6 +4198,49 @@ window.addOnlineOrderLine = async (id) => {
     },
   });
   if (!result?.ok) return alert(result?.error || "Could not add this line.");
+  await loadPhoneOnlineOrders();
+  openOnlineOrderTab("stock");
+  return true;
+};
+
+window.editOnlineOrderLine = async (lineId) => {
+  const line = onlineOrderStockItems(phoneOnlineOrders.filter((order) => order.status === "Received"))
+    .find((item) => Number(item.line_id) === Number(lineId));
+  if (!line) return alert("Could not find this added line.");
+  const modelInput = prompt("Line phone model:\n1 = iPhone 16e\n2 = Samsung A37\n3 = Samsung A17", line.phone_model || "iPhone 16e");
+  if (modelInput === null) return false;
+  const cleanModel = String(modelInput || "").trim().toLowerCase();
+  let phoneModel = line.phone_model || "iPhone 16e";
+  if (cleanModel === "1" || cleanModel.includes("16e") || cleanModel.includes("iphone")) phoneModel = "iPhone 16e";
+  if (cleanModel === "2" || cleanModel.includes("a37")) phoneModel = "Samsung A37";
+  if (cleanModel === "3" || cleanModel.includes("a17")) phoneModel = "Samsung A17";
+  if (cleanModel.includes("samsung") && !cleanModel.includes("a17")) phoneModel = "Samsung A37";
+
+  const confirmationInput = prompt(`Confirmation number for this ${phoneModel} line?`, line.confirmation_number || "");
+  if (confirmationInput === null) return false;
+  const confirmationNumber = String(confirmationInput || "").trim();
+  if (!confirmationNumber) {
+    alert("Enter the confirmation number for this line.");
+    return false;
+  }
+
+  const costInput = prompt(`Your cost for this ${phoneModel} line?`, String(line.line_cost ?? line.cost ?? ""));
+  if (costInput === null) return false;
+  const cleanCost = String(costInput || "").replace(/[$,\s]/g, "");
+  if (!cleanCost || Number.isNaN(Number(cleanCost)) || Number(cleanCost) < 0) {
+    alert("Enter a valid line cost.");
+    return false;
+  }
+
+  const result = await api(`/api/phone-online-order-lines/${lineId}`, {
+    method: "PATCH",
+    body: {
+      phone_model: phoneModel,
+      confirmation_number: confirmationNumber,
+      cost: cleanCost,
+    },
+  });
+  if (!result?.ok) return alert(result?.error || "Could not update this added line.");
   await loadPhoneOnlineOrders();
   openOnlineOrderTab("stock");
   return true;
