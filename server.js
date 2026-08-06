@@ -320,6 +320,37 @@ app.get("/api/phone-online-orders", requirePhoneAuth, async (req, res) => {
   res.json({ orders: orders.map((order) => ({ ...order, line_items: linesByOrder.get(order.id) || [] })) });
 });
 
+app.get("/api/phone-online-order-invoices", requirePhoneAuth, async (req, res) => {
+  const invoices = await pool.query("select * from phone_online_order_invoices order by status asc, created_at desc, id desc limit 500");
+  const ids = invoices.rows.map((invoice) => invoice.id);
+  if (!ids.length) return res.json({ invoices: [] });
+  const orders = await pool.query(
+    `select *, 'order' as item_type
+     from phone_online_orders
+     where online_invoice_id = any($1::int[])
+     order by created_at asc, id asc`,
+    [ids]
+  );
+  const lines = await pool.query(
+    `select line.*, orders.provider, orders.order_number as parent_order_number, orders.first_name, orders.last_name,
+       orders.email, orders.shipping_address, orders.placed_at, orders.order_date, orders.order_placed_at,
+       'line' as item_type
+     from phone_online_order_lines line
+     join phone_online_orders orders on orders.id = line.online_order_id
+     where line.online_invoice_id = any($1::int[])
+     order by line.created_at asc, line.id asc`,
+    [ids]
+  );
+  const invoiceRows = invoices.rows.map((invoice) => ({
+    ...invoice,
+    items: [
+      ...orders.rows.filter((row) => row.online_invoice_id === invoice.id),
+      ...lines.rows.filter((row) => row.online_invoice_id === invoice.id),
+    ].sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0)),
+  }));
+  res.json({ invoices: invoiceRows });
+});
+
 app.get("/api/phone-prepaid-ports", requirePhoneAuth, async (req, res) => {
   const result = await pool.query(
     `select *,
@@ -716,6 +747,99 @@ app.patch("/api/phone-online-order-lines/:id/received", requirePhoneAuth, async 
   );
   if (!result.rows[0]) return res.status(404).json({ error: "Pending added line not found." });
   res.json({ ok: true, line: result.rows[0] });
+});
+
+app.patch("/api/phone-online-orders/:id/invoice", requirePhoneAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  const label = String(req.body?.label || "").trim();
+  if (!id) return res.status(400).json({ error: "Order ID is required." });
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    const invoice = await getOrCreateOnlineOrderInvoice(client, label);
+    const result = await client.query(
+      `update phone_online_orders
+       set status = 'Invoiced',
+         online_invoice_id = $2,
+         updated_at = now()
+       where id = $1
+         and status = 'Received'
+       returning *`,
+      [id, invoice.id]
+    );
+    if (!result.rows[0]) {
+      await client.query("rollback");
+      return res.status(404).json({ error: "Received online order not found." });
+    }
+    await client.query("commit");
+    res.json({ ok: true, invoice, order: result.rows[0] });
+  } catch (error) {
+    await client.query("rollback");
+    console.error("Could not transfer online order to invoice.", error);
+    res.status(500).json({ error: "Could not transfer this order to an invoice." });
+  } finally {
+    client.release();
+  }
+});
+
+app.patch("/api/phone-online-order-lines/:id/invoice", requirePhoneAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  const label = String(req.body?.label || "").trim();
+  if (!id) return res.status(400).json({ error: "Line ID is required." });
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    const invoice = await getOrCreateOnlineOrderInvoice(client, label);
+    const result = await client.query(
+      `update phone_online_order_lines line
+       set status = 'Invoiced',
+         online_invoice_id = $2,
+         updated_at = now()
+       from phone_online_orders orders
+       where line.id = $1
+         and orders.id = line.online_order_id
+         and orders.status = 'Received'
+         and line.status in ('Received', 'Line Added')
+       returning line.*`,
+      [id, invoice.id]
+    );
+    if (!result.rows[0]) {
+      await client.query("rollback");
+      return res.status(404).json({ error: "Received added line not found." });
+    }
+    await client.query("commit");
+    res.json({ ok: true, invoice, line: result.rows[0] });
+  } catch (error) {
+    await client.query("rollback");
+    console.error("Could not transfer online order line to invoice.", error);
+    res.status(500).json({ error: "Could not transfer this added line to an invoice." });
+  } finally {
+    client.release();
+  }
+});
+
+app.patch("/api/phone-online-order-invoices/:id/sell", requirePhoneAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  const salePrice = req.body?.sale_price === "" || req.body?.sale_price === undefined || req.body?.sale_price === null
+    ? null
+    : Number(req.body.sale_price);
+  const saleNotes = String(req.body?.sale_notes || "").trim();
+  if (!id) return res.status(400).json({ error: "Invoice ID is required." });
+  if (salePrice === null || !Number.isFinite(salePrice) || salePrice < 0) return res.status(400).json({ error: "Enter a valid invoice sale amount." });
+  const result = await pool.query(
+    `update phone_online_order_invoices
+     set status = 'Sold',
+       sale_price = $2::numeric,
+       sale_notes = $3,
+       sold_at = now(),
+       updated_at = now()
+     where id = $1
+       and status = 'Open'
+     returning *`,
+    [id, salePrice, saleNotes]
+  );
+  if (!result.rows[0]) return res.status(404).json({ error: "Open invoice not found." });
+  res.json({ ok: true, invoice: result.rows[0] });
 });
 
 app.patch("/api/phone-online-orders/:id/local-sale", requirePhoneAuth, async (req, res) => {
@@ -2480,6 +2604,18 @@ async function migrate() {
       gift_card_location text not null default '',
       gift_card_notes text not null default '',
       gift_card_phone_purchase_id integer references phone_purchases(id) on delete set null,
+      online_invoice_id integer,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+
+    create table if not exists phone_online_order_invoices (
+      id serial primary key,
+      label text not null default '',
+      status text not null default 'Open',
+      sale_price numeric(12,2),
+      sale_notes text not null default '',
+      sold_at timestamptz,
       created_at timestamptz not null default now(),
       updated_at timestamptz not null default now()
     );
@@ -2492,6 +2628,7 @@ async function migrate() {
       payment_method text not null default '',
       cost numeric(12,2) not null default 0,
       status text not null default 'Ordered',
+      online_invoice_id integer,
       notes text not null default '',
       created_at timestamptz not null default now(),
       updated_at timestamptz not null default now()
@@ -2644,6 +2781,7 @@ async function migrate() {
     alter table phone_online_orders add column if not exists gift_card_location text not null default '';
     alter table phone_online_orders add column if not exists gift_card_notes text not null default '';
     alter table phone_online_orders add column if not exists gift_card_phone_purchase_id integer references phone_purchases(id) on delete set null;
+    alter table phone_online_orders add column if not exists online_invoice_id integer;
     alter table phone_online_orders add column if not exists updated_at timestamptz not null default now();
     alter table phone_online_order_lines add column if not exists phone_model text not null default '';
     alter table phone_online_order_lines add column if not exists confirmation_number text not null default '';
@@ -2651,6 +2789,7 @@ async function migrate() {
     alter table phone_online_order_lines add column if not exists cost numeric(12,2) not null default 0;
     alter table phone_online_order_lines add column if not exists status text not null default 'Ordered';
     alter table phone_online_order_lines alter column status set default 'Ordered';
+    alter table phone_online_order_lines add column if not exists online_invoice_id integer;
     alter table phone_online_order_lines add column if not exists notes text not null default '';
     alter table phone_online_order_lines add column if not exists updated_at timestamptz not null default now();
     update phone_online_order_lines line
@@ -2854,6 +2993,32 @@ async function getOrCreateWeeklyGiftCardInvoice(client, giftCardAt) {
      values ('Apple GC', $1, $2, 'Closed', now(), $3::date)
      returning *`,
     [label, `Weekly Apple gift card closeout ending ${weekEnding}`, weekEnding]
+  );
+  return created.rows[0];
+}
+
+async function getOrCreateOnlineOrderInvoice(client, labelInput = "") {
+  const label = String(labelInput || "").trim();
+  if (label) {
+    const existingByLabel = await client.query(
+      "select * from phone_online_order_invoices where status = 'Open' and lower(label) = lower($1) order by id desc limit 1",
+      [label]
+    );
+    if (existingByLabel.rows[0]) return existingByLabel.rows[0];
+    const createdByLabel = await client.query(
+      "insert into phone_online_order_invoices (label, status) values ($1, 'Open') returning *",
+      [label]
+    );
+    return createdByLabel.rows[0];
+  }
+  const existing = await client.query(
+    "select * from phone_online_order_invoices where status = 'Open' order by created_at desc, id desc limit 1"
+  );
+  if (existing.rows[0]) return existing.rows[0];
+  const today = localDateInTimeZone();
+  const created = await client.query(
+    "insert into phone_online_order_invoices (label, status) values ($1, 'Open') returning *",
+    [`Local Invoice ${today}`]
   );
   return created.rows[0];
 }

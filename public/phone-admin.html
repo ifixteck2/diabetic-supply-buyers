@@ -320,6 +320,7 @@
               <button class="online-order-tab" data-online-order-tab="pending">Orders Pending</button>
               <button class="online-order-tab" data-online-order-tab="transit">In Transit</button>
               <button class="online-order-tab" data-online-order-tab="stock">In Stock</button>
+              <button class="online-order-tab" data-online-order-tab="invoices">Invoices</button>
               <button class="online-order-tab" data-online-order-tab="prepaid">Prepaid / Ports</button>
               <button class="online-order-tab" data-online-order-tab="addresses">Addresses</button>
               <button class="online-order-tab" data-online-order-tab="lost">Lost Packages</button>
@@ -419,8 +420,15 @@
 
         <section id="onlineOrdersStockPanel" class="online-order-tab-panel hidden">
           <section class="panel online-order-list-panel">
-            <div class="panel-head"><div><h2>In Stock</h2><p>Received orders ready to sell locally or move to Apple gift cards.</p></div></div>
+            <div class="panel-head"><div><h2>In Stock</h2><p>Received orders ready to transfer into a local invoice or move to Apple gift cards.</p></div></div>
             <div id="onlineOrdersStockList" class="online-order-list"></div>
+          </section>
+        </section>
+
+        <section id="onlineOrdersInvoicesPanel" class="online-order-tab-panel hidden">
+          <section class="panel online-order-list-panel">
+            <div class="panel-head"><div><h2>Invoices</h2><p>Phones transferred from stock into local invoices. Sell an invoice to close it out.</p></div></div>
+            <div id="onlineOrdersInvoicesList" class="online-order-list"></div>
           </section>
         </section>
 
@@ -522,6 +530,6 @@
       </section>
     </section>
   </main>
-  <script src="/phone-admin.js?v=20260806-lost-packages"></script>
+  <script src="/phone-admin.js?v=20260806-online-invoices"></script>
 </body>
 </html>
