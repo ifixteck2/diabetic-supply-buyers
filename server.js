@@ -729,12 +729,15 @@ app.patch("/api/phone-online-order-lines/:id", requirePhoneAuth, async (req, res
   res.json({ ok: true, line: result.rows[0] });
 });
 
-app.patch("/api/phone-online-order-lines/:id/received", requirePhoneAuth, async (req, res) => {
+app.patch("/api/phone-online-order-lines/:id/shipped", requirePhoneAuth, async (req, res) => {
   const id = Number(req.params.id);
+  const trackingInfo = String(req.body?.tracking_info || "").trim();
   if (!id) return res.status(400).json({ error: "Line ID is required." });
+  if (!trackingInfo) return res.status(400).json({ error: "Enter the tracking number for this added line." });
   const result = await pool.query(
     `update phone_online_order_lines line
-     set status = 'Received',
+     set status = 'Shipped',
+       tracking_info = $2,
        updated_at = now()
      from phone_online_orders orders
      where line.id = $1
@@ -742,9 +745,30 @@ app.patch("/api/phone-online-order-lines/:id/received", requirePhoneAuth, async 
        and orders.status = 'Received'
        and line.status = 'Ordered'
      returning line.*`,
-    [id]
+    [id, trackingInfo]
   );
   if (!result.rows[0]) return res.status(404).json({ error: "Pending added line not found." });
+  res.json({ ok: true, line: result.rows[0] });
+});
+
+app.patch("/api/phone-online-order-lines/:id/received", requirePhoneAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  const receivedInfo = String(req.body?.received_info || "").trim();
+  if (!id) return res.status(400).json({ error: "Line ID is required." });
+  const result = await pool.query(
+    `update phone_online_order_lines line
+     set status = 'Received',
+       received_info = coalesce(nullif($2,''), received_info),
+       updated_at = now()
+     from phone_online_orders orders
+     where line.id = $1
+       and orders.id = line.online_order_id
+       and orders.status = 'Received'
+       and line.status = 'Shipped'
+     returning line.*`,
+    [id, receivedInfo]
+  );
+  if (!result.rows[0]) return res.status(404).json({ error: "Shipped added line not found." });
   res.json({ ok: true, line: result.rows[0] });
 });
 
@@ -2627,6 +2651,8 @@ async function migrate() {
       payment_method text not null default '',
       cost numeric(12,2) not null default 0,
       status text not null default 'Ordered',
+      tracking_info text not null default '',
+      received_info text not null default '',
       online_invoice_id integer,
       notes text not null default '',
       created_at timestamptz not null default now(),
@@ -2788,6 +2814,8 @@ async function migrate() {
     alter table phone_online_order_lines add column if not exists cost numeric(12,2) not null default 0;
     alter table phone_online_order_lines add column if not exists status text not null default 'Ordered';
     alter table phone_online_order_lines alter column status set default 'Ordered';
+    alter table phone_online_order_lines add column if not exists tracking_info text not null default '';
+    alter table phone_online_order_lines add column if not exists received_info text not null default '';
     alter table phone_online_order_lines add column if not exists online_invoice_id integer;
     alter table phone_online_order_lines add column if not exists notes text not null default '';
     alter table phone_online_order_lines add column if not exists updated_at timestamptz not null default now();

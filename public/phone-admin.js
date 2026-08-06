@@ -1526,7 +1526,10 @@ function renderOnlineOrders() {
     ...filteredOrders.filter((order) => order.status === "Ordered"),
     ...onlineOrderLineStatusItems(filteredOrders, "Ordered"),
   ];
-  const transit = filteredOrders.filter((order) => order.status === "Shipped");
+  const transit = [
+    ...filteredOrders.filter((order) => order.status === "Shipped"),
+    ...onlineOrderLineStatusItems(filteredOrders, "Shipped"),
+  ];
   const stock = filteredOrders.filter((order) => order.status === "Received");
   const stockItems = onlineOrderStockItems(stock);
   const lost = filteredOrders.filter((order) => order.status === "Lost");
@@ -2001,7 +2004,7 @@ function onlineOrderSearchText(order) {
     order.local_sale_notes,
     order.gift_card_location,
     order.gift_card_notes,
-    ...(onlineOrderLineItems(order).flatMap((line) => [line.id, line.phone_model, line.confirmation_number, line.payment_method, line.status, line.notes])),
+    ...(onlineOrderLineItems(order).flatMap((line) => [line.id, line.phone_model, line.confirmation_number, line.payment_method, line.tracking_info, line.received_info, line.status, line.notes])),
   ].join(" ").toLowerCase();
 }
 
@@ -2017,7 +2020,7 @@ function onlineOrderSearchDigits(order) {
     order.shipping_address,
     order.email,
     order.cc_used,
-    ...(onlineOrderLineItems(order).flatMap((line) => [line.id, line.phone_model, line.confirmation_number, line.payment_method, line.notes])),
+    ...(onlineOrderLineItems(order).flatMap((line) => [line.id, line.phone_model, line.confirmation_number, line.payment_method, line.tracking_info, line.received_info, line.notes])),
   ].join(" ").replace(/\D/g, "");
 }
 
@@ -2493,7 +2496,8 @@ function renderOnlineOrderCard(order) {
       <div class="phone-row-actions online-order-actions">
         ${isLineItem ? `<button class="mini-btn" onclick="editOnlineOrderLine(${order.line_id})">Edit Line</button>` : ""}
         ${!isLineItem ? `<button class="mini-btn" onclick="startOnlineOrderEdit(${order.id})">Edit</button>` : ""}
-        ${isLineItem && order.status === "Ordered" ? `<button class="mini-btn" onclick="markOnlineOrderLineReceived(${order.line_id})">Received</button>` : ""}
+        ${isLineItem && order.status === "Ordered" ? `<button class="mini-btn" onclick="markOnlineOrderLineShipped(${order.line_id})">Shipped</button>` : ""}
+        ${isLineItem && order.status === "Shipped" ? `<button class="mini-btn" onclick="markOnlineOrderLineReceived(${order.line_id})">Received</button>` : ""}
         ${!isLineItem && order.status === "Ordered" ? `<button class="mini-btn" onclick="markOnlineOrderShipped(${order.id})">Shipped</button>` : ""}
         ${!isLineItem && order.status === "Shipped" ? `<button class="mini-btn" onclick="markOnlineOrderReceived(${order.id})">Received</button><button class="mini-btn danger" onclick="markOnlineOrderLost(${order.id})">Lost</button>` : ""}
         ${isLineItem && (order.status === "Received" || order.status === "Line Added") ? `<button class="mini-btn" onclick="transferOnlineOrderLineToInvoice(${order.line_id})">Transfer to Invoice</button>` : ""}
@@ -2544,6 +2548,8 @@ function onlineOrderLineStatusItems(orders, statusText, includeLegacyReceived = 
       order_placed_at: line.created_at || order.order_placed_at,
       order_number: line.confirmation_number || `${order.order_number || `Order #${order.id}`} / Line #${line.id}`,
       confirmation_number: line.confirmation_number || "",
+      tracking_info: line.tracking_info || "",
+      received_info: line.received_info || "",
       is_line_item: true,
     })));
 }
@@ -4285,18 +4291,40 @@ window.markOnlineOrderReceived = async (id) => {
 };
 
 window.markOnlineOrderLineReceived = async (lineId) => {
-  const line = onlineOrderLineStatusItems(phoneOnlineOrders, "Ordered")
+  const line = onlineOrderLineStatusItems(phoneOnlineOrders, "Shipped")
     .find((item) => Number(item.line_id) === Number(lineId));
-  if (!line) return alert("Could not find this pending line.");
-  const ok = confirm(`Mark ${line.phone_model || "this added line"} received?`);
-  if (!ok) return false;
+  if (!line) return alert("Could not find this shipped line.");
+  const receivedInput = prompt("Received note for this added line?", line.tracking_info || "");
+  if (receivedInput === null) return false;
   const result = await api(`/api/phone-online-order-lines/${lineId}/received`, {
     method: "PATCH",
-    body: {},
+    body: {
+      received_info: receivedInput.trim(),
+    },
   });
   if (!result?.ok) return alert(result?.error || "Could not mark this added line received.");
   await loadPhoneOnlineOrders();
   openOnlineOrderTab("stock");
+  return true;
+};
+
+window.markOnlineOrderLineShipped = async (lineId) => {
+  const line = onlineOrderLineStatusItems(phoneOnlineOrders, "Ordered")
+    .find((item) => Number(item.line_id) === Number(lineId));
+  if (!line) return alert("Could not find this pending line.");
+  const trackingInput = prompt("Tracking number for this added line?", line.tracking_info || "");
+  if (trackingInput === null) return false;
+  const trackingNumber = trackingInput.trim();
+  if (!trackingNumber) return alert("Enter the tracking number for this added line.");
+  const result = await api(`/api/phone-online-order-lines/${lineId}/shipped`, {
+    method: "PATCH",
+    body: {
+      tracking_info: trackingNumber,
+    },
+  });
+  if (!result?.ok) return alert(result?.error || "Could not mark this added line shipped.");
+  await loadPhoneOnlineOrders();
+  openOnlineOrderTab("transit");
   return true;
 };
 
