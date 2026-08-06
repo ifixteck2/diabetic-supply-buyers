@@ -53,6 +53,8 @@ function bindPhoneEvents() {
   $("bulkPrepaidCardsBtn").onclick = saveBulkPrepaidCards;
   $("refreshPrepaidPortsBtn").onclick = loadPrepaidPorts;
   $("cancelOnlineOrderEditBtn").onclick = () => resetOnlineOrderForm();
+  $("saveOnlineOrderEditBtn").onclick = saveOnlineOrderEdit;
+  $("editOnlineOrderProvider").addEventListener("change", toggleEditOnlineOrderProvider);
   $("onlineOrderPlacedNowBtn").onclick = stampOnlineOrderPlacedNow;
   $("onlineOrdersBackBtn").onclick = () => closeOnlineOrdersPage("dashboard");
   $("onlineOrdersRefreshBtn").onclick = async () => {
@@ -2490,8 +2492,9 @@ function renderOnlineOrderCard(order) {
       ${order.status === "Lost" ? `<div class="online-order-result online-order-lost-result">Lost Package: ${escapeHtml(order.received_info || "No note saved")}</div>` : ""}
       <div class="phone-row-actions online-order-actions">
         ${isLineItem ? `<button class="mini-btn" onclick="editOnlineOrderLine(${order.line_id})">Edit Line</button>` : ""}
+        ${!isLineItem ? `<button class="mini-btn" onclick="startOnlineOrderEdit(${order.id})">Edit</button>` : ""}
         ${isLineItem && order.status === "Ordered" ? `<button class="mini-btn" onclick="markOnlineOrderLineReceived(${order.line_id})">Received</button>` : ""}
-        ${!isLineItem && order.status === "Ordered" ? `<button class="mini-btn" onclick="startOnlineOrderEdit(${order.id})">Edit</button><button class="mini-btn" onclick="markOnlineOrderShipped(${order.id})">Shipped</button>` : ""}
+        ${!isLineItem && order.status === "Ordered" ? `<button class="mini-btn" onclick="markOnlineOrderShipped(${order.id})">Shipped</button>` : ""}
         ${!isLineItem && order.status === "Shipped" ? `<button class="mini-btn" onclick="markOnlineOrderReceived(${order.id})">Received</button><button class="mini-btn danger" onclick="markOnlineOrderLost(${order.id})">Lost</button>` : ""}
         ${isLineItem && (order.status === "Received" || order.status === "Line Added") ? `<button class="mini-btn" onclick="transferOnlineOrderLineToInvoice(${order.line_id})">Transfer to Invoice</button>` : ""}
         ${!isLineItem && order.status === "Received" ? `<button class="mini-btn" onclick="addOnlineOrderLine(${order.id})">Add Line</button><button class="mini-btn" onclick="transferOnlineOrderToInvoice(${order.id})">Transfer to Invoice</button><button class="mini-btn" onclick="moveOnlineOrderToGiftCard(${order.id})">Move to Gift Cards</button>` : ""}
@@ -2608,39 +2611,80 @@ function trackingUrlForNumber(value) {
 
 window.startOnlineOrderEdit = (id) => {
   const order = phoneOnlineOrders.find((entry) => Number(entry.id) === Number(id));
-  if (!order || order.status !== "Ordered") return alert("Only pending online orders can be edited.");
+  if (!order) return alert("Could not find this online order.");
   editingOnlineOrderId = Number(id);
   const providerOptions = ["Boost Mobile", "Metro PCS", "Cricket"];
   if (providerOptions.includes(order.provider)) {
-    $("onlineOrderProvider").value = order.provider;
-    $("onlineOrderOtherProvider").value = "";
+    $("editOnlineOrderProvider").value = order.provider;
+    $("editOnlineOrderOtherProvider").value = "";
   } else {
-    $("onlineOrderProvider").value = "Other";
-    $("onlineOrderOtherProvider").value = order.provider || "";
+    $("editOnlineOrderProvider").value = "Other";
+    $("editOnlineOrderOtherProvider").value = order.provider || "";
   }
-  toggleOnlineOrderProvider();
-  $("onlineOrderNumber").value = order.order_number || "";
-  $("onlineOrderModel").value = order.phone_model || "";
-  $("onlineOrderFirstName").value = order.first_name || "";
-  $("onlineOrderLastName").value = order.last_name || "";
-  $("onlineOrderDate").value = String(order.order_date || "").slice(0, 10) || localTodayInput();
-  $("onlineOrderPlacedAt").value = order.placed_at || "";
-  $("onlineOrderCard").value = order.cc_used || "";
-  $("onlineOrderCost").value = order.cost || "";
-  $("onlineOrderPortCost").value = order.port_number_cost || "";
-  $("onlineOrderPhoneNumber").value = order.phone_number || "";
-  $("onlineOrderCallPhoneNumber").value = order.call_phone_number || "";
-  $("onlineOrderAccountPin").value = order.account_pin || "";
-  $("onlineOrderEmail").value = order.email || "";
-  $("onlineOrderAddress").value = order.shipping_address || "";
-  $("onlineOrderTracking").value = order.tracking_info || "";
-  $("onlineOrderPlacedTimestamp").value = order.order_placed_at ? new Date(order.order_placed_at).toISOString() : "";
-  $("saveOnlineOrderBtn").textContent = "Save Changes";
-  $("cancelOnlineOrderEditBtn").classList.remove("hidden");
-  status("onlineOrderStatus", `Editing order ${escapeHtml(order.order_number || `#${order.id}`)}.`);
-  openOnlineOrderTab("add");
-  window.scrollTo({ top: 0, behavior: "smooth" });
+  toggleEditOnlineOrderProvider();
+  $("editOnlineOrderNumber").value = order.order_number || "";
+  $("editOnlineOrderModel").value = order.phone_model || "";
+  $("editOnlineOrderFirstName").value = order.first_name || "";
+  $("editOnlineOrderLastName").value = order.last_name || "";
+  $("editOnlineOrderDate").value = String(order.order_date || "").slice(0, 10) || localTodayInput();
+  $("editOnlineOrderPlacedAt").value = order.placed_at || "";
+  $("editOnlineOrderCard").value = order.cc_used || "";
+  $("editOnlineOrderCost").value = order.cost || "";
+  $("editOnlineOrderPortCost").value = order.port_number_cost || "";
+  $("editOnlineOrderPhoneNumber").value = order.phone_number || "";
+  $("editOnlineOrderCallPhoneNumber").value = order.call_phone_number || "";
+  $("editOnlineOrderAccountPin").value = order.account_pin || "";
+  $("editOnlineOrderEmail").value = order.email || "";
+  $("editOnlineOrderAddress").value = order.shipping_address || "";
+  $("editOnlineOrderTracking").value = order.tracking_info || order.received_info || "";
+  $("editOnlineOrderPlacedTimestamp").value = order.order_placed_at ? new Date(order.order_placed_at).toISOString() : "";
+  status("onlineOrderEditStatus", "");
+  $("onlineOrderEditModal").classList.remove("hidden");
 };
+
+function toggleEditOnlineOrderProvider() {
+  const isOther = $("editOnlineOrderProvider").value === "Other";
+  $("editOnlineOrderOtherProviderWrap").classList.toggle("hidden", !isOther);
+}
+
+window.closeOnlineOrderEditModal = () => {
+  editingOnlineOrderId = null;
+  $("onlineOrderEditModal").classList.add("hidden");
+  status("onlineOrderEditStatus", "");
+};
+
+async function saveOnlineOrderEdit() {
+  if (!editingOnlineOrderId) return status("onlineOrderEditStatus", "No order selected.", "bad");
+  const provider = $("editOnlineOrderProvider").value === "Other" ? $("editOnlineOrderOtherProvider").value.trim() : $("editOnlineOrderProvider").value;
+  const paymentMethod = $("editOnlineOrderCard").value.trim();
+  if (!paymentMethod) return status("onlineOrderEditStatus", "Enter the payment method before saving this order.", "bad");
+  const result = await api(`/api/phone-online-orders/${editingOnlineOrderId}`, {
+    method: "PATCH",
+    body: {
+      provider,
+      order_number: $("editOnlineOrderNumber").value.trim(),
+      phone_model: $("editOnlineOrderModel").value.trim(),
+      first_name: $("editOnlineOrderFirstName").value.trim(),
+      last_name: $("editOnlineOrderLastName").value.trim(),
+      order_date: $("editOnlineOrderDate").value,
+      placed_at: $("editOnlineOrderPlacedAt").value.trim(),
+      shipping_address: $("editOnlineOrderAddress").value.trim(),
+      cc_used: paymentMethod,
+      cost: Number($("editOnlineOrderCost").value || 0),
+      port_number_cost: Number($("editOnlineOrderPortCost").value || 0),
+      phone_number: $("editOnlineOrderPhoneNumber").value.trim(),
+      call_phone_number: $("editOnlineOrderCallPhoneNumber").value.trim(),
+      account_pin: $("editOnlineOrderAccountPin").value.trim(),
+      email: $("editOnlineOrderEmail").value.trim(),
+      tracking_info: $("editOnlineOrderTracking").value.trim(),
+      order_placed_at: $("editOnlineOrderPlacedTimestamp").value,
+    },
+  });
+  if (!result?.ok) return status("onlineOrderEditStatus", result?.error || "Could not update this order.", "bad");
+  closeOnlineOrderEditModal();
+  await loadPhoneOnlineOrders();
+  await loadPhoneOnlineOrderInvoices();
+}
 
 function renderInvoiceGroup(id, buyer, view) {
   const list = phoneInvoices.filter((invoice) => {

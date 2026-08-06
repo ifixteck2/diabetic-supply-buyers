@@ -529,7 +529,65 @@
         </div>
       </section>
     </section>
+    <div id="onlineOrderEditModal" class="online-order-edit-modal hidden" role="dialog" aria-modal="true" aria-labelledby="onlineOrderEditTitle">
+      <div class="online-order-edit-backdrop" onclick="closeOnlineOrderEditModal()"></div>
+      <section class="online-order-edit-box">
+        <div class="panel-head">
+          <div><h2 id="onlineOrderEditTitle">Edit Order</h2><p>Update this order without changing its current status.</p></div>
+          <button class="mini-btn" type="button" onclick="closeOnlineOrderEditModal()">Close</button>
+        </div>
+        <div class="online-order-form-sections">
+          <div class="online-order-form-section">
+            <h3>Order Details</h3>
+            <div class="form-grid three">
+              <label>Provider<select id="editOnlineOrderProvider"><option>Boost Mobile</option><option>Metro PCS</option><option>Cricket</option><option>Other</option></select></label>
+              <label id="editOnlineOrderOtherProviderWrap" class="hidden">Other Provider<input id="editOnlineOrderOtherProvider" placeholder="Website or provider name"></label>
+              <label>Order #<input id="editOnlineOrderNumber" placeholder="Order number"></label>
+            </div>
+            <div class="form-grid three">
+              <label>Phone Model<input id="editOnlineOrderModel" list="onlineOrderModelOptions" placeholder="Start typing model"></label>
+              <label>Date<input id="editOnlineOrderDate" type="date"></label>
+              <label>Where Placed<input id="editOnlineOrderPlacedAt" list="onlineOrderPlacedAtOptions" placeholder="Website, app, phone, store"></label>
+            </div>
+          </div>
+          <div class="online-order-form-section">
+            <h3>Customer / Account</h3>
+            <div class="form-grid three">
+              <label>First Name<input id="editOnlineOrderFirstName" placeholder="First name"></label>
+              <label>Last Name<input id="editOnlineOrderLastName" placeholder="Last name"></label>
+              <label>Email<input id="editOnlineOrderEmail" type="email" placeholder="Order email"></label>
+            </div>
+            <div class="form-grid three">
+              <label>Phone Number<input id="editOnlineOrderPhoneNumber" placeholder="Phone number on order"></label>
+              <label>Call Phone #<input id="editOnlineOrderCallPhoneNumber" placeholder="Number called to place order"></label>
+              <label>Account PIN<input id="editOnlineOrderAccountPin" placeholder="Account PIN"></label>
+            </div>
+          </div>
+          <div class="online-order-form-section">
+            <h3>Money</h3>
+            <div class="form-grid three">
+              <label>Cost<input id="editOnlineOrderCost" type="number" min="0" step="0.01"></label>
+              <label>Port Number Cost<input id="editOnlineOrderPortCost" type="number" min="0" step="0.01"></label>
+              <label>Payment Method<input id="editOnlineOrderCard" placeholder="Example: Amex 1001, Cash App, Debit"></label>
+            </div>
+          </div>
+          <div class="online-order-form-section online-order-form-section-wide">
+            <h3>Delivery</h3>
+            <div class="form-grid two">
+              <label>Shipping Address<textarea id="editOnlineOrderAddress" rows="3" placeholder="Shipping address"></textarea></label>
+              <label>Tracking / Receive Notes<textarea id="editOnlineOrderTracking" rows="3" placeholder="Tracking number, delivery note, or what arrived"></textarea></label>
+            </div>
+          </div>
+        </div>
+        <input id="editOnlineOrderPlacedTimestamp" type="hidden">
+        <div class="actions">
+          <button class="btn phone-btn" type="button" id="saveOnlineOrderEditBtn">Save Changes</button>
+          <button class="btn secondary" type="button" onclick="closeOnlineOrderEditModal()">Cancel</button>
+        </div>
+        <div id="onlineOrderEditStatus"></div>
+      </section>
+    </div>
   </main>
-  <script src="/phone-admin.js?v=20260806-online-invoices"></script>
+  <script src="/phone-admin.js?v=20260806-edit-order-popup"></script>
 </body>
 </html>

@@ -590,7 +590,6 @@ app.patch("/api/phone-online-orders/:id", requirePhoneAuth, async (req, res) => 
        tracking_info = $18,
        updated_at = now()
      where id = $1
-       and status = 'Ordered'
      returning *`,
     [
       id,
@@ -613,7 +612,7 @@ app.patch("/api/phone-online-orders/:id", requirePhoneAuth, async (req, res) => 
       String(input.tracking_info || "").trim(),
     ]
   );
-  if (!result.rows[0]) return res.status(404).json({ error: "Pending online order not found." });
+  if (!result.rows[0]) return res.status(404).json({ error: "Online order not found." });
   res.json({ ok: true, order: result.rows[0] });
 });
 
