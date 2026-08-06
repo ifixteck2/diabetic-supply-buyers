@@ -1453,6 +1453,8 @@ function toggleOnlineOrderProvider() {
 
 async function saveOnlineOrder() {
   const provider = $("onlineOrderProvider").value === "Other" ? $("onlineOrderOtherProvider").value.trim() : $("onlineOrderProvider").value;
+  const paymentMethod = $("onlineOrderCard").value.trim();
+  if (!paymentMethod) return status("onlineOrderStatus", "Enter the payment method before adding this order.", "bad");
   if (!editingOnlineOrderId && !$("onlineOrderPlacedTimestamp").value) stampOnlineOrderPlacedNow(false);
   const result = await api(editingOnlineOrderId ? `/api/phone-online-orders/${editingOnlineOrderId}` : "/api/phone-online-orders", {
     method: editingOnlineOrderId ? "PATCH" : "POST",
@@ -1465,7 +1467,7 @@ async function saveOnlineOrder() {
       order_date: $("onlineOrderDate").value,
       placed_at: $("onlineOrderPlacedAt").value.trim(),
       shipping_address: $("onlineOrderAddress").value.trim(),
-      cc_used: $("onlineOrderCard").value.trim(),
+      cc_used: paymentMethod,
       cost: Number($("onlineOrderCost").value || 0),
       port_number_cost: Number($("onlineOrderPortCost").value || 0),
       phone_number: $("onlineOrderPhoneNumber").value.trim(),
@@ -1978,7 +1980,7 @@ function onlineOrderSearchText(order) {
     order.local_sale_notes,
     order.gift_card_location,
     order.gift_card_notes,
-    ...(onlineOrderLineItems(order).flatMap((line) => [line.id, line.phone_model, line.confirmation_number, line.status, line.notes])),
+    ...(onlineOrderLineItems(order).flatMap((line) => [line.id, line.phone_model, line.confirmation_number, line.payment_method, line.status, line.notes])),
   ].join(" ").toLowerCase();
 }
 
@@ -1993,7 +1995,8 @@ function onlineOrderSearchDigits(order) {
     order.received_info,
     order.shipping_address,
     order.email,
-    ...(onlineOrderLineItems(order).flatMap((line) => [line.id, line.phone_model, line.confirmation_number, line.notes])),
+    order.cc_used,
+    ...(onlineOrderLineItems(order).flatMap((line) => [line.id, line.phone_model, line.confirmation_number, line.payment_method, line.notes])),
   ].join(" ").replace(/\D/g, "");
 }
 
@@ -2376,7 +2379,7 @@ function renderOnlineOrderCard(order) {
         <span><small>Where Placed</small><b>${escapeHtml(order.placed_at || "")}</b></span>
         <span><small>Order Placed</small><b>${formatDateTime(order.order_placed_at || order.created_at)}</b></span>
         <span><small>Name</small><b>${escapeHtml(customerName)}</b></span>
-        <span><small>CC Used</small><b>${escapeHtml(order.cc_used || "")}</b></span>
+        <span><small>Payment Method</small><b>${escapeHtml(order.cc_used || "")}</b></span>
         <span><small>Phone Number</small><b>${escapeHtml(order.phone_number || "")}</b></span>
         <span><small>Call Phone #</small><b>${escapeHtml(order.call_phone_number || "")}</b></span>
         <span><small>Account PIN</small><b>${escapeHtml(order.account_pin || "")}</b></span>
@@ -2431,6 +2434,8 @@ function onlineOrderLineStatusItems(orders, statusText, includeLegacyReceived = 
       parent_order_id: order.id,
       parent_order_label: order.order_number || `Order #${order.id}`,
       phone_model: line.phone_model,
+      cc_used: line.payment_method || order.cc_used,
+      payment_method: line.payment_method || "",
       cost: Number(line.cost || 0),
       line_cost: Number(line.cost || 0),
       port_number_cost: 0,
@@ -4210,6 +4215,13 @@ window.addOnlineOrderLine = async (id) => {
     alert("Enter the confirmation number for the added line.");
     return false;
   }
+  const paymentInput = prompt(`Payment method for the added ${phoneModel} line${quantity === 1 ? "" : "s"}?`);
+  if (paymentInput === null) return false;
+  const paymentMethod = String(paymentInput || "").trim();
+  if (!paymentMethod) {
+    alert("Enter the payment method for the added line.");
+    return false;
+  }
   const costInput = prompt(`Your cost per ${phoneModel}?`);
   if (costInput === null) return false;
   const cleanCost = String(costInput || "").replace(/[$,\s]/g, "");
@@ -4222,13 +4234,14 @@ window.addOnlineOrderLine = async (id) => {
     body: {
       phone_model: phoneModel,
       confirmation_number: confirmationNumber,
+      payment_method: paymentMethod,
       cost: cleanCost,
       quantity,
     },
   });
   if (!result?.ok) return alert(result?.error || "Could not add this line.");
   await loadPhoneOnlineOrders();
-  openOnlineOrderTab("stock");
+  openOnlineOrderTab("pending");
   return true;
 };
 
@@ -4256,6 +4269,14 @@ window.editOnlineOrderLine = async (lineId) => {
     return false;
   }
 
+  const paymentInput = prompt(`Payment method for this ${phoneModel} line?`, line.payment_method || line.cc_used || "");
+  if (paymentInput === null) return false;
+  const paymentMethod = String(paymentInput || "").trim();
+  if (!paymentMethod) {
+    alert("Enter the payment method for this line.");
+    return false;
+  }
+
   const costInput = prompt(`Your cost for this ${phoneModel} line?`, String(line.line_cost ?? line.cost ?? ""));
   if (costInput === null) return false;
   const cleanCost = String(costInput || "").replace(/[$,\s]/g, "");
@@ -4269,6 +4290,7 @@ window.editOnlineOrderLine = async (lineId) => {
     body: {
       phone_model: phoneModel,
       confirmation_number: confirmationNumber,
+      payment_method: paymentMethod,
       cost: cleanCost,
     },
   });

@@ -488,10 +488,12 @@ app.post("/api/phone-online-orders", requirePhoneAuth, async (req, res) => {
   const input = req.body || {};
   const provider = String(input.provider || "").trim();
   const orderNumber = String(input.order_number || "").trim();
+  const paymentMethod = String(input.cc_used || "").trim();
   const cost = Number(input.cost || 0);
   const portNumberCost = Number(input.port_number_cost || 0);
   if (!provider) return res.status(400).json({ error: "Choose or enter the provider." });
   if (!orderNumber) return res.status(400).json({ error: "Enter the order number." });
+  if (!paymentMethod) return res.status(400).json({ error: "Enter the payment method." });
   if (!Number.isFinite(cost) || cost < 0) return res.status(400).json({ error: "Enter a valid cost." });
   if (!Number.isFinite(portNumberCost) || portNumberCost < 0) return res.status(400).json({ error: "Enter a valid port number cost." });
   const result = await pool.query(
@@ -509,7 +511,7 @@ app.post("/api/phone-online-orders", requirePhoneAuth, async (req, res) => {
       String(input.order_placed_at || "").trim() || null,
       String(input.placed_at || "").trim(),
       String(input.shipping_address || "").trim(),
-      String(input.cc_used || "").trim(),
+      paymentMethod,
       cost,
       portNumberCost,
       String(input.phone_number || "").trim(),
@@ -527,11 +529,13 @@ app.patch("/api/phone-online-orders/:id", requirePhoneAuth, async (req, res) => 
   const input = req.body || {};
   const provider = String(input.provider || "").trim();
   const orderNumber = String(input.order_number || "").trim();
+  const paymentMethod = String(input.cc_used || "").trim();
   const cost = Number(input.cost || 0);
   const portNumberCost = Number(input.port_number_cost || 0);
   if (!id) return res.status(400).json({ error: "Order ID is required." });
   if (!provider) return res.status(400).json({ error: "Choose or enter the provider." });
   if (!orderNumber) return res.status(400).json({ error: "Enter the order number." });
+  if (!paymentMethod) return res.status(400).json({ error: "Enter the payment method." });
   if (!Number.isFinite(cost) || cost < 0) return res.status(400).json({ error: "Enter a valid cost." });
   if (!Number.isFinite(portNumberCost) || portNumberCost < 0) return res.status(400).json({ error: "Enter a valid port number cost." });
   const result = await pool.query(
@@ -568,7 +572,7 @@ app.patch("/api/phone-online-orders/:id", requirePhoneAuth, async (req, res) => 
       String(input.order_placed_at || "").trim() || null,
       String(input.placed_at || "").trim(),
       String(input.shipping_address || "").trim(),
-      String(input.cc_used || "").trim(),
+      paymentMethod,
       cost,
       portNumberCost,
       String(input.phone_number || "").trim(),
@@ -644,22 +648,24 @@ app.post("/api/phone-online-orders/:id/lines", requirePhoneAuth, async (req, res
   const id = Number(req.params.id);
   const phoneModel = String(req.body?.phone_model || "").trim();
   const confirmationNumber = String(req.body?.confirmation_number || "").trim();
+  const paymentMethod = String(req.body?.payment_method || "").trim();
   const cost = Number(req.body?.cost || 0);
   const quantity = Math.floor(Number(req.body?.quantity || 1));
   if (!id) return res.status(400).json({ error: "Order ID is required." });
   if (!phoneModel) return res.status(400).json({ error: "Choose the phone model for the added line." });
   if (!confirmationNumber) return res.status(400).json({ error: "Enter the added line confirmation number." });
+  if (!paymentMethod) return res.status(400).json({ error: "Enter the added line payment method." });
   if (!Number.isFinite(cost) || cost < 0) return res.status(400).json({ error: "Enter a valid line cost." });
   if (!Number.isFinite(quantity) || quantity < 1 || quantity > 100) return res.status(400).json({ error: "Enter a valid line quantity." });
   const parent = await pool.query("select id from phone_online_orders where id = $1 and status = 'Received'", [id]);
   if (!parent.rows[0]) return res.status(404).json({ error: "Received online order not found." });
   const result = await pool.query(
     `insert into phone_online_order_lines
-       (online_order_id, phone_model, confirmation_number, cost, status)
-     select $1, $2, $3, $4::numeric, 'Ordered'
-     from generate_series(1, $5::int)
+       (online_order_id, phone_model, confirmation_number, payment_method, cost, status)
+     select $1, $2, $3, $4, $5::numeric, 'Ordered'
+     from generate_series(1, $6::int)
      returning *`,
-    [id, phoneModel, confirmationNumber, cost, quantity]
+    [id, phoneModel, confirmationNumber, paymentMethod, cost, quantity]
   );
   res.json({ ok: true, lines: result.rows });
 });
@@ -668,23 +674,26 @@ app.patch("/api/phone-online-order-lines/:id", requirePhoneAuth, async (req, res
   const id = Number(req.params.id);
   const phoneModel = String(req.body?.phone_model || "").trim();
   const confirmationNumber = String(req.body?.confirmation_number || "").trim();
+  const paymentMethod = String(req.body?.payment_method || "").trim();
   const cost = Number(req.body?.cost || 0);
   if (!id) return res.status(400).json({ error: "Line ID is required." });
   if (!phoneModel) return res.status(400).json({ error: "Choose the phone model for this line." });
   if (!confirmationNumber) return res.status(400).json({ error: "Enter the line confirmation number." });
+  if (!paymentMethod) return res.status(400).json({ error: "Enter the line payment method." });
   if (!Number.isFinite(cost) || cost < 0) return res.status(400).json({ error: "Enter a valid line cost." });
   const result = await pool.query(
     `update phone_online_order_lines line
      set phone_model = $2,
        confirmation_number = $3,
-       cost = $4::numeric,
+       payment_method = $4,
+       cost = $5::numeric,
        updated_at = now()
      from phone_online_orders orders
      where line.id = $1
        and orders.id = line.online_order_id
        and orders.status = 'Received'
      returning line.*`,
-    [id, phoneModel, confirmationNumber, cost]
+    [id, phoneModel, confirmationNumber, paymentMethod, cost]
   );
   if (!result.rows[0]) return res.status(404).json({ error: "Added line not found in stock." });
   res.json({ ok: true, line: result.rows[0] });
@@ -2480,6 +2489,7 @@ async function migrate() {
       online_order_id integer not null references phone_online_orders(id) on delete cascade,
       phone_model text not null default '',
       confirmation_number text not null default '',
+      payment_method text not null default '',
       cost numeric(12,2) not null default 0,
       status text not null default 'Ordered',
       notes text not null default '',
@@ -2637,11 +2647,19 @@ async function migrate() {
     alter table phone_online_orders add column if not exists updated_at timestamptz not null default now();
     alter table phone_online_order_lines add column if not exists phone_model text not null default '';
     alter table phone_online_order_lines add column if not exists confirmation_number text not null default '';
+    alter table phone_online_order_lines add column if not exists payment_method text not null default '';
     alter table phone_online_order_lines add column if not exists cost numeric(12,2) not null default 0;
     alter table phone_online_order_lines add column if not exists status text not null default 'Ordered';
     alter table phone_online_order_lines alter column status set default 'Ordered';
     alter table phone_online_order_lines add column if not exists notes text not null default '';
     alter table phone_online_order_lines add column if not exists updated_at timestamptz not null default now();
+    update phone_online_order_lines line
+       set payment_method = orders.cc_used,
+         updated_at = now()
+      from phone_online_orders orders
+     where orders.id = line.online_order_id
+       and line.payment_method = ''
+       and orders.cc_used <> '';
     alter table phone_prepaid_ports add column if not exists provider text not null default '';
     alter table phone_prepaid_ports add column if not exists record_type text not null default 'Port Number';
     alter table phone_prepaid_ports add column if not exists port_number text not null default '';
