@@ -195,7 +195,7 @@ function closeOnlineOrdersPage(tabName = "dashboard") {
 }
 
 function openOnlineOrderTab(name) {
-  const panelNames = { add: "Add", stats: "Stats", pending: "Pending", transit: "Transit", stock: "Stock", prepaid: "Prepaid", addresses: "Addresses", completed: "Completed" };
+  const panelNames = { add: "Add", stats: "Stats", pending: "Pending", transit: "Transit", stock: "Stock", prepaid: "Prepaid", addresses: "Addresses", lost: "Lost", completed: "Completed" };
   const selected = panelNames[name] ? name : "add";
   document.querySelectorAll("[data-online-order-tab]").forEach((button) => {
     button.classList.toggle("active", button.dataset.onlineOrderTab === selected);
@@ -1518,7 +1518,9 @@ function renderOnlineOrders() {
   const transit = filteredOrders.filter((order) => order.status === "Shipped");
   const stock = filteredOrders.filter((order) => order.status === "Received");
   const stockItems = onlineOrderStockItems(stock);
+  const lost = filteredOrders.filter((order) => order.status === "Lost");
   const completed = filteredOrders.filter((order) => isOnlineOrderCompleted(order));
+  const completedVisible = completed.filter((order) => order.status !== "Lost");
   const stats = onlineOrderStatsSnapshot(filteredOrders, ordered, transit, stockItems, completed);
   $("onlineOrderStats").innerHTML = renderOnlineOrderStatsCards(stats);
   $("onlineOrderStatsDetail").innerHTML = renderOnlineOrderStatsDetail(filteredOrders, ordered, transit, stockItems, completed, stats);
@@ -1527,7 +1529,8 @@ function renderOnlineOrders() {
   $("onlineOrdersTransitList").innerHTML = renderOnlineOrderTransitList(transit);
   $("onlineOrdersStockList").innerHTML = renderOnlineOrderModelGroups(stockItems, "No received online orders in stock.");
   $("onlineOrdersAddressList").innerHTML = renderOnlineOrderAddressList(filteredOrders);
-  $("onlineOrdersCompletedList").innerHTML = renderOnlineOrderCompactList(completed, "No completed online orders yet.");
+  $("onlineOrdersLostList").innerHTML = renderOnlineOrderLostList(lost);
+  $("onlineOrdersCompletedList").innerHTML = renderOnlineOrderCompactList(completedVisible, "No completed online orders yet.");
 }
 
 async function savePrepaidPort() {
@@ -2217,6 +2220,18 @@ function renderOnlineOrderProviderGroups(orders, emptyMessage = "No open online 
 
 function renderOnlineOrderTransitList(orders) {
   return renderOnlineOrderCompactList(orders, "No shipped online orders in transit.", "In Transit");
+}
+
+function renderOnlineOrderLostList(orders) {
+  if (!orders.length) return `<div class="empty">No lost packages yet.</div>`;
+  const totalCost = orders.reduce((sum, order) => sum + onlineOrderCompletedTotalCost(order), 0);
+  return `
+    <div class="online-order-lost-summary">
+      <span><small>Lost Packages</small><b>${orders.length}</b></span>
+      <span><small>Total Loss</small><b class="profit-bad">${profitMoney(-totalCost)}</b></span>
+    </div>
+    ${renderOnlineOrderCompactList(orders, "No lost packages yet.", "Lost")}
+  `;
 }
 
 function renderOnlineOrderCompactList(orders, emptyMessage = "No online orders.", statusLabel = "") {

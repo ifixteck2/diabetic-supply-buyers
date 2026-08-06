@@ -322,6 +322,7 @@
               <button class="online-order-tab" data-online-order-tab="stock">In Stock</button>
               <button class="online-order-tab" data-online-order-tab="prepaid">Prepaid / Ports</button>
               <button class="online-order-tab" data-online-order-tab="addresses">Addresses</button>
+              <button class="online-order-tab" data-online-order-tab="lost">Lost Packages</button>
               <button class="online-order-tab" data-online-order-tab="completed">Completed</button>
             </nav>
           </aside>
@@ -503,9 +504,16 @@
           </section>
         </section>
 
+        <section id="onlineOrdersLostPanel" class="online-order-tab-panel hidden">
+          <section class="panel online-order-list-panel">
+            <div class="panel-head"><div><h2>Lost Packages</h2><p>Packages marked lost in transit. These count as losses in profit totals.</p></div></div>
+            <div id="onlineOrdersLostList" class="online-order-list"></div>
+          </section>
+        </section>
+
         <section id="onlineOrdersCompletedPanel" class="online-order-tab-panel hidden">
           <section class="panel online-order-list-panel">
-            <div class="panel-head"><div><h2>Completed</h2><p>Orders already sold locally, moved to gift cards, or marked lost.</p></div></div>
+            <div class="panel-head"><div><h2>Completed</h2><p>Orders already sold locally or moved to gift cards.</p></div></div>
             <div id="onlineOrdersCompletedList" class="online-order-list"></div>
           </section>
         </section>
@@ -514,6 +522,6 @@
       </section>
     </section>
   </main>
-  <script src="/phone-admin.js?v=20260806-payment-methods"></script>
+  <script src="/phone-admin.js?v=20260806-lost-packages"></script>
 </body>
 </html>
