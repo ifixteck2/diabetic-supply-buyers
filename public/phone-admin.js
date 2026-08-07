@@ -1805,6 +1805,11 @@ function onlineOrderStatsSnapshot(allOrders, ordered, transit, stockItems, compl
   const orderedCost = ordered.reduce((sum, order) => sum + onlineOrderTotalCost(order), 0);
   const transitCost = transit.reduce((sum, order) => sum + onlineOrderTotalCost(order), 0);
   const stockCost = stockItems.reduce((sum, order) => sum + onlineOrderTotalCost(order), 0);
+  const openOnlineInvoices = phoneOnlineOrderInvoices.filter((invoice) => invoice.status === "Open");
+  const openInvoiceItems = openOnlineInvoices.flatMap((invoice) => onlineOrderInvoiceStatsItems(invoice));
+  const openInvoiceCost = openOnlineInvoices.reduce((sum, invoice) => sum + onlineOrderInvoiceCost(invoice), 0);
+  const openInvoiceExpectedValue = onlineOrderExpectedValue(openInvoiceItems);
+  const openInvoicePendingProfit = onlineOrderPendingProfit(openInvoiceItems);
   const soldOnlineInvoices = phoneOnlineOrderInvoices.filter((invoice) => invoice.status === "Sold");
   const soldOnlineInvoiceCost = soldOnlineInvoices.reduce((sum, invoice) => sum + onlineOrderInvoiceCost(invoice), 0);
   const soldOnlineInvoiceValue = soldOnlineInvoices.reduce((sum, invoice) => sum + Number(invoice.sale_price || 0), 0);
@@ -1817,9 +1822,9 @@ function onlineOrderStatsSnapshot(allOrders, ordered, transit, stockItems, compl
   const openExpectedValue = openItems.reduce((sum, order) => {
     const expectedSale = onlineOrderExpectedSalePrice(order);
     return expectedSale === null ? sum : sum + expectedSale;
-  }, 0);
-  const openCost = orderedCost + transitCost + stockCost;
-  const pendingProfit = onlineOrderPendingProfit(openItems);
+  }, 0) + openInvoiceExpectedValue;
+  const openCost = orderedCost + transitCost + stockCost + openInvoiceCost;
+  const pendingProfit = onlineOrderPendingProfit(openItems) + openInvoicePendingProfit;
   const completedProfit = completedValue - completedCost;
   const todayKey = localTodayInput();
   const sevenDaysAgo = new Date();
@@ -1829,7 +1834,7 @@ function onlineOrderStatsSnapshot(allOrders, ordered, transit, stockItems, compl
   const weekOrders = allOrders.filter((order) => onlineOrderDateTime(order) >= sevenDaysAgo.getTime());
   return {
     totalOrders: allOrders.length,
-    openPhoneCount: openItems.length,
+    openPhoneCount: openItems.length + openInvoiceItems.length,
     orderedCount: ordered.length,
     transitCount: transit.length,
     stockCount: stockItems.length,
@@ -1837,6 +1842,10 @@ function onlineOrderStatsSnapshot(allOrders, ordered, transit, stockItems, compl
     orderedCost,
     transitCost,
     stockCost,
+    openInvoiceCount: openInvoiceItems.length,
+    openInvoiceCost,
+    openInvoiceExpectedValue,
+    openInvoicePendingProfit,
     completedCost,
     openCost,
     openExpectedValue,
@@ -1875,6 +1884,7 @@ function renderOnlineOrderStatsDetail(allOrders, ordered, transit, stockItems, c
     { label: "Ordered", count: ordered.length, cost: stats.orderedCost, value: onlineOrderExpectedValue(ordered), profit: onlineOrderPendingProfit(ordered) },
     { label: "In Transit", count: transit.length, cost: stats.transitCost, value: onlineOrderExpectedValue(transit), profit: onlineOrderPendingProfit(transit) },
     { label: "In Stock", count: stockItems.length, cost: stats.stockCost, value: onlineOrderExpectedValue(stockItems), profit: onlineOrderPendingProfit(stockItems) },
+    { label: "Open Invoices", count: stats.openInvoiceCount, cost: stats.openInvoiceCost, value: stats.openInvoiceExpectedValue, profit: stats.openInvoicePendingProfit },
     { label: "Sold Local", count: completed.filter((order) => order.status === "Sold Local").length, cost: completed.filter((order) => order.status === "Sold Local").reduce((sum, order) => sum + onlineOrderCompletedTotalCost(order), 0), value: stats.localSales, profit: stats.localSales - completed.filter((order) => order.status === "Sold Local").reduce((sum, order) => sum + onlineOrderCompletedTotalCost(order), 0) },
     { label: "Local Invoices", count: phoneOnlineOrderInvoices.filter((invoice) => invoice.status === "Sold").length, cost: stats.soldOnlineInvoiceCost, value: stats.soldOnlineInvoiceValue, profit: stats.soldOnlineInvoiceValue - stats.soldOnlineInvoiceCost },
     { label: "Gift Cards", count: completed.filter((order) => order.status === "Gift Card").length, cost: completed.filter((order) => order.status === "Gift Card").reduce((sum, order) => sum + onlineOrderCompletedTotalCost(order), 0), value: stats.giftCards, profit: stats.giftCards - completed.filter((order) => order.status === "Gift Card").reduce((sum, order) => sum + onlineOrderCompletedTotalCost(order), 0) },
@@ -2318,6 +2328,15 @@ function onlineOrderInvoiceItemCost(item) {
 
 function onlineOrderInvoiceCost(invoice) {
   return (invoice.items || []).reduce((sum, item) => sum + onlineOrderInvoiceItemCost(item), 0);
+}
+
+function onlineOrderInvoiceStatsItems(invoice) {
+  return (invoice.items || []).map((item) => ({
+    ...item,
+    cost: onlineOrderInvoiceItemCost(item),
+    port_number_cost: 0,
+    status: invoice.status === "Sold" ? "Sold Local" : "Invoiced",
+  }));
 }
 
 function renderOnlineOrderCompactList(orders, emptyMessage = "No online orders.", statusLabel = "") {
