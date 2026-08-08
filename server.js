@@ -721,7 +721,7 @@ app.patch("/api/phone-online-order-lines/:id", requirePhoneAuth, async (req, res
      from phone_online_orders orders
      where line.id = $1
        and orders.id = line.online_order_id
-       and orders.status = 'Received'
+       and orders.status in ('Received', 'Invoiced')
      returning line.*`,
     [id, phoneModel, confirmationNumber, paymentMethod, cost]
   );
@@ -742,7 +742,7 @@ app.patch("/api/phone-online-order-lines/:id/shipped", requirePhoneAuth, async (
      from phone_online_orders orders
      where line.id = $1
        and orders.id = line.online_order_id
-       and orders.status = 'Received'
+       and orders.status in ('Received', 'Invoiced')
        and line.status = 'Ordered'
      returning line.*`,
     [id, trackingInfo]
@@ -763,7 +763,7 @@ app.patch("/api/phone-online-order-lines/:id/received", requirePhoneAuth, async 
      from phone_online_orders orders
      where line.id = $1
        and orders.id = line.online_order_id
-       and orders.status = 'Received'
+       and orders.status in ('Received', 'Invoiced')
        and line.status = 'Shipped'
      returning line.*`,
     [id, receivedInfo]
