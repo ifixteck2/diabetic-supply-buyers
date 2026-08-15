@@ -4639,7 +4639,13 @@ async function uploadGiftCardReceiptPdf(id, file) {
     try {
       data = text ? JSON.parse(text) : {};
     } catch {
-      data = { error: text || `Request failed with status ${response.status}` };
+      const cleanText = String(text || "").trim();
+      const isHtmlError = /<!doctype html|<html[\s>]/i.test(cleanText);
+      data = {
+        error: isHtmlError
+          ? `Server error ${response.status}. Please try again in a minute.`
+          : cleanText.slice(0, 500) || `Request failed with status ${response.status}`,
+      };
     }
     if (!response.ok) return data;
     return data;
@@ -4708,7 +4714,13 @@ async function api(url, options = {}) {
     try {
       data = text ? JSON.parse(text) : {};
     } catch {
-      data = { error: text || `Request failed with status ${response.status}` };
+      const cleanText = String(text || "").trim();
+      const isHtmlError = /<!doctype html|<html[\s>]/i.test(cleanText);
+      data = {
+        error: isHtmlError
+          ? `Server error ${response.status}. Please try again in a minute.`
+          : cleanText.slice(0, 500) || `Request failed with status ${response.status}`,
+      };
     }
     if (!response.ok && !options.silent) return data;
     return data;

@@ -758,7 +758,7 @@ app.patch("/api/phone-online-order-lines/:id/received", requirePhoneAuth, async 
   const result = await pool.query(
     `update phone_online_order_lines line
      set status = 'Received',
-       received_info = coalesce(nullif($2,''), received_info),
+       received_info = coalesce(nullif($2,''), line.received_info),
        updated_at = now()
      from phone_online_orders orders
      where line.id = $1
