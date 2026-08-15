@@ -687,8 +687,8 @@ app.post("/api/phone-online-orders/:id/lines", requirePhoneAuth, async (req, res
   if (!paymentMethod) return res.status(400).json({ error: "Enter the added line payment method." });
   if (!Number.isFinite(cost) || cost < 0) return res.status(400).json({ error: "Enter a valid line cost." });
   if (!Number.isFinite(quantity) || quantity < 1 || quantity > 100) return res.status(400).json({ error: "Enter a valid line quantity." });
-  const parent = await pool.query("select id from phone_online_orders where id = $1 and status = 'Received'", [id]);
-  if (!parent.rows[0]) return res.status(404).json({ error: "Received online order not found." });
+  const parent = await pool.query("select id from phone_online_orders where id = $1 and status in ('Shipped', 'Received', 'Invoiced')", [id]);
+  if (!parent.rows[0]) return res.status(404).json({ error: "Online order not found for adding a line." });
   const result = await pool.query(
     `insert into phone_online_order_lines
        (online_order_id, phone_model, confirmation_number, payment_method, cost, status)
@@ -721,7 +721,7 @@ app.patch("/api/phone-online-order-lines/:id", requirePhoneAuth, async (req, res
      from phone_online_orders orders
      where line.id = $1
        and orders.id = line.online_order_id
-       and orders.status in ('Received', 'Invoiced')
+       and orders.status in ('Shipped', 'Received', 'Invoiced')
      returning line.*`,
     [id, phoneModel, confirmationNumber, paymentMethod, cost]
   );
@@ -742,7 +742,7 @@ app.patch("/api/phone-online-order-lines/:id/shipped", requirePhoneAuth, async (
      from phone_online_orders orders
      where line.id = $1
        and orders.id = line.online_order_id
-       and orders.status in ('Received', 'Invoiced')
+       and orders.status in ('Shipped', 'Received', 'Invoiced')
        and line.status = 'Ordered'
      returning line.*`,
     [id, trackingInfo]
@@ -763,7 +763,7 @@ app.patch("/api/phone-online-order-lines/:id/received", requirePhoneAuth, async 
      from phone_online_orders orders
      where line.id = $1
        and orders.id = line.online_order_id
-       and orders.status in ('Received', 'Invoiced')
+       and orders.status in ('Shipped', 'Received', 'Invoiced')
        and line.status = 'Shipped'
      returning line.*`,
     [id, receivedInfo]
