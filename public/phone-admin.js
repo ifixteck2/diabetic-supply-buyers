@@ -195,7 +195,7 @@ function openOnlineOrdersPage() {
   document.querySelector(".admin-shell").classList.add("hidden");
   $("onlineOrdersPage").classList.remove("hidden");
   document.querySelectorAll("[data-phone-tab]").forEach((button) => button.classList.toggle("active", button.dataset.phoneTab === "onlineOrders"));
-  openOnlineOrderTab("add");
+  openOnlineOrderTab("board");
   renderOnlineOrders();
 }
 
@@ -206,8 +206,8 @@ function closeOnlineOrdersPage(tabName = "dashboard") {
 }
 
 function openOnlineOrderTab(name) {
-  const panelNames = { add: "Add", stats: "Stats", pending: "Pending", transit: "Transit", stock: "Stock", invoices: "Invoices", prepaid: "Prepaid", addresses: "Addresses", lost: "Lost", completed: "Completed" };
-  const selected = panelNames[name] ? name : "add";
+  const panelNames = { board: "Board", add: "Add", stats: "Stats", pending: "Pending", transit: "Transit", stock: "Stock", invoices: "Invoices", prepaid: "Prepaid", addresses: "Addresses", lost: "Lost", completed: "Completed" };
+  const selected = panelNames[name] ? name : "board";
   document.querySelectorAll("[data-online-order-tab]").forEach((button) => {
     button.classList.toggle("active", button.dataset.onlineOrderTab === selected);
   });
@@ -1536,6 +1536,7 @@ function renderOnlineOrders() {
   const completed = filteredOrders.filter((order) => isOnlineOrderCompleted(order));
   const completedVisible = completed.filter((order) => order.status !== "Lost");
   const stats = onlineOrderStatsSnapshot(filteredOrders, ordered, transit, stockItems, completed);
+  $("onlineOrdersBoard").innerHTML = renderOnlineOrderBoard(ordered, transit, stockItems, lost, completedVisible);
   $("onlineOrderStats").innerHTML = renderOnlineOrderStatsCards(stats);
   $("onlineOrderStatsDetail").innerHTML = renderOnlineOrderStatsDetail(filteredOrders, ordered, transit, stockItems, completed, stats);
   $("onlineOrderModelSummary").innerHTML = renderOnlineOrderModelSummary(ordered, transit, stockItems);
@@ -1546,6 +1547,78 @@ function renderOnlineOrders() {
   $("onlineOrdersAddressList").innerHTML = renderOnlineOrderAddressList(filteredOrders);
   $("onlineOrdersLostList").innerHTML = renderOnlineOrderLostList(lost);
   $("onlineOrdersCompletedList").innerHTML = renderOnlineOrderCompactList(completedVisible, "No completed online orders yet.");
+}
+
+function renderOnlineOrderBoard(ordered, transit, stockItems, lost, completedVisible) {
+  const donePreview = [
+    ...lost.slice().sort(sortOnlineOrdersNewestFirst),
+    ...completedVisible.slice().sort(sortOnlineOrdersNewestFirst),
+  ].slice(0, 12);
+  return `
+    <div class="online-order-board-columns">
+      ${renderOnlineOrderBoardColumn("Needs Tracking", ordered, "Orders and added lines waiting for tracking.", "pending")}
+      ${renderOnlineOrderBoardColumn("In Transit", transit, "Shipped phones waiting to arrive.", "transit")}
+      ${renderOnlineOrderBoardColumn("Ready / In Stock", stockItems, "Phones ready for invoice, sale, or gift card.", "stock")}
+      ${renderOnlineOrderBoardColumn("Problems / Done", donePreview, "Lost and recently completed orders.", "done")}
+    </div>
+  `;
+}
+
+function renderOnlineOrderBoardColumn(title, orders, description, type) {
+  const totalCost = orders.reduce((sum, order) => sum + (isOnlineOrderCompleted(order) ? onlineOrderCompletedTotalCost(order) : onlineOrderTotalCost(order)), 0);
+  const pendingProfit = orders.reduce((sum, order) => {
+    const value = onlineOrderOrderValue(order);
+    const cost = isOnlineOrderCompleted(order) ? onlineOrderCompletedTotalCost(order) : onlineOrderTotalCost(order);
+    return value === null ? sum : sum + value - cost;
+  }, 0);
+  return `
+    <section class="online-order-board-column ${escapeAttr(type)}">
+      <header>
+        <div>
+          <h3>${escapeHtml(title)}</h3>
+          <p>${escapeHtml(description)}</p>
+        </div>
+        <strong>${orders.length}</strong>
+      </header>
+      <div class="online-order-board-metrics">
+        <span><small>Cost</small><b>${money(totalCost)}</b></span>
+        <span><small>Profit</small><b class="${pendingProfit >= 0 ? "profit-good" : "profit-bad"}">${profitMoney(pendingProfit)}</b></span>
+      </div>
+      <div class="online-order-board-list">
+        ${orders.length ? orders.slice().sort(sortOnlineOrdersNewestFirst).map(renderOnlineOrderBoardRow).join("") : `<div class="empty">Nothing here.</div>`}
+      </div>
+    </section>
+  `;
+}
+
+function renderOnlineOrderBoardRow(order) {
+  const customerName = onlineOrderCustomerName(order);
+  const value = onlineOrderOrderValue(order);
+  const totalCost = isOnlineOrderCompleted(order) ? onlineOrderCompletedTotalCost(order) : onlineOrderTotalCost(order);
+  const profit = value === null ? null : value - totalCost;
+  const orderId = escapeAttr(String(order.id));
+  const orderDate = order.order_date ? formatDate(order.order_date) : "";
+  const orderNumber = order.order_number || `Order #${order.id}`;
+  return `
+    <article class="online-order-board-row ${escapeAttr(order.status || "Ordered").toLowerCase().replace(/\s+/g, "-")}">
+      <div class="online-order-board-row-main">
+        <div>
+          <span>${escapeHtml(order.provider || "Online Order")}</span>
+          <h4>${escapeHtml(order.phone_model || "No model saved")}</h4>
+          <p>${escapeHtml([orderNumber, orderDate, customerName].filter(Boolean).join(" - "))}</p>
+        </div>
+        <button class="mini-btn" type="button" onclick="openOnlineOrderDetails('${orderId}')">Details</button>
+      </div>
+      <div class="online-order-board-row-sub">
+        <span>${escapeHtml(order.shipping_address || "No address saved")}</span>
+        <b class="${profit === null || profit >= 0 ? "profit-good" : "profit-bad"}">${profit === null ? "-" : profitMoney(profit)}</b>
+      </div>
+      ${order.tracking_info || order.received_info ? `<div class="online-order-board-track">${renderTrackingLink(order.tracking_info || order.received_info)}</div>` : ""}
+      <div class="phone-row-actions online-order-actions online-order-board-actions">
+        ${renderOnlineOrderActionButtons(order)}
+      </div>
+    </article>
+  `;
 }
 
 async function savePrepaidPort() {
@@ -2352,8 +2425,7 @@ function renderOnlineOrderCompactItem(order, statusLabel = "") {
   const profit = value === null ? null : value - totalCost;
   const orderDate = order.order_date ? formatDate(order.order_date) : "";
   return `
-    <details class="online-order-transit-item">
-      <summary>
+    <article class="online-order-transit-item online-order-compact-row">
         <div class="online-order-row-summary">
           <div class="online-order-row-model">
             <strong>${escapeHtml(order.phone_model || "No model saved")}</strong>
@@ -2370,11 +2442,11 @@ function renderOnlineOrderCompactItem(order, statusLabel = "") {
           </div>
           <span class="pill ${onlineOrderStatusClass(order.status)}">${escapeHtml(label)}</span>
         </div>
-      </summary>
-      <div class="online-order-transit-details">
-        ${renderOnlineOrderCard(order)}
+      <div class="phone-row-actions online-order-actions online-order-compact-actions">
+        <button class="mini-btn" type="button" onclick="openOnlineOrderDetails('${escapeAttr(String(order.id))}')">Details</button>
+        ${renderOnlineOrderActionButtons(order)}
       </div>
-    </details>
+    </article>
   `;
 }
 
@@ -2513,16 +2585,27 @@ function renderOnlineOrderCard(order) {
       ${order.status === "Sold Local" ? `<div class="online-order-result">Sold Local: ${money(order.local_sale_price)}${order.local_sale_notes ? ` - ${escapeHtml(order.local_sale_notes)}` : ""}</div>` : ""}
       ${order.status === "Lost" ? `<div class="online-order-result online-order-lost-result">Lost Package: ${escapeHtml(order.received_info || "No note saved")}</div>` : ""}
       <div class="phone-row-actions online-order-actions">
-        ${isLineItem ? `<button class="mini-btn" onclick="editOnlineOrderLine(${order.line_id})">Edit Line</button>` : ""}
-        ${!isLineItem ? `<button class="mini-btn" onclick="startOnlineOrderEdit(${order.id})">Edit</button>` : ""}
-        ${isLineItem && order.status === "Ordered" ? `<button class="mini-btn" onclick="markOnlineOrderLineShipped(${order.line_id})">Shipped</button>` : ""}
-        ${isLineItem && order.status === "Shipped" ? `<button class="mini-btn" onclick="markOnlineOrderLineReceived(${order.line_id})">Received</button>` : ""}
-        ${!isLineItem && order.status === "Ordered" ? `<button class="mini-btn" onclick="markOnlineOrderShipped(${order.id})">Shipped</button>` : ""}
-        ${!isLineItem && order.status === "Shipped" ? `<button class="mini-btn" onclick="addOnlineOrderLine(${order.id})">Add Line</button><button class="mini-btn" onclick="markOnlineOrderReceived(${order.id})">Received</button><button class="mini-btn danger" onclick="markOnlineOrderLost(${order.id})">Lost</button>` : ""}
-        ${isLineItem && (order.status === "Received" || order.status === "Line Added") ? `<button class="mini-btn" onclick="transferOnlineOrderLineToInvoice(${order.line_id})">Transfer to Invoice</button>` : ""}
-        ${!isLineItem && order.status === "Received" ? `<button class="mini-btn" onclick="addOnlineOrderLine(${order.id})">Add Line</button><button class="mini-btn" onclick="transferOnlineOrderToInvoice(${order.id})">Transfer to Invoice</button><button class="mini-btn" onclick="moveOnlineOrderToGiftCard(${order.id})">Move to Gift Cards</button>` : ""}
+        ${renderOnlineOrderActionButtons(order)}
       </div>
     </article>
+  `;
+}
+
+function renderOnlineOrderActionButtons(order) {
+  const isLineItem = Boolean(order.is_line_item);
+  if (isLineItem) {
+    return `
+      <button class="mini-btn" onclick="editOnlineOrderLine(${order.line_id})">Edit Line</button>
+      ${order.status === "Ordered" ? `<button class="mini-btn" onclick="markOnlineOrderLineShipped(${order.line_id})">Shipped</button>` : ""}
+      ${order.status === "Shipped" ? `<button class="mini-btn" onclick="markOnlineOrderLineReceived(${order.line_id})">Received</button>` : ""}
+      ${order.status === "Received" || order.status === "Line Added" ? `<button class="mini-btn" onclick="transferOnlineOrderLineToInvoice(${order.line_id})">Transfer to Invoice</button>` : ""}
+    `;
+  }
+  return `
+    <button class="mini-btn" onclick="startOnlineOrderEdit(${order.id})">Edit</button>
+    ${order.status === "Ordered" ? `<button class="mini-btn" onclick="markOnlineOrderShipped(${order.id})">Shipped</button>` : ""}
+    ${order.status === "Shipped" ? `<button class="mini-btn" onclick="addOnlineOrderLine(${order.id})">Add Line</button><button class="mini-btn" onclick="markOnlineOrderReceived(${order.id})">Received</button><button class="mini-btn danger" onclick="markOnlineOrderLost(${order.id})">Lost</button>` : ""}
+    ${order.status === "Received" ? `<button class="mini-btn" onclick="addOnlineOrderLine(${order.id})">Add Line</button><button class="mini-btn" onclick="transferOnlineOrderToInvoice(${order.id})">Transfer to Invoice</button><button class="mini-btn" onclick="moveOnlineOrderToGiftCard(${order.id})">Move to Gift Cards</button>` : ""}
   `;
 }
 
@@ -2632,6 +2715,30 @@ function trackingUrlForNumber(value) {
   if (/^\d{12}$/.test(clean) || /^\d{15}$/.test(clean) || /^\d{20,22}$/.test(clean)) return `https://www.fedex.com/fedextrack/?trknbr=${encodeURIComponent(clean)}`;
   if (/^9\d{21,33}$/.test(clean) || /^\d{20,34}$/.test(clean)) return `https://tools.usps.com/go/TrackConfirmAction?tLabels=${encodeURIComponent(clean)}`;
   return `https://www.google.com/search?q=${encodeURIComponent(`${value} tracking`)}`;
+}
+
+window.openOnlineOrderDetails = (id) => {
+  const order = findOnlineOrderViewItem(id);
+  if (!order) return alert("Could not find this order.");
+  $("onlineOrderDetailsTitle").textContent = order.is_line_item ? "Added Line Details" : "Order Details";
+  $("onlineOrderDetailsBody").innerHTML = renderOnlineOrderCard(order);
+  $("onlineOrderDetailsModal").classList.remove("hidden");
+};
+
+window.closeOnlineOrderDetailsModal = () => {
+  $("onlineOrderDetailsModal").classList.add("hidden");
+  $("onlineOrderDetailsBody").innerHTML = "";
+};
+
+function findOnlineOrderViewItem(id) {
+  const key = String(id);
+  const expanded = phoneOnlineOrders.flatMap((order) => [
+    order,
+    ...onlineOrderLineStatusItems([order], "Ordered"),
+    ...onlineOrderLineStatusItems([order], "Shipped"),
+    ...onlineOrderLineStatusItems([order], "Received", true),
+  ]);
+  return expanded.find((order) => String(order.id) === key || String(order.line_id || "") === key) || null;
 }
 
 window.startOnlineOrderEdit = (id) => {
