@@ -2302,6 +2302,7 @@ function renderOnlineOrderInvoiceItem(item) {
     ? item.confirmation_number || `Line #${item.id}`
     : item.order_number || `Order #${item.id}`;
   const customerName = [item.first_name, item.last_name].map((part) => String(part || "").trim()).filter(Boolean).join(" ");
+  const parentOrderId = item.item_type === "line" ? item.online_order_id : item.id;
   return `
     <article class="online-order-card invoiced">
       <div class="online-order-main">
@@ -2324,6 +2325,9 @@ function renderOnlineOrderInvoiceItem(item) {
         <span><small>Tracking / Received</small><b>${renderTrackingLink(item.tracking_info || item.received_info || "")}</b></span>
       </div>
       <div class="online-order-address">${escapeHtml(item.shipping_address || "No shipping address saved")}</div>
+      <div class="phone-row-actions online-order-actions">
+        ${parentOrderId ? `<button class="mini-btn" onclick="addOnlineOrderLine(${parentOrderId})">Add Line</button>` : ""}
+      </div>
     </article>
   `;
 }
