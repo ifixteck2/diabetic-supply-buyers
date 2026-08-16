@@ -334,6 +334,7 @@ app.get("/api/phone-online-order-invoices", requirePhoneAuth, async (req, res) =
   const lines = await pool.query(
     `select line.*, orders.provider, orders.order_number as parent_order_number, orders.first_name, orders.last_name,
        orders.email, orders.shipping_address, orders.placed_at, orders.order_date, orders.order_placed_at,
+       orders.phone_number, orders.call_phone_number, orders.account_pin, orders.cc_used,
        'line' as item_type
      from phone_online_order_lines line
      join phone_online_orders orders on orders.id = line.online_order_id

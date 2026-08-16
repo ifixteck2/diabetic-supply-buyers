@@ -2316,8 +2316,14 @@ function renderOnlineOrderInvoiceItem(item) {
         <span><small>Cost</small><b>${money(cost)}</b></span>
         <span><small>Payment Method</small><b>${escapeHtml(item.payment_method || item.cc_used || "")}</b></span>
         <span><small>Order</small><b>${escapeHtml(item.parent_order_number || item.order_number || "")}</b></span>
-        <span><small>Address</small><b>${escapeHtml(item.shipping_address || "")}</b></span>
+        <span><small>Phone Number</small><b>${escapeHtml(item.phone_number || "")}</b></span>
+        <span><small>Call Phone #</small><b>${escapeHtml(item.call_phone_number || "")}</b></span>
+        <span><small>Account PIN</small><b>${escapeHtml(item.account_pin || "")}</b></span>
+        <span><small>Email</small><b>${escapeHtml(item.email || "")}</b></span>
+        <span><small>Where Placed</small><b>${escapeHtml(item.placed_at || "")}</b></span>
+        <span><small>Tracking / Received</small><b>${renderTrackingLink(item.tracking_info || item.received_info || "")}</b></span>
       </div>
+      <div class="online-order-address">${escapeHtml(item.shipping_address || "No shipping address saved")}</div>
     </article>
   `;
 }
