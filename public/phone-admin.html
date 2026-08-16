@@ -315,8 +315,7 @@
         <div class="online-order-workspace">
           <aside class="online-order-left">
             <nav class="online-order-tabs" aria-label="Online order sections">
-              <button class="online-order-tab active" data-online-order-tab="board">Orders Board</button>
-              <button class="online-order-tab" data-online-order-tab="add">Add Order</button>
+              <button class="online-order-tab active" data-online-order-tab="add">Add Order</button>
               <button class="online-order-tab" data-online-order-tab="stats">Stats</button>
               <button class="online-order-tab" data-online-order-tab="pending">Orders Pending</button>
               <button class="online-order-tab" data-online-order-tab="transit">In Transit</button>
@@ -330,14 +329,7 @@
           </aside>
 
           <div class="online-order-content">
-        <section id="onlineOrdersBoardPanel" class="online-order-tab-panel">
-          <section class="panel online-order-list-panel online-order-board-panel">
-            <div class="panel-head"><div><h2>Orders Board</h2><p>Track open orders by what needs to happen next.</p></div></div>
-            <div id="onlineOrdersBoard" class="online-order-board"></div>
-          </section>
-        </section>
-
-        <section id="onlineOrdersAddPanel" class="online-order-tab-panel hidden">
+        <section id="onlineOrdersAddPanel" class="online-order-tab-panel">
           <section class="panel online-order-entry-panel online-order-add-panel">
             <div class="panel-head">
               <div><h2>Add Online Order</h2><p>Enter the phone order once when it is placed. Tracking and received details can be added later.</p></div>
@@ -595,17 +587,7 @@
         <div id="onlineOrderEditStatus"></div>
       </section>
     </div>
-    <div id="onlineOrderDetailsModal" class="online-order-edit-modal hidden" role="dialog" aria-modal="true" aria-labelledby="onlineOrderDetailsTitle">
-      <div class="online-order-edit-backdrop" onclick="closeOnlineOrderDetailsModal()"></div>
-      <section class="online-order-edit-box online-order-details-box">
-        <div class="panel-head">
-          <div><h2 id="onlineOrderDetailsTitle">Order Details</h2><p>Full record and actions for this order.</p></div>
-          <button class="mini-btn" type="button" onclick="closeOnlineOrderDetailsModal()">Close</button>
-        </div>
-        <div id="onlineOrderDetailsBody"></div>
-      </section>
-    </div>
   </main>
-  <script src="/phone-admin.js?v=20260815-orders-board"></script>
+  <script src="/phone-admin.js?v=20260815-line-received-fix"></script>
 </body>
 </html>
