@@ -35,6 +35,10 @@ if (!process.env.PHONE_ADMIN_USERNAME) {
   console.warn("Missing PHONE_ADMIN_USERNAME. Phone portal login is disabled until this is set.");
 }
 
+if (!process.env.ONLINE_ORDERS_USERNAME) {
+  console.warn("Missing ONLINE_ORDERS_USERNAME. Online Orders login will use the phone portal username until this is set.");
+}
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: isProduction ? { rejectUnauthorized: false } : false,
@@ -91,6 +95,41 @@ app.post("/api/phone-logout", (req, res) => {
 
 app.get("/api/phone-me", requirePhoneAuth, (req, res) => {
   res.json({ ok: true, username: req.user.username, portal: "phone" });
+});
+
+app.post("/api/online-orders-login", async (req, res) => {
+  const { username, password, remember } = req.body || {};
+  const configuredUsername = process.env.ONLINE_ORDERS_USERNAME || process.env.PHONE_ADMIN_USERNAME;
+  const passwordPrefix = process.env.ONLINE_ORDERS_PASSWORD_HASH || process.env.ONLINE_ORDERS_PASSWORD ? "ONLINE_ORDERS" : "PHONE_ADMIN";
+  const ok =
+    username === configuredUsername &&
+    (await verifyNamedPassword(String(password || ""), passwordPrefix));
+
+  if (!ok) return res.status(401).json({ error: "Invalid online orders login." });
+
+  const maxAgeSeconds = remember ? 60 * 60 * 24 * 30 : 60 * 60 * 8;
+  setNamedSessionCookie(res, "online_orders_session", username, maxAgeSeconds);
+  res.json({ ok: true, username, portal: "online_orders" });
+});
+
+app.post("/api/online-orders-logout", (req, res) => {
+  res.setHeader("Set-Cookie", makeCookie("online_orders_session", "", 0));
+  res.json({ ok: true });
+});
+
+app.get("/api/online-orders-me", requireOnlineOrdersAuth, (req, res) => {
+  res.json({ ok: true, username: req.user.username, portal: "online_orders" });
+});
+
+app.get("/online-orders.html", (_req, res) => {
+  const html = fs.readFileSync("public/phone-admin.html", "utf8")
+    .replace(
+      '<body class="admin-body phone-admin-body">',
+      '<body class="admin-body phone-admin-body online-orders-only-body" data-portal="online-orders">'
+    )
+    .replace(/Phone Portal<small>Private records<\/small>/g, "Online Orders<small>Private records</small>")
+    .replace("<title>Phone Flipping Portal</title>", "<title>Online Orders Portal</title>");
+  res.type("html").send(html);
 });
 
 app.get("/api/phone-price-sheet", requirePhoneAuth, async (req, res) => {
@@ -290,7 +329,7 @@ app.patch("/api/phone-manual-returns/:id/holding", requirePhoneAuth, async (req,
   }
 });
 
-app.get("/api/phone-online-orders", requirePhoneAuth, async (req, res) => {
+app.get("/api/phone-online-orders", requireOnlineOrdersAuth, async (req, res) => {
   const result = await pool.query(
     `select * from phone_online_orders
      order by
@@ -320,7 +359,7 @@ app.get("/api/phone-online-orders", requirePhoneAuth, async (req, res) => {
   res.json({ orders: orders.map((order) => ({ ...order, line_items: linesByOrder.get(order.id) || [] })) });
 });
 
-app.get("/api/phone-online-order-invoices", requirePhoneAuth, async (req, res) => {
+app.get("/api/phone-online-order-invoices", requireOnlineOrdersAuth, async (req, res) => {
   const invoices = await pool.query("select * from phone_online_order_invoices order by status asc, created_at desc, id desc limit 500");
   const ids = invoices.rows.map((invoice) => invoice.id);
   if (!ids.length) return res.json({ invoices: [] });
@@ -352,7 +391,7 @@ app.get("/api/phone-online-order-invoices", requirePhoneAuth, async (req, res) =
   res.json({ invoices: invoiceRows });
 });
 
-app.get("/api/phone-prepaid-ports", requirePhoneAuth, async (req, res) => {
+app.get("/api/phone-prepaid-ports", requireOnlineOrdersAuth, async (req, res) => {
   const result = await pool.query(
     `select *,
        case
@@ -398,7 +437,7 @@ app.get("/api/phone-prepaid-ports", requirePhoneAuth, async (req, res) => {
   res.json({ ports: result.rows });
 });
 
-app.post("/api/phone-prepaid-ports", requirePhoneAuth, async (req, res) => {
+app.post("/api/phone-prepaid-ports", requireOnlineOrdersAuth, async (req, res) => {
   const input = req.body || {};
   const recordType = String(input.record_type || "").trim() === "Prepaid Card" ? "Prepaid Card" : "Port Number";
   const provider = String(input.provider || "").trim();
@@ -425,7 +464,7 @@ app.post("/api/phone-prepaid-ports", requirePhoneAuth, async (req, res) => {
   res.json({ ok: true, port: result.rows[0] });
 });
 
-app.post("/api/phone-prepaid-ports/bulk", requirePhoneAuth, async (req, res) => {
+app.post("/api/phone-prepaid-ports/bulk", requireOnlineOrdersAuth, async (req, res) => {
   const records = Array.isArray(req.body?.records) ? req.body.records : [];
   if (!records.length) return res.status(400).json({ error: "Paste at least one prepaid card line." });
   if (records.length > 300) return res.status(400).json({ error: "Add 300 or fewer cards at a time." });
@@ -459,7 +498,7 @@ app.post("/api/phone-prepaid-ports/bulk", requirePhoneAuth, async (req, res) => 
   res.json({ ok: true, ports: result.rows });
 });
 
-app.post("/api/phone-prepaid-ports/bulk-ports", requirePhoneAuth, async (req, res) => {
+app.post("/api/phone-prepaid-ports/bulk-ports", requireOnlineOrdersAuth, async (req, res) => {
   const records = Array.isArray(req.body?.records) ? req.body.records : [];
   if (!records.length) return res.status(400).json({ error: "Paste at least one port number line." });
   if (records.length > 300) return res.status(400).json({ error: "Add 300 or fewer port numbers at a time." });
@@ -490,7 +529,7 @@ app.post("/api/phone-prepaid-ports/bulk-ports", requirePhoneAuth, async (req, re
   res.json({ ok: true, ports: result.rows });
 });
 
-app.patch("/api/phone-prepaid-ports/:id/status", requirePhoneAuth, async (req, res) => {
+app.patch("/api/phone-prepaid-ports/:id/status", requireOnlineOrdersAuth, async (req, res) => {
   const id = Number(req.params.id);
   const nextStatus = String(req.body?.status || "").trim();
   const notes = String(req.body?.notes || "").trim();
@@ -516,7 +555,7 @@ app.patch("/api/phone-prepaid-ports/:id/status", requirePhoneAuth, async (req, r
   res.json({ ok: true, port: result.rows[0] });
 });
 
-app.post("/api/phone-online-orders", requirePhoneAuth, async (req, res) => {
+app.post("/api/phone-online-orders", requireOnlineOrdersAuth, async (req, res) => {
   const input = req.body || {};
   const provider = String(input.provider || "").trim();
   const orderNumber = String(input.order_number || "").trim();
@@ -556,7 +595,7 @@ app.post("/api/phone-online-orders", requirePhoneAuth, async (req, res) => {
   res.json({ ok: true, order: result.rows[0] });
 });
 
-app.patch("/api/phone-online-orders/:id", requirePhoneAuth, async (req, res) => {
+app.patch("/api/phone-online-orders/:id", requireOnlineOrdersAuth, async (req, res) => {
   const id = Number(req.params.id);
   const input = req.body || {};
   const provider = String(input.provider || "").trim();
@@ -617,7 +656,7 @@ app.patch("/api/phone-online-orders/:id", requirePhoneAuth, async (req, res) => 
   res.json({ ok: true, order: result.rows[0] });
 });
 
-app.patch("/api/phone-online-orders/:id/shipped", requirePhoneAuth, async (req, res) => {
+app.patch("/api/phone-online-orders/:id/shipped", requireOnlineOrdersAuth, async (req, res) => {
   const id = Number(req.params.id);
   if (!id) return res.status(400).json({ error: "Order ID is required." });
   const trackingInfo = String(req.body?.tracking_info || "").trim();
@@ -636,7 +675,7 @@ app.patch("/api/phone-online-orders/:id/shipped", requirePhoneAuth, async (req, 
   res.json({ ok: true, order: result.rows[0] });
 });
 
-app.patch("/api/phone-online-orders/:id/received", requirePhoneAuth, async (req, res) => {
+app.patch("/api/phone-online-orders/:id/received", requireOnlineOrdersAuth, async (req, res) => {
   const id = Number(req.params.id);
   if (!id) return res.status(400).json({ error: "Order ID is required." });
   const trackingInfo = String(req.body?.tracking_info || "").trim();
@@ -657,7 +696,7 @@ app.patch("/api/phone-online-orders/:id/received", requirePhoneAuth, async (req,
   res.json({ ok: true, order: result.rows[0] });
 });
 
-app.patch("/api/phone-online-orders/:id/lost", requirePhoneAuth, async (req, res) => {
+app.patch("/api/phone-online-orders/:id/lost", requireOnlineOrdersAuth, async (req, res) => {
   const id = Number(req.params.id);
   if (!id) return res.status(400).json({ error: "Order ID is required." });
   const lostNote = String(req.body?.lost_note || "").trim();
@@ -675,7 +714,7 @@ app.patch("/api/phone-online-orders/:id/lost", requirePhoneAuth, async (req, res
   res.json({ ok: true, order: result.rows[0] });
 });
 
-app.post("/api/phone-online-orders/:id/lines", requirePhoneAuth, async (req, res) => {
+app.post("/api/phone-online-orders/:id/lines", requireOnlineOrdersAuth, async (req, res) => {
   const id = Number(req.params.id);
   const phoneModel = String(req.body?.phone_model || "").trim();
   const confirmationNumber = String(req.body?.confirmation_number || "").trim();
@@ -701,7 +740,7 @@ app.post("/api/phone-online-orders/:id/lines", requirePhoneAuth, async (req, res
   res.json({ ok: true, lines: result.rows });
 });
 
-app.patch("/api/phone-online-order-lines/:id", requirePhoneAuth, async (req, res) => {
+app.patch("/api/phone-online-order-lines/:id", requireOnlineOrdersAuth, async (req, res) => {
   const id = Number(req.params.id);
   const phoneModel = String(req.body?.phone_model || "").trim();
   const confirmationNumber = String(req.body?.confirmation_number || "").trim();
@@ -730,7 +769,7 @@ app.patch("/api/phone-online-order-lines/:id", requirePhoneAuth, async (req, res
   res.json({ ok: true, line: result.rows[0] });
 });
 
-app.patch("/api/phone-online-order-lines/:id/shipped", requirePhoneAuth, async (req, res) => {
+app.patch("/api/phone-online-order-lines/:id/shipped", requireOnlineOrdersAuth, async (req, res) => {
   const id = Number(req.params.id);
   const trackingInfo = String(req.body?.tracking_info || "").trim();
   if (!id) return res.status(400).json({ error: "Line ID is required." });
@@ -752,7 +791,7 @@ app.patch("/api/phone-online-order-lines/:id/shipped", requirePhoneAuth, async (
   res.json({ ok: true, line: result.rows[0] });
 });
 
-app.patch("/api/phone-online-order-lines/:id/received", requirePhoneAuth, async (req, res) => {
+app.patch("/api/phone-online-order-lines/:id/received", requireOnlineOrdersAuth, async (req, res) => {
   const id = Number(req.params.id);
   const receivedInfo = String(req.body?.received_info || "").trim();
   if (!id) return res.status(400).json({ error: "Line ID is required." });
@@ -773,7 +812,7 @@ app.patch("/api/phone-online-order-lines/:id/received", requirePhoneAuth, async 
   res.json({ ok: true, line: result.rows[0] });
 });
 
-app.patch("/api/phone-online-orders/:id/invoice", requirePhoneAuth, async (req, res) => {
+app.patch("/api/phone-online-orders/:id/invoice", requireOnlineOrdersAuth, async (req, res) => {
   const id = Number(req.params.id);
   const label = String(req.body?.label || "").trim();
   if (!id) return res.status(400).json({ error: "Order ID is required." });
@@ -806,7 +845,7 @@ app.patch("/api/phone-online-orders/:id/invoice", requirePhoneAuth, async (req, 
   }
 });
 
-app.patch("/api/phone-online-order-lines/:id/invoice", requirePhoneAuth, async (req, res) => {
+app.patch("/api/phone-online-order-lines/:id/invoice", requireOnlineOrdersAuth, async (req, res) => {
   const id = Number(req.params.id);
   const label = String(req.body?.label || "").trim();
   if (!id) return res.status(400).json({ error: "Line ID is required." });
@@ -842,7 +881,7 @@ app.patch("/api/phone-online-order-lines/:id/invoice", requirePhoneAuth, async (
   }
 });
 
-app.patch("/api/phone-online-order-invoices/:id/sell", requirePhoneAuth, async (req, res) => {
+app.patch("/api/phone-online-order-invoices/:id/sell", requireOnlineOrdersAuth, async (req, res) => {
   const id = Number(req.params.id);
   const salePrice = req.body?.sale_price === "" || req.body?.sale_price === undefined || req.body?.sale_price === null
     ? null
@@ -866,7 +905,7 @@ app.patch("/api/phone-online-order-invoices/:id/sell", requirePhoneAuth, async (
   res.json({ ok: true, invoice: result.rows[0] });
 });
 
-app.patch("/api/phone-online-orders/:id/local-sale", requirePhoneAuth, async (req, res) => {
+app.patch("/api/phone-online-orders/:id/local-sale", requireOnlineOrdersAuth, async (req, res) => {
   const id = Number(req.params.id);
   const salePrice = req.body?.sale_price === "" || req.body?.sale_price === undefined || req.body?.sale_price === null
     ? null
@@ -890,7 +929,7 @@ app.patch("/api/phone-online-orders/:id/local-sale", requirePhoneAuth, async (re
   res.json({ ok: true, order: result.rows[0] });
 });
 
-app.patch("/api/phone-online-orders/:id/gift-card", requirePhoneAuth, async (req, res) => {
+app.patch("/api/phone-online-orders/:id/gift-card", requireOnlineOrdersAuth, async (req, res) => {
   const id = Number(req.params.id);
   const giftCardValue = req.body?.gift_card_value === "" || req.body?.gift_card_value === undefined || req.body?.gift_card_value === null
     ? null
@@ -4210,6 +4249,13 @@ function requireAuth(req, res, next) {
 function requirePhoneAuth(req, res, next) {
   const session = parseNamedSession(req, "phone_session");
   if (!session) return res.status(401).json({ error: "Phone portal login required." });
+  req.user = session;
+  next();
+}
+
+function requireOnlineOrdersAuth(req, res, next) {
+  const session = parseNamedSession(req, "phone_session") || parseNamedSession(req, "online_orders_session");
+  if (!session) return res.status(401).json({ error: "Online orders login required." });
   req.user = session;
   next();
 }

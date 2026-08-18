@@ -4,6 +4,7 @@ const profitMoney = (value) => Math.ceil(Number(value || 0)).toLocaleString("en-
 const status = (id, message, type = "ok") => {
   $(id).innerHTML = message ? `<div class="status ${type}">${message}</div>` : "";
 };
+const onlineOrdersOnly = document.body?.dataset.portal === "online-orders";
 
 let atlasPrices = [];
 let phoneInvoices = [];
@@ -24,7 +25,7 @@ async function initPhonePortal() {
   $("directHoldingDate").value = localTodayInput();
   $("onlineOrderDate").value = localTodayInput();
   bindPhoneEvents();
-  const me = await api("/api/phone-me", { silent: true });
+  const me = await api(onlineOrdersOnly ? "/api/online-orders-me" : "/api/phone-me", { silent: true });
   if (me?.ok) showPhoneApp();
 }
 
@@ -56,7 +57,11 @@ function bindPhoneEvents() {
   $("saveOnlineOrderEditBtn").onclick = saveOnlineOrderEdit;
   $("editOnlineOrderProvider").addEventListener("change", toggleEditOnlineOrderProvider);
   $("onlineOrderPlacedNowBtn").onclick = stampOnlineOrderPlacedNow;
-  $("onlineOrdersBackBtn").onclick = () => closeOnlineOrdersPage("dashboard");
+  $("onlineOrdersBackBtn").textContent = onlineOrdersOnly ? "Log Out" : "Back To Phone Portal";
+  $("onlineOrdersBackBtn").onclick = () => {
+    if (onlineOrdersOnly) return logoutPhonePortal();
+    return closeOnlineOrdersPage("dashboard");
+  };
   $("onlineOrdersRefreshBtn").onclick = async () => {
     await loadPhoneOnlineOrders();
     await loadPhoneOnlineOrderInvoices();
@@ -83,7 +88,7 @@ function bindPhoneEvents() {
 }
 
 async function loginPhonePortal() {
-  const result = await api("/api/phone-login", {
+  const result = await api(onlineOrdersOnly ? "/api/online-orders-login" : "/api/phone-login", {
     method: "POST",
     body: {
       username: $("phoneUsername").value.trim(),
@@ -96,21 +101,33 @@ async function loginPhonePortal() {
 }
 
 async function logoutPhonePortal() {
-  await api("/api/phone-logout", { method: "POST" });
+  await api(onlineOrdersOnly ? "/api/online-orders-logout" : "/api/phone-logout", { method: "POST" });
   location.reload();
 }
 
 async function showPhoneApp() {
   $("phoneLogin").classList.add("hidden");
   $("phoneApp").classList.remove("hidden");
+  if (onlineOrdersOnly) {
+    await refreshOnlineOrdersOnlyPortal();
+    openOnlineOrdersPage();
+    return;
+  }
   await refreshPhonePortal();
 }
 
 async function refreshPhonePortal() {
+  if (onlineOrdersOnly) return refreshOnlineOrdersOnlyPortal();
   await loadAtlasPrices();
   await loadPhoneInvoices();
   await loadManualPhoneReturns();
   await loadPhoneHolding();
+  await loadPhoneOnlineOrders();
+  await loadPhoneOnlineOrderInvoices();
+  await loadPrepaidPorts();
+}
+
+async function refreshOnlineOrdersOnlyPortal() {
   await loadPhoneOnlineOrders();
   await loadPhoneOnlineOrderInvoices();
   await loadPrepaidPorts();
@@ -165,6 +182,10 @@ async function loadPrepaidPorts() {
 }
 
 function openPhoneTab(name) {
+  if (onlineOrdersOnly) {
+    openOnlineOrdersPage();
+    return;
+  }
   if (name === "onlineOrders") {
     openOnlineOrdersPage();
     return;
@@ -200,6 +221,7 @@ function openOnlineOrdersPage() {
 }
 
 function closeOnlineOrdersPage(tabName = "dashboard") {
+  if (onlineOrdersOnly) return;
   $("onlineOrdersPage").classList.add("hidden");
   document.querySelector(".admin-shell").classList.remove("hidden");
   openPhoneTab(tabName);
