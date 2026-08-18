@@ -2552,7 +2552,7 @@ function renderOnlineOrderCard(order) {
         ${!isLineItem && order.status === "Ordered" ? `<button class="mini-btn" onclick="markOnlineOrderShipped(${order.id})">Shipped</button>` : ""}
         ${!isLineItem && order.status === "Shipped" ? `<button class="mini-btn" onclick="addOnlineOrderLine(${order.id})">Add Line</button><button class="mini-btn" onclick="markOnlineOrderReceived(${order.id})">Received</button><button class="mini-btn danger" onclick="markOnlineOrderLost(${order.id})">Lost</button>` : ""}
         ${isLineItem && (order.status === "Received" || order.status === "Line Added") ? `<button class="mini-btn" onclick="transferOnlineOrderLineToInvoice(${order.line_id})">Transfer to Invoice</button>` : ""}
-        ${!isLineItem && order.status === "Received" ? `<button class="mini-btn" onclick="addOnlineOrderLine(${order.id})">Add Line</button><button class="mini-btn" onclick="transferOnlineOrderToInvoice(${order.id})">Transfer to Invoice</button><button class="mini-btn" onclick="moveOnlineOrderToGiftCard(${order.id})">Move to Gift Cards</button>` : ""}
+        ${!isLineItem && order.status === "Received" ? `<button class="mini-btn" onclick="addOnlineOrderLine(${order.id})">Add Line</button><button class="mini-btn" onclick="transferOnlineOrderToInvoice(${order.id})">Transfer to Invoice</button>${onlineOrdersOnly ? "" : `<button class="mini-btn" onclick="moveOnlineOrderToGiftCard(${order.id})">Move to Gift Cards</button>`}` : ""}
       </div>
     </article>
   `;
@@ -4734,9 +4734,11 @@ window.returnPhonePurchaseToKt = async (id) => {
 };
 
 async function api(url, options = {}) {
+  const headers = { "Content-Type": "application/json" };
+  if (onlineOrdersOnly) headers["X-Online-Orders-Only"] = "1";
   const fetchOptions = {
     method: options.method || "GET",
-    headers: { "Content-Type": "application/json" },
+    headers,
   };
   if (options.body) fetchOptions.body = JSON.stringify(options.body);
   try {

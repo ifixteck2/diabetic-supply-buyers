@@ -44,6 +44,20 @@ const pool = new Pool({
   ssl: isProduction ? { rejectUnauthorized: false } : false,
 });
 
+const phoneOnlineOrderTables = {
+  orders: "phone_online_orders",
+  lines: "phone_online_order_lines",
+  invoices: "phone_online_order_invoices",
+  ports: "phone_prepaid_ports",
+};
+
+const onlineOrdersOnlyTables = {
+  orders: "online_order_portal_orders",
+  lines: "online_order_portal_lines",
+  invoices: "online_order_portal_invoices",
+  ports: "online_order_portal_prepaid_ports",
+};
+
 app.use(express.json({ limit: "25mb" }));
 app.use(express.urlencoded({ extended: false }));
 app.use(express.static("public", { extensions: ["html"] }));
@@ -330,8 +344,9 @@ app.patch("/api/phone-manual-returns/:id/holding", requirePhoneAuth, async (req,
 });
 
 app.get("/api/phone-online-orders", requireOnlineOrdersAuth, async (req, res) => {
+  const tables = onlineOrderTables(req);
   const result = await pool.query(
-    `select * from phone_online_orders
+    `select * from ${tables.orders}
      order by
        case status when 'Ordered' then 1 when 'Shipped' then 2 when 'Received' then 3 else 4 end,
        coalesce(received_at, shipped_at, local_sold_at, gift_card_at, created_at) desc,
@@ -344,7 +359,7 @@ app.get("/api/phone-online-orders", requireOnlineOrdersAuth, async (req, res) =>
   let linesByOrder = new Map();
   if (ids.length) {
     const lines = await pool.query(
-      `select * from phone_online_order_lines
+      `select * from ${tables.lines}
        where online_order_id = any($1::int[])
        order by created_at asc, id asc`,
       [ids]
@@ -360,12 +375,13 @@ app.get("/api/phone-online-orders", requireOnlineOrdersAuth, async (req, res) =>
 });
 
 app.get("/api/phone-online-order-invoices", requireOnlineOrdersAuth, async (req, res) => {
-  const invoices = await pool.query("select * from phone_online_order_invoices order by status asc, created_at desc, id desc limit 500");
+  const tables = onlineOrderTables(req);
+  const invoices = await pool.query(`select * from ${tables.invoices} order by status asc, created_at desc, id desc limit 500`);
   const ids = invoices.rows.map((invoice) => invoice.id);
   if (!ids.length) return res.json({ invoices: [] });
   const orders = await pool.query(
     `select *, 'order' as item_type
-     from phone_online_orders
+     from ${tables.orders}
      where online_invoice_id = any($1::int[])
      order by created_at asc, id asc`,
     [ids]
@@ -375,8 +391,8 @@ app.get("/api/phone-online-order-invoices", requireOnlineOrdersAuth, async (req,
        orders.email, orders.shipping_address, orders.placed_at, orders.order_date, orders.order_placed_at,
        orders.phone_number, orders.call_phone_number, orders.account_pin, orders.cc_used,
        'line' as item_type
-     from phone_online_order_lines line
-     join phone_online_orders orders on orders.id = line.online_order_id
+     from ${tables.lines} line
+     join ${tables.orders} orders on orders.id = line.online_order_id
      where line.online_invoice_id = any($1::int[])
      order by line.created_at asc, line.id asc`,
     [ids]
@@ -392,6 +408,7 @@ app.get("/api/phone-online-order-invoices", requireOnlineOrdersAuth, async (req,
 });
 
 app.get("/api/phone-prepaid-ports", requireOnlineOrdersAuth, async (req, res) => {
+  const tables = onlineOrderTables(req);
   const result = await pool.query(
     `select *,
        case
@@ -412,7 +429,7 @@ app.get("/api/phone-prepaid-ports", requireOnlineOrdersAuth, async (req, res) =>
            and failed_at > now() - interval '24 hours' then failed_at + interval '24 hours'
          else null
        end as usable_after
-     from phone_prepaid_ports
+     from ${tables.ports}
      order by
        case
          when (case when prepaid_card <> '' then 'Prepaid Card' when record_type <> '' then record_type else 'Port Number' end) = 'Port Number' then 1
@@ -438,6 +455,7 @@ app.get("/api/phone-prepaid-ports", requireOnlineOrdersAuth, async (req, res) =>
 });
 
 app.post("/api/phone-prepaid-ports", requireOnlineOrdersAuth, async (req, res) => {
+  const tables = onlineOrderTables(req);
   const input = req.body || {};
   const recordType = String(input.record_type || "").trim() === "Prepaid Card" ? "Prepaid Card" : "Port Number";
   const provider = String(input.provider || "").trim();
@@ -455,7 +473,7 @@ app.post("/api/phone-prepaid-ports", requireOnlineOrdersAuth, async (req, res) =
   if (recordType === "Prepaid Card" && !prepaidCard) return res.status(400).json({ error: "Enter the prepaid card number." });
   if (!Number.isFinite(cost) || cost < 0) return res.status(400).json({ error: "Enter a valid cost." });
   const result = await pool.query(
-    `insert into phone_prepaid_ports
+    `insert into ${tables.ports}
        (record_type, provider, port_number, account_number, prepaid_card, pin, expiration_month, expiration_year, cvv, cost, notes)
      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::numeric, $11)
      returning *`,
@@ -465,6 +483,7 @@ app.post("/api/phone-prepaid-ports", requireOnlineOrdersAuth, async (req, res) =
 });
 
 app.post("/api/phone-prepaid-ports/bulk", requireOnlineOrdersAuth, async (req, res) => {
+  const tables = onlineOrderTables(req);
   const records = Array.isArray(req.body?.records) ? req.body.records : [];
   if (!records.length) return res.status(400).json({ error: "Paste at least one prepaid card line." });
   if (records.length > 300) return res.status(400).json({ error: "Add 300 or fewer cards at a time." });
@@ -489,7 +508,7 @@ app.post("/api/phone-prepaid-ports/bulk", requireOnlineOrdersAuth, async (req, r
     return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}::numeric, $${offset + 10})`;
   });
   const result = await pool.query(
-    `insert into phone_prepaid_ports
+    `insert into ${tables.ports}
        (record_type, provider, port_number, prepaid_card, pin, expiration_month, expiration_year, cvv, cost, notes)
      values ${placeholders.join(",")}
      returning *`,
@@ -499,6 +518,7 @@ app.post("/api/phone-prepaid-ports/bulk", requireOnlineOrdersAuth, async (req, r
 });
 
 app.post("/api/phone-prepaid-ports/bulk-ports", requireOnlineOrdersAuth, async (req, res) => {
+  const tables = onlineOrderTables(req);
   const records = Array.isArray(req.body?.records) ? req.body.records : [];
   if (!records.length) return res.status(400).json({ error: "Paste at least one port number line." });
   if (records.length > 300) return res.status(400).json({ error: "Add 300 or fewer port numbers at a time." });
@@ -520,7 +540,7 @@ app.post("/api/phone-prepaid-ports/bulk-ports", requireOnlineOrdersAuth, async (
     return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}::numeric, $${offset + 7})`;
   });
   const result = await pool.query(
-    `insert into phone_prepaid_ports
+    `insert into ${tables.ports}
        (record_type, provider, port_number, account_number, pin, cost, notes)
      values ${placeholders.join(",")}
      returning *`,
@@ -530,6 +550,7 @@ app.post("/api/phone-prepaid-ports/bulk-ports", requireOnlineOrdersAuth, async (
 });
 
 app.patch("/api/phone-prepaid-ports/:id/status", requireOnlineOrdersAuth, async (req, res) => {
+  const tables = onlineOrderTables(req);
   const id = Number(req.params.id);
   const nextStatus = String(req.body?.status || "").trim();
   const notes = String(req.body?.notes || "").trim();
@@ -540,7 +561,7 @@ app.patch("/api/phone-prepaid-ports/:id/status", requireOnlineOrdersAuth, async 
   if (!["Available", "Used", "Failed"].includes(nextStatus)) return res.status(400).json({ error: "Choose Available, Used, or Failed." });
   if (usedAmount !== null && (!Number.isFinite(usedAmount) || usedAmount < 0)) return res.status(400).json({ error: "Enter a valid used amount." });
   const result = await pool.query(
-    `update phone_prepaid_ports
+    `update ${tables.ports}
      set status = $2::text,
        failed_at = case when $2::text = 'Failed' then now() else null end,
        used_at = case when $2::text = 'Used' then coalesce(used_at, now()) else null end,
@@ -556,6 +577,7 @@ app.patch("/api/phone-prepaid-ports/:id/status", requireOnlineOrdersAuth, async 
 });
 
 app.post("/api/phone-online-orders", requireOnlineOrdersAuth, async (req, res) => {
+  const tables = onlineOrderTables(req);
   const input = req.body || {};
   const provider = String(input.provider || "").trim();
   const orderNumber = String(input.order_number || "").trim();
@@ -568,7 +590,7 @@ app.post("/api/phone-online-orders", requireOnlineOrdersAuth, async (req, res) =
   if (!Number.isFinite(cost) || cost < 0) return res.status(400).json({ error: "Enter a valid cost." });
   if (!Number.isFinite(portNumberCost) || portNumberCost < 0) return res.status(400).json({ error: "Enter a valid port number cost." });
   const result = await pool.query(
-    `insert into phone_online_orders
+    `insert into ${tables.orders}
        (provider, order_number, phone_model, first_name, last_name, order_date, order_placed_at, placed_at, shipping_address, cc_used, cost, port_number_cost, phone_number, call_phone_number, account_pin, email, tracking_info)
      values ($1, $2, $3, $4, $5, coalesce($6::date, current_date), coalesce($7::timestamptz, now()), $8, $9, $10, $11::numeric, $12::numeric, $13, $14, $15, $16, $17)
      returning *`,
@@ -596,6 +618,7 @@ app.post("/api/phone-online-orders", requireOnlineOrdersAuth, async (req, res) =
 });
 
 app.patch("/api/phone-online-orders/:id", requireOnlineOrdersAuth, async (req, res) => {
+  const tables = onlineOrderTables(req);
   const id = Number(req.params.id);
   const input = req.body || {};
   const provider = String(input.provider || "").trim();
@@ -610,7 +633,7 @@ app.patch("/api/phone-online-orders/:id", requireOnlineOrdersAuth, async (req, r
   if (!Number.isFinite(cost) || cost < 0) return res.status(400).json({ error: "Enter a valid cost." });
   if (!Number.isFinite(portNumberCost) || portNumberCost < 0) return res.status(400).json({ error: "Enter a valid port number cost." });
   const result = await pool.query(
-    `update phone_online_orders
+    `update ${tables.orders}
      set provider = $2,
        order_number = $3,
        phone_model = $4,
@@ -657,11 +680,12 @@ app.patch("/api/phone-online-orders/:id", requireOnlineOrdersAuth, async (req, r
 });
 
 app.patch("/api/phone-online-orders/:id/shipped", requireOnlineOrdersAuth, async (req, res) => {
+  const tables = onlineOrderTables(req);
   const id = Number(req.params.id);
   if (!id) return res.status(400).json({ error: "Order ID is required." });
   const trackingInfo = String(req.body?.tracking_info || "").trim();
   const result = await pool.query(
-    `update phone_online_orders
+    `update ${tables.orders}
      set status = 'Shipped',
        tracking_info = coalesce(nullif($2,''), tracking_info),
        shipped_at = coalesce(shipped_at, now()),
@@ -676,12 +700,13 @@ app.patch("/api/phone-online-orders/:id/shipped", requireOnlineOrdersAuth, async
 });
 
 app.patch("/api/phone-online-orders/:id/received", requireOnlineOrdersAuth, async (req, res) => {
+  const tables = onlineOrderTables(req);
   const id = Number(req.params.id);
   if (!id) return res.status(400).json({ error: "Order ID is required." });
   const trackingInfo = String(req.body?.tracking_info || "").trim();
   const receivedInfo = String(req.body?.received_info || "").trim();
   const result = await pool.query(
-    `update phone_online_orders
+    `update ${tables.orders}
      set status = 'Received',
        tracking_info = coalesce(nullif($2,''), tracking_info),
        received_info = coalesce(nullif($3,''), received_info),
@@ -697,11 +722,12 @@ app.patch("/api/phone-online-orders/:id/received", requireOnlineOrdersAuth, asyn
 });
 
 app.patch("/api/phone-online-orders/:id/lost", requireOnlineOrdersAuth, async (req, res) => {
+  const tables = onlineOrderTables(req);
   const id = Number(req.params.id);
   if (!id) return res.status(400).json({ error: "Order ID is required." });
   const lostNote = String(req.body?.lost_note || "").trim();
   const result = await pool.query(
-    `update phone_online_orders
+    `update ${tables.orders}
      set status = 'Lost',
        received_info = coalesce(nullif($2,''), received_info),
        updated_at = now()
@@ -715,6 +741,7 @@ app.patch("/api/phone-online-orders/:id/lost", requireOnlineOrdersAuth, async (r
 });
 
 app.post("/api/phone-online-orders/:id/lines", requireOnlineOrdersAuth, async (req, res) => {
+  const tables = onlineOrderTables(req);
   const id = Number(req.params.id);
   const phoneModel = String(req.body?.phone_model || "").trim();
   const confirmationNumber = String(req.body?.confirmation_number || "").trim();
@@ -727,10 +754,10 @@ app.post("/api/phone-online-orders/:id/lines", requireOnlineOrdersAuth, async (r
   if (!paymentMethod) return res.status(400).json({ error: "Enter the added line payment method." });
   if (!Number.isFinite(cost) || cost < 0) return res.status(400).json({ error: "Enter a valid line cost." });
   if (!Number.isFinite(quantity) || quantity < 1 || quantity > 100) return res.status(400).json({ error: "Enter a valid line quantity." });
-  const parent = await pool.query("select id from phone_online_orders where id = $1 and status in ('Shipped', 'Received', 'Invoiced')", [id]);
+  const parent = await pool.query(`select id from ${tables.orders} where id = $1 and status in ('Shipped', 'Received', 'Invoiced')`, [id]);
   if (!parent.rows[0]) return res.status(404).json({ error: "Online order not found for adding a line." });
   const result = await pool.query(
-    `insert into phone_online_order_lines
+    `insert into ${tables.lines}
        (online_order_id, phone_model, confirmation_number, payment_method, cost, status)
      select $1, $2, $3, $4, $5::numeric, 'Ordered'
      from generate_series(1, $6::int)
@@ -741,6 +768,7 @@ app.post("/api/phone-online-orders/:id/lines", requireOnlineOrdersAuth, async (r
 });
 
 app.patch("/api/phone-online-order-lines/:id", requireOnlineOrdersAuth, async (req, res) => {
+  const tables = onlineOrderTables(req);
   const id = Number(req.params.id);
   const phoneModel = String(req.body?.phone_model || "").trim();
   const confirmationNumber = String(req.body?.confirmation_number || "").trim();
@@ -752,13 +780,13 @@ app.patch("/api/phone-online-order-lines/:id", requireOnlineOrdersAuth, async (r
   if (!paymentMethod) return res.status(400).json({ error: "Enter the line payment method." });
   if (!Number.isFinite(cost) || cost < 0) return res.status(400).json({ error: "Enter a valid line cost." });
   const result = await pool.query(
-    `update phone_online_order_lines line
+    `update ${tables.lines} line
      set phone_model = $2,
        confirmation_number = $3,
        payment_method = $4,
        cost = $5::numeric,
        updated_at = now()
-     from phone_online_orders orders
+     from ${tables.orders} orders
      where line.id = $1
        and orders.id = line.online_order_id
        and orders.status in ('Shipped', 'Received', 'Invoiced')
@@ -770,16 +798,17 @@ app.patch("/api/phone-online-order-lines/:id", requireOnlineOrdersAuth, async (r
 });
 
 app.patch("/api/phone-online-order-lines/:id/shipped", requireOnlineOrdersAuth, async (req, res) => {
+  const tables = onlineOrderTables(req);
   const id = Number(req.params.id);
   const trackingInfo = String(req.body?.tracking_info || "").trim();
   if (!id) return res.status(400).json({ error: "Line ID is required." });
   if (!trackingInfo) return res.status(400).json({ error: "Enter the tracking number for this added line." });
   const result = await pool.query(
-    `update phone_online_order_lines line
+    `update ${tables.lines} line
      set status = 'Shipped',
        tracking_info = $2,
        updated_at = now()
-     from phone_online_orders orders
+     from ${tables.orders} orders
      where line.id = $1
        and orders.id = line.online_order_id
        and orders.status in ('Shipped', 'Received', 'Invoiced')
@@ -792,15 +821,16 @@ app.patch("/api/phone-online-order-lines/:id/shipped", requireOnlineOrdersAuth, 
 });
 
 app.patch("/api/phone-online-order-lines/:id/received", requireOnlineOrdersAuth, async (req, res) => {
+  const tables = onlineOrderTables(req);
   const id = Number(req.params.id);
   const receivedInfo = String(req.body?.received_info || "").trim();
   if (!id) return res.status(400).json({ error: "Line ID is required." });
   const result = await pool.query(
-    `update phone_online_order_lines line
+    `update ${tables.lines} line
      set status = 'Received',
        received_info = coalesce(nullif($2,''), line.received_info),
        updated_at = now()
-     from phone_online_orders orders
+     from ${tables.orders} orders
      where line.id = $1
        and orders.id = line.online_order_id
        and orders.status in ('Shipped', 'Received', 'Invoiced')
@@ -813,15 +843,16 @@ app.patch("/api/phone-online-order-lines/:id/received", requireOnlineOrdersAuth,
 });
 
 app.patch("/api/phone-online-orders/:id/invoice", requireOnlineOrdersAuth, async (req, res) => {
+  const tables = onlineOrderTables(req);
   const id = Number(req.params.id);
   const label = String(req.body?.label || "").trim();
   if (!id) return res.status(400).json({ error: "Order ID is required." });
   const client = await pool.connect();
   try {
     await client.query("begin");
-    const invoice = await getOrCreateOnlineOrderInvoice(client, label);
+    const invoice = await getOrCreateOnlineOrderInvoice(client, label, tables);
     const result = await client.query(
-      `update phone_online_orders
+      `update ${tables.orders}
        set status = 'Invoiced',
          online_invoice_id = $2,
          updated_at = now()
@@ -846,19 +877,20 @@ app.patch("/api/phone-online-orders/:id/invoice", requireOnlineOrdersAuth, async
 });
 
 app.patch("/api/phone-online-order-lines/:id/invoice", requireOnlineOrdersAuth, async (req, res) => {
+  const tables = onlineOrderTables(req);
   const id = Number(req.params.id);
   const label = String(req.body?.label || "").trim();
   if (!id) return res.status(400).json({ error: "Line ID is required." });
   const client = await pool.connect();
   try {
     await client.query("begin");
-    const invoice = await getOrCreateOnlineOrderInvoice(client, label);
+    const invoice = await getOrCreateOnlineOrderInvoice(client, label, tables);
     const result = await client.query(
-      `update phone_online_order_lines line
+      `update ${tables.lines} line
        set status = 'Invoiced',
          online_invoice_id = $2,
          updated_at = now()
-       from phone_online_orders orders
+       from ${tables.orders} orders
        where line.id = $1
          and orders.id = line.online_order_id
          and orders.status = 'Received'
@@ -882,6 +914,7 @@ app.patch("/api/phone-online-order-lines/:id/invoice", requireOnlineOrdersAuth, 
 });
 
 app.patch("/api/phone-online-order-invoices/:id/sell", requireOnlineOrdersAuth, async (req, res) => {
+  const tables = onlineOrderTables(req);
   const id = Number(req.params.id);
   const salePrice = req.body?.sale_price === "" || req.body?.sale_price === undefined || req.body?.sale_price === null
     ? null
@@ -890,7 +923,7 @@ app.patch("/api/phone-online-order-invoices/:id/sell", requireOnlineOrdersAuth, 
   if (!id) return res.status(400).json({ error: "Invoice ID is required." });
   if (salePrice === null || !Number.isFinite(salePrice) || salePrice < 0) return res.status(400).json({ error: "Enter a valid invoice sale amount." });
   const result = await pool.query(
-    `update phone_online_order_invoices
+    `update ${tables.invoices}
      set status = 'Sold',
        sale_price = $2::numeric,
        sale_notes = $3,
@@ -906,6 +939,7 @@ app.patch("/api/phone-online-order-invoices/:id/sell", requireOnlineOrdersAuth, 
 });
 
 app.patch("/api/phone-online-orders/:id/local-sale", requireOnlineOrdersAuth, async (req, res) => {
+  const tables = onlineOrderTables(req);
   const id = Number(req.params.id);
   const salePrice = req.body?.sale_price === "" || req.body?.sale_price === undefined || req.body?.sale_price === null
     ? null
@@ -914,7 +948,7 @@ app.patch("/api/phone-online-orders/:id/local-sale", requireOnlineOrdersAuth, as
   if (!id) return res.status(400).json({ error: "Order ID is required." });
   if (salePrice === null || !Number.isFinite(salePrice) || salePrice < 0) return res.status(400).json({ error: "Enter a valid local sale amount." });
   const result = await pool.query(
-    `update phone_online_orders
+    `update ${tables.orders}
      set status = 'Sold Local',
        local_sale_price = $2::numeric,
        local_sold_at = now(),
@@ -930,6 +964,9 @@ app.patch("/api/phone-online-orders/:id/local-sale", requireOnlineOrdersAuth, as
 });
 
 app.patch("/api/phone-online-orders/:id/gift-card", requireOnlineOrdersAuth, async (req, res) => {
+  if (req.onlineOrdersOnly) {
+    return res.status(403).json({ error: "Gift cards are only available in the full phone portal." });
+  }
   const id = Number(req.params.id);
   const giftCardValue = req.body?.gift_card_value === "" || req.body?.gift_card_value === undefined || req.body?.gift_card_value === null
     ? null
@@ -2720,6 +2757,90 @@ async function migrate() {
       updated_at timestamptz not null default now()
     );
 
+    create table if not exists online_order_portal_orders (
+      id serial primary key,
+      provider text not null default '',
+      order_number text not null default '',
+      phone_model text not null default '',
+      first_name text not null default '',
+      last_name text not null default '',
+      order_date date not null default current_date,
+      order_placed_at timestamptz not null default now(),
+      placed_at text not null default '',
+      shipping_address text not null default '',
+      cc_used text not null default '',
+      cost numeric(12,2) not null default 0,
+      port_number_cost numeric(12,2) not null default 0,
+      phone_number text not null default '',
+      call_phone_number text not null default '',
+      account_pin text not null default '',
+      email text not null default '',
+      tracking_info text not null default '',
+      received_info text not null default '',
+      status text not null default 'Ordered',
+      shipped_at timestamptz,
+      received_at timestamptz,
+      local_sale_price numeric(12,2),
+      local_sold_at timestamptz,
+      local_sale_notes text not null default '',
+      gift_card_value numeric(12,2),
+      gift_card_at timestamptz,
+      gift_card_location text not null default '',
+      gift_card_notes text not null default '',
+      gift_card_phone_purchase_id integer,
+      online_invoice_id integer,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+
+    create table if not exists online_order_portal_invoices (
+      id serial primary key,
+      label text not null default '',
+      status text not null default 'Open',
+      sale_price numeric(12,2),
+      sale_notes text not null default '',
+      sold_at timestamptz,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+
+    create table if not exists online_order_portal_lines (
+      id serial primary key,
+      online_order_id integer not null references online_order_portal_orders(id) on delete cascade,
+      phone_model text not null default '',
+      confirmation_number text not null default '',
+      payment_method text not null default '',
+      cost numeric(12,2) not null default 0,
+      status text not null default 'Ordered',
+      tracking_info text not null default '',
+      received_info text not null default '',
+      online_invoice_id integer,
+      notes text not null default '',
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+
+    create table if not exists online_order_portal_prepaid_ports (
+      id serial primary key,
+      record_type text not null default 'Port Number',
+      provider text not null default '',
+      port_number text not null default '',
+      account_number text not null default '',
+      prepaid_card text not null default '',
+      pin text not null default '',
+      expiration_month text not null default '',
+      expiration_year text not null default '',
+      cvv text not null default '',
+      cost numeric(12,2) not null default 0,
+      used_amount numeric(12,2),
+      status text not null default 'Available',
+      failed_at timestamptz,
+      used_at timestamptz,
+      notes text not null default '',
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+
     create table if not exists app_migrations (
       migration_key text primary key,
       created_at timestamptz not null default now()
@@ -3064,27 +3185,27 @@ async function getOrCreateWeeklyGiftCardInvoice(client, giftCardAt) {
   return created.rows[0];
 }
 
-async function getOrCreateOnlineOrderInvoice(client, labelInput = "") {
+async function getOrCreateOnlineOrderInvoice(client, labelInput = "", tables = phoneOnlineOrderTables) {
   const label = String(labelInput || "").trim();
   if (label) {
     const existingByLabel = await client.query(
-      "select * from phone_online_order_invoices where status = 'Open' and lower(label) = lower($1) order by id desc limit 1",
+      `select * from ${tables.invoices} where status = 'Open' and lower(label) = lower($1) order by id desc limit 1`,
       [label]
     );
     if (existingByLabel.rows[0]) return existingByLabel.rows[0];
     const createdByLabel = await client.query(
-      "insert into phone_online_order_invoices (label, status) values ($1, 'Open') returning *",
+      `insert into ${tables.invoices} (label, status) values ($1, 'Open') returning *`,
       [label]
     );
     return createdByLabel.rows[0];
   }
   const existing = await client.query(
-    "select * from phone_online_order_invoices where status = 'Open' order by created_at desc, id desc limit 1"
+    `select * from ${tables.invoices} where status = 'Open' order by created_at desc, id desc limit 1`
   );
   if (existing.rows[0]) return existing.rows[0];
   const today = localDateInTimeZone();
   const created = await client.query(
-    "insert into phone_online_order_invoices (label, status) values ($1, 'Open') returning *",
+    `insert into ${tables.invoices} (label, status) values ($1, 'Open') returning *`,
     [`Local Invoice ${today}`]
   );
   return created.rows[0];
@@ -4254,10 +4375,21 @@ function requirePhoneAuth(req, res, next) {
 }
 
 function requireOnlineOrdersAuth(req, res, next) {
-  const session = parseNamedSession(req, "phone_session") || parseNamedSession(req, "online_orders_session");
-  if (!session) return res.status(401).json({ error: "Online orders login required." });
+  const wantsOnlineOrdersOnly = req.get("x-online-orders-only") === "1";
+  const cookieName = wantsOnlineOrdersOnly ? "online_orders_session" : "phone_session";
+  const session = parseNamedSession(req, cookieName);
+  if (!session) {
+    return res.status(401).json({
+      error: wantsOnlineOrdersOnly ? "Online orders login required." : "Phone portal login required.",
+    });
+  }
   req.user = session;
+  req.onlineOrdersOnly = wantsOnlineOrdersOnly;
   next();
+}
+
+function onlineOrderTables(req) {
+  return req.onlineOrdersOnly ? onlineOrdersOnlyTables : phoneOnlineOrderTables;
 }
 
 function parseSession(req) {
