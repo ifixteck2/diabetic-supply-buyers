@@ -36,7 +36,11 @@ if (!process.env.PHONE_ADMIN_USERNAME) {
 }
 
 if (!process.env.ONLINE_ORDERS_USERNAME) {
-  console.warn("Missing ONLINE_ORDERS_USERNAME. Online Orders login will use the phone portal username until this is set.");
+  console.warn("Missing ONLINE_ORDERS_USERNAME. Online Orders login is disabled until this is set.");
+}
+
+if (!process.env.ONLINE_ORDERS_PASSWORD_HASH && !process.env.ONLINE_ORDERS_PASSWORD) {
+  console.warn("Missing ONLINE_ORDERS_PASSWORD_HASH. ONLINE_ORDERS_PASSWORD fallback is also not set.");
 }
 
 const pool = new Pool({
@@ -113,11 +117,12 @@ app.get("/api/phone-me", requirePhoneAuth, (req, res) => {
 
 app.post("/api/online-orders-login", async (req, res) => {
   const { username, password, remember } = req.body || {};
-  const configuredUsername = process.env.ONLINE_ORDERS_USERNAME || process.env.PHONE_ADMIN_USERNAME;
-  const passwordPrefix = process.env.ONLINE_ORDERS_PASSWORD_HASH || process.env.ONLINE_ORDERS_PASSWORD ? "ONLINE_ORDERS" : "PHONE_ADMIN";
+  if (!process.env.ONLINE_ORDERS_USERNAME || (!process.env.ONLINE_ORDERS_PASSWORD_HASH && !process.env.ONLINE_ORDERS_PASSWORD)) {
+    return res.status(503).json({ error: "Online Orders login needs its own username and password set on the server." });
+  }
   const ok =
-    username === configuredUsername &&
-    (await verifyNamedPassword(String(password || ""), passwordPrefix));
+    username === process.env.ONLINE_ORDERS_USERNAME &&
+    (await verifyNamedPassword(String(password || ""), "ONLINE_ORDERS"));
 
   if (!ok) return res.status(401).json({ error: "Invalid online orders login." });
 
