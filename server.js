@@ -95,6 +95,9 @@ app.get("/api/me", requireAuth, (req, res) => {
 
 app.post("/api/phone-login", async (req, res) => {
   const { username, password, remember } = req.body || {};
+  if (process.env.ONLINE_ORDERS_USERNAME && username === process.env.ONLINE_ORDERS_USERNAME) {
+    return res.status(401).json({ error: "Invalid phone portal login." });
+  }
   const ok =
     username === process.env.PHONE_ADMIN_USERNAME &&
     (await verifyNamedPassword(String(password || ""), "PHONE_ADMIN"));
@@ -147,6 +150,9 @@ app.get("/online-orders.html", (_req, res) => {
       '<body class="admin-body phone-admin-body online-orders-only-body" data-portal="online-orders">'
     )
     .replace(/Phone Portal<small>Private records<\/small>/g, "Online Orders<small>Private records</small>")
+    .replace(/Phone Flipping/g, "Online Orders")
+    .replace(/<span class="mark phone-mark">PF<\/span>/g, '<span class="mark phone-mark">OO</span>')
+    .replace(/Back To Phone Portal/g, "Log Out")
     .replace("<title>Phone Flipping Portal</title>", "<title>Online Orders Portal</title>");
   res.type("html").send(html);
 });

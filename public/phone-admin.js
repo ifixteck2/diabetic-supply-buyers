@@ -107,12 +107,15 @@ async function logoutPhonePortal() {
 
 async function showPhoneApp() {
   $("phoneLogin").classList.add("hidden");
-  $("phoneApp").classList.remove("hidden");
   if (onlineOrdersOnly) {
+    document.querySelector(".admin-shell").classList.add("hidden");
+    $("onlineOrdersPage").classList.remove("hidden");
+    $("phoneApp").classList.remove("hidden");
+    openOnlineOrderTab("add");
     await refreshOnlineOrdersOnlyPortal();
-    openOnlineOrdersPage();
     return;
   }
+  $("phoneApp").classList.remove("hidden");
   await refreshPhonePortal();
 }
 
