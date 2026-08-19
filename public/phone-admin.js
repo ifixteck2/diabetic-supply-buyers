@@ -3217,7 +3217,8 @@ function renderGiftCardRows(rows, cardNumbers, options = {}) {
               ${row.gift_card_photo_data_url ? `<button class="gift-card-thumb" onclick="openGiftCardImage(${row.id}, 'card')" title="View gift card"><img src="${escapeAttr(row.gift_card_photo_data_url)}" alt="Gift card"></button>` : `<span class="gift-card-empty">No card photo</span>`}
               ${row.gift_card_receipt_data_url ? (receiptIsPdf ? `<button class="gift-card-thumb gift-card-pdf" onclick="openGiftCardImage(${row.id}, 'receipt')" title="View receipt PDF">PDF<br>Receipt</button>` : `<button class="gift-card-thumb" onclick="openGiftCardImage(${row.id}, 'receipt')" title="View receipt"><img src="${escapeAttr(row.gift_card_receipt_data_url)}" alt="Receipt"></button>`) : `<span class="gift-card-empty">No receipt</span>`}
             </div>
-            ${options.readonly ? "" : `<label class="mini-file">Card<input id="${cardPhotoId}" type="file" accept="image/*"></label>
+            ${options.readonly ? "" : `<button class="mini-btn" onclick="editGiftCard(${row.id})">Edit</button>
+            <label class="mini-file">Card<input id="${cardPhotoId}" type="file" accept="image/*"></label>
             <label class="mini-file">Receipt<input id="${receiptPhotoId}" type="file" accept="image/*,.pdf,application/pdf"></label>
             <button class="mini-btn" onclick="saveGiftCardDetails(${row.id}, '${escapeAttr(fieldContext)}')">Save</button>`}
           </div>
@@ -3478,6 +3479,38 @@ async function addManualGiftCard() {
   await loadPhoneInvoices();
   openPhoneTab("giftCards");
 }
+
+window.editGiftCard = async (id) => {
+  const row = phoneInvoices.flatMap((invoice) => invoice.gift_cards || []).find((entry) => Number(entry.id) === Number(id));
+  if (!row) return alert("Gift card not found.");
+  const model = prompt("Phone model", row.model || "");
+  if (model === null) return false;
+  const totalCost = prompt("Total Phones Cost", String(phoneLineCost(row) || ""));
+  if (totalCost === null) return false;
+  const giftCardValue = prompt("Gift Card Value", String(row.gift_card_value || ""));
+  if (giftCardValue === null) return false;
+  const giftCardDate = prompt("Gift Card Date", row.gift_card_at ? localDateKey(giftCardReportDate(row)) : localTodayInput());
+  if (giftCardDate === null) return false;
+  const location = prompt("Location", row.gift_card_location || "");
+  if (location === null) return false;
+  const notes = prompt("Notes", row.notes || "");
+  if (notes === null) return false;
+  const result = await api(`/api/phone-gift-cards/${id}`, {
+    method: "PATCH",
+    body: {
+      model: model.trim(),
+      total_cost: Number(totalCost || 0),
+      gift_card_value: Number(giftCardValue || 0),
+      gift_card_at: giftCardDate.trim(),
+      gift_card_location: location.trim(),
+      notes: notes.trim(),
+    },
+  });
+  if (!result?.ok) return alert(result?.error || "Could not edit gift card.");
+  await loadPhoneInvoices();
+  openPhoneTab("giftCards");
+  return true;
+};
 
 async function closeCurrentGiftCardBatch() {
   const rows = phoneInvoices.flatMap((invoice) => invoice.gift_cards || []);

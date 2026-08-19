@@ -1585,6 +1585,37 @@ app.post("/api/phone-gift-cards", requirePhoneAuth, async (req, res) => {
   }
 });
 
+app.patch("/api/phone-gift-cards/:id", requirePhoneAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  const input = req.body || {};
+  const model = String(input.model || "").trim();
+  const totalCost = Number(input.total_cost || 0);
+  const giftCardValue = Number(input.gift_card_value || 0);
+  const giftCardAt = input.gift_card_at || localDateInTimeZone();
+  const giftCardLocation = String(input.gift_card_location || "").trim();
+  const notes = String(input.notes || "").trim();
+  if (!id) return res.status(400).json({ error: "Gift card ID is required." });
+  if (!model) return res.status(400).json({ error: "Enter the phone model." });
+  if (!Number.isFinite(totalCost) || totalCost < 0) return res.status(400).json({ error: "Enter the total phone cost." });
+  if (!Number.isFinite(giftCardValue) || giftCardValue < 0) return res.status(400).json({ error: "Enter the gift card value." });
+  const result = await pool.query(
+    `update phone_purchases
+     set model = $2,
+       purchase_date = coalesce($3::date, purchase_date),
+       cost_each = case when quantity > 0 then ($4::numeric / quantity) else $4::numeric end,
+       gift_card_value = $5::numeric,
+       gift_card_at = coalesce($3::date, purchase_date)::date + time '12:00',
+       gift_card_location = $6,
+       notes = $7
+     where id = $1
+       and gift_card_at is not null
+     returning *`,
+    [id, model, giftCardAt || null, totalCost, giftCardValue, giftCardLocation, notes]
+  );
+  if (!result.rows[0]) return res.status(404).json({ error: "Gift card record not found." });
+  res.json({ ok: true, purchase: result.rows[0] });
+});
+
 app.post("/api/phone-gift-cards/closeout", requirePhoneAuth, async (req, res) => {
   const input = req.body || {};
   const requestedLabel = String(input.label || "").trim();
