@@ -1,0 +1,140 @@
+.monthly-tracker-panel .panel-head {
+  align-items: flex-end;
+}
+
+.monthly-tracker-form {
+  margin: 14px 0 18px;
+}
+
+.monthly-tracker-stats {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.monthly-tracker-summary {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 14px 0;
+}
+
+.monthly-tracker-summary div,
+.monthly-tracker-ledger {
+  background: #fff;
+  border: 1px solid var(--phone-line);
+  border-radius: 12px;
+  box-shadow: 0 8px 18px rgba(31, 42, 58, .06);
+}
+
+.monthly-tracker-summary div {
+  display: grid;
+  gap: 5px;
+  padding: 14px;
+}
+
+.monthly-tracker-summary span {
+  color: var(--phone-muted);
+  font-size: 11px;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.monthly-tracker-summary strong {
+  font-size: 22px;
+}
+
+.monthly-tracker-summary small {
+  color: var(--phone-muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.monthly-tracker-ledger {
+  padding: 14px;
+}
+
+.monthly-tracker-ledger-head {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.monthly-tracker-ledger-head h3 {
+  font-size: 20px;
+  margin: 0;
+}
+
+.monthly-tracker-ledger-head span {
+  background: #e9f0f7;
+  border: 1px solid var(--phone-line);
+  border-radius: 999px;
+  color: #1f3b68;
+  font-size: 12px;
+  font-weight: 950;
+  padding: 7px 10px;
+}
+
+.monthly-tracker-table {
+  min-width: 980px;
+}
+
+.monthly-tracker-table td:nth-child(6),
+.monthly-tracker-table td:nth-child(7),
+.monthly-tracker-table th:nth-child(6),
+.monthly-tracker-table th:nth-child(7) {
+  text-align: right;
+}
+
+.monthly-tracker-table td strong,
+.monthly-tracker-table td span,
+.monthly-tracker-table td em {
+  display: block;
+}
+
+.monthly-tracker-table td span,
+.monthly-tracker-table td em {
+  color: var(--phone-muted);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 800;
+  margin-top: 3px;
+}
+
+.monthly-type {
+  border-radius: 999px;
+  display: inline-flex !important;
+  font-size: 11px;
+  font-weight: 950;
+  padding: 6px 9px;
+  text-transform: uppercase;
+}
+
+.monthly-type.phone-profit,
+.monthly-type.cash-in {
+  background: #dff4e8;
+  color: #12693c;
+}
+
+.monthly-type.expense,
+.monthly-type.cash-out {
+  background: #ffe3e8;
+  color: #a32035;
+}
+
+@media (max-width: 980px) {
+  .monthly-tracker-stats,
+  .monthly-tracker-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 620px) {
+  .monthly-tracker-stats,
+  .monthly-tracker-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .monthly-tracker-panel .panel-head {
+    align-items: flex-start;
+  }
+}

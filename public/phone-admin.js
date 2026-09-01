@@ -13,6 +13,7 @@ let phoneHoldingItems = [];
 let phoneOnlineOrders = [];
 let phoneOnlineOrderInvoices = [];
 let prepaidPortRecords = [];
+let monthlyTrackerEntries = [];
 let editingPhonePurchaseId = null;
 let editingOnlineOrderId = null;
 
@@ -24,12 +25,17 @@ async function initPhonePortal() {
   $("manualGiftCardDate").value = localTodayInput();
   $("directHoldingDate").value = localTodayInput();
   $("onlineOrderDate").value = localTodayInput();
+  if ($("monthlyTrackerMonth")) $("monthlyTrackerMonth").value = localMonthInput();
+  if ($("monthlyTrackerDate")) $("monthlyTrackerDate").value = localTodayInput();
   bindPhoneEvents();
   const me = await api(onlineOrdersOnly ? "/api/online-orders-me" : "/api/phone-me", { silent: true });
   if (me?.ok) showPhoneApp();
 }
 
 function bindPhoneEvents() {
+  if (!onlineOrdersOnly) {
+    document.querySelectorAll("[data-online-only]").forEach((element) => element.classList.add("hidden"));
+  }
   $("phoneLoginBtn").onclick = loginPhonePortal;
   $("phonePassword").addEventListener("keydown", (event) => {
     if (event.key === "Enter") loginPhonePortal();
@@ -53,6 +59,8 @@ function bindPhoneEvents() {
   $("saveSinglePrepaidCardBtn").onclick = saveSinglePrepaidCard;
   $("bulkPrepaidCardsBtn").onclick = saveBulkPrepaidCards;
   $("refreshPrepaidPortsBtn").onclick = loadPrepaidPorts;
+  if ($("saveMonthlyTrackerBtn")) $("saveMonthlyTrackerBtn").onclick = saveMonthlyTrackerEntry;
+  if ($("monthlyTrackerMonth")) $("monthlyTrackerMonth").onchange = loadMonthlyTracker;
   $("cancelOnlineOrderEditBtn").onclick = () => resetOnlineOrderForm();
   $("saveOnlineOrderEditBtn").onclick = saveOnlineOrderEdit;
   $("editOnlineOrderProvider").addEventListener("change", toggleEditOnlineOrderProvider);
@@ -134,6 +142,7 @@ async function refreshOnlineOrdersOnlyPortal() {
   await loadPhoneOnlineOrders();
   await loadPhoneOnlineOrderInvoices();
   await loadPrepaidPorts();
+  await loadMonthlyTracker();
 }
 
 async function loadAtlasPrices() {
@@ -184,6 +193,14 @@ async function loadPrepaidPorts() {
   renderPrepaidPorts();
 }
 
+async function loadMonthlyTracker() {
+  if (!onlineOrdersOnly || !$("monthlyTrackerMonth")) return;
+  const month = $("monthlyTrackerMonth").value || localMonthInput();
+  const result = await api(`/api/online-monthly-tracker?month=${encodeURIComponent(month)}`, { silent: true });
+  monthlyTrackerEntries = result?.entries || [];
+  renderMonthlyTracker();
+}
+
 function openPhoneTab(name) {
   if (onlineOrdersOnly) {
     openOnlineOrdersPage();
@@ -231,7 +248,7 @@ function closeOnlineOrdersPage(tabName = "dashboard") {
 }
 
 function openOnlineOrderTab(name) {
-  const panelNames = { add: "Add", stats: "Stats", pending: "Pending", transit: "Transit", stock: "Stock", invoices: "Invoices", prepaid: "Prepaid", addresses: "Addresses", lost: "Lost", completed: "Completed" };
+  const panelNames = { add: "Add", stats: "Stats", tracker: "Tracker", pending: "Pending", transit: "Transit", stock: "Stock", invoices: "Invoices", prepaid: "Prepaid", addresses: "Addresses", lost: "Lost", completed: "Completed" };
   const selected = panelNames[name] ? name : "add";
   document.querySelectorAll("[data-online-order-tab]").forEach((button) => {
     button.classList.toggle("active", button.dataset.onlineOrderTab === selected);
@@ -1571,7 +1588,135 @@ function renderOnlineOrders() {
   $("onlineOrdersAddressList").innerHTML = renderOnlineOrderAddressList(filteredOrders);
   $("onlineOrdersLostList").innerHTML = renderOnlineOrderLostList(lost);
   $("onlineOrdersCompletedList").innerHTML = renderOnlineOrderCompactList(completedVisible, "No completed online orders yet.");
+  renderMonthlyTracker();
 }
+
+async function saveMonthlyTrackerEntry() {
+  const result = await api("/api/online-monthly-tracker", {
+    method: "POST",
+    body: {
+      month: $("monthlyTrackerMonth").value || localMonthInput(),
+      entry_type: $("monthlyTrackerType").value,
+      entry_date: $("monthlyTrackerDate").value,
+      category: $("monthlyTrackerCategory").value.trim(),
+      source: $("monthlyTrackerSource").value.trim(),
+      phone_model: $("monthlyTrackerModel").value.trim(),
+      quantity: Number($("monthlyTrackerQuantity").value || 1),
+      amount: Number($("monthlyTrackerAmount").value || 0),
+      description: $("monthlyTrackerDescription").value.trim(),
+      notes: $("monthlyTrackerNotes").value.trim(),
+    },
+  });
+  if (!result?.ok) return status("monthlyTrackerStatus", result?.error || "Could not add tracker entry.", "bad");
+  ["monthlyTrackerAmount", "monthlyTrackerCategory", "monthlyTrackerSource", "monthlyTrackerModel", "monthlyTrackerDescription", "monthlyTrackerNotes"].forEach((id) => { $(id).value = ""; });
+  $("monthlyTrackerQuantity").value = "1";
+  $("monthlyTrackerDate").value = localTodayInput();
+  status("monthlyTrackerStatus", "Tracker entry added.");
+  await loadMonthlyTracker();
+}
+
+function renderMonthlyTracker() {
+  if (!onlineOrdersOnly || !$("monthlyTrackerStats")) return;
+  const month = $("monthlyTrackerMonth")?.value || localMonthInput();
+  const entries = monthlyTrackerEntries.slice().sort((a, b) => new Date(b.entry_date || 0) - new Date(a.entry_date || 0) || Number(b.id || 0) - Number(a.id || 0));
+  const totals = monthlyTrackerTotals(entries);
+  const orderSnapshot = monthlyTrackerOrderSnapshot(month);
+  const accountingProfit = totals.phoneProfit - totals.expense;
+  const cashFlow = totals.cashIn - totals.cashOut;
+  const netPosition = accountingProfit + cashFlow;
+  $("monthlyTrackerStats").innerHTML = `
+    <div class="stat"><span>Phone Profit</span><strong>${money(totals.phoneProfit)}</strong><em>manual profit entries</em></div>
+    <div class="stat"><span>Expenses</span><strong>${money(totals.expense)}</strong><em>${totals.expenseCount} expense entries</em></div>
+    <div class="stat"><span>Cash In</span><strong>${money(totals.cashIn)}</strong><em>money received</em></div>
+    <div class="stat"><span>Cash Out</span><strong>${money(totals.cashOut)}</strong><em>money spent</em></div>
+    <div class="stat"><span>Net Position</span><strong class="${netPosition >= 0 ? "profit-good" : "profit-bad"}">${profitMoney(netPosition)}</strong><em>profit + cash flow</em></div>
+    <div class="stat"><span>System Order Profit</span><strong class="${orderSnapshot.profit >= 0 ? "profit-good" : "profit-bad"}">${profitMoney(orderSnapshot.profit)}</strong><em>${orderSnapshot.count} completed order${orderSnapshot.count === 1 ? "" : "s"}</em></div>
+  `;
+  $("monthlyTrackerList").innerHTML = `
+    <section class="monthly-tracker-summary">
+      <div><span>Accounting Profit</span><strong class="${accountingProfit >= 0 ? "profit-good" : "profit-bad"}">${profitMoney(accountingProfit)}</strong><small>Phone profit minus expenses</small></div>
+      <div><span>Cash Flow</span><strong class="${cashFlow >= 0 ? "profit-good" : "profit-bad"}">${profitMoney(cashFlow)}</strong><small>Cash in minus cash out</small></div>
+      <div><span>Orders Cost</span><strong>${money(orderSnapshot.cost)}</strong><small>Completed online orders this month</small></div>
+      <div><span>Orders Collected</span><strong>${money(orderSnapshot.value)}</strong><small>Sold invoice/local sale money</small></div>
+    </section>
+    <section class="monthly-tracker-ledger">
+      <div class="monthly-tracker-ledger-head">
+        <h3>Monthly Ledger</h3>
+        <span>${entries.length} entr${entries.length === 1 ? "y" : "ies"}</span>
+      </div>
+      ${entries.length ? `
+        <div class="table-wrap">
+          <table class="monthly-tracker-table">
+            <thead><tr><th>Date</th><th>Type</th><th>Category</th><th>Phone / Source</th><th>Description</th><th>Qty</th><th>Amount</th><th></th></tr></thead>
+            <tbody>${entries.map(renderMonthlyTrackerRow).join("")}</tbody>
+          </table>
+        </div>
+      ` : `<div class="empty">No monthly tracker entries yet.</div>`}
+    </section>
+  `;
+}
+
+function monthlyTrackerTotals(entries) {
+  return entries.reduce((totals, entry) => {
+    const amount = Number(entry.amount || 0);
+    const type = String(entry.entry_type || "");
+    if (type === "Phone Profit") totals.phoneProfit += amount;
+    if (type === "Expense") {
+      totals.expense += amount;
+      totals.expenseCount += 1;
+    }
+    if (type === "Cash In") totals.cashIn += amount;
+    if (type === "Cash Out") totals.cashOut += amount;
+    return totals;
+  }, { phoneProfit: 0, expense: 0, expenseCount: 0, cashIn: 0, cashOut: 0 });
+}
+
+function monthlyTrackerOrderSnapshot(month) {
+  const monthKey = String(month || localMonthInput());
+  const soldInvoices = phoneOnlineOrderInvoices.filter((invoice) => invoice.status === "Sold" && String(invoice.sold_at || invoice.updated_at || invoice.created_at || "").slice(0, 7) === monthKey);
+  const invoiceCost = soldInvoices.reduce((sum, invoice) => sum + onlineOrderInvoiceCost(invoice), 0);
+  const invoiceValue = soldInvoices.reduce((sum, invoice) => sum + Number(invoice.sale_price || 0), 0);
+  const completedOrders = phoneOnlineOrders.filter((order) => isOnlineOrderCompleted(order) && String(order.local_sold_at || order.gift_card_at || order.updated_at || order.created_at || "").slice(0, 7) === monthKey);
+  const orderCost = completedOrders.reduce((sum, order) => sum + onlineOrderCompletedTotalCost(order), 0);
+  const orderValue = completedOrders.reduce((sum, order) => {
+    if (order.status === "Lost") return sum;
+    if (order.status === "Sold Local") return sum + Number(order.local_sale_price || 0);
+    if (order.status === "Gift Card") return sum + Number(order.gift_card_value || 0);
+    return sum;
+  }, 0);
+  return {
+    count: completedOrders.length + soldInvoices.length,
+    cost: orderCost + invoiceCost,
+    value: orderValue + invoiceValue,
+    profit: orderValue + invoiceValue - orderCost - invoiceCost,
+  };
+}
+
+function renderMonthlyTrackerRow(entry) {
+  const type = String(entry.entry_type || "");
+  const amount = Number(entry.amount || 0);
+  const signedAmount = type === "Expense" || type === "Cash Out" ? -amount : amount;
+  return `
+    <tr>
+      <td>${entry.entry_date ? formatDate(entry.entry_date) : ""}</td>
+      <td><span class="monthly-type ${escapeAttr(type.toLowerCase().replace(/\s+/g, "-"))}">${escapeHtml(type)}</span></td>
+      <td>${escapeHtml(entry.category || "")}</td>
+      <td><strong>${escapeHtml(entry.phone_model || "")}</strong><span>${escapeHtml(entry.source || "")}</span></td>
+      <td>${escapeHtml(entry.description || "")}${entry.notes ? `<em>${escapeHtml(entry.notes)}</em>` : ""}</td>
+      <td>${entry.quantity || 1}</td>
+      <td class="${signedAmount >= 0 ? "profit-good" : "profit-bad"}">${profitMoney(signedAmount)}</td>
+      <td><button class="mini-btn danger" onclick="deleteMonthlyTrackerEntry(${entry.id})">Delete</button></td>
+    </tr>
+  `;
+}
+
+window.deleteMonthlyTrackerEntry = async (id) => {
+  if (!confirm("Delete this tracker entry?")) return false;
+  const result = await api(`/api/online-monthly-tracker/${id}`, { method: "DELETE" });
+  if (!result?.ok) return alert(result?.error || "Could not delete tracker entry.");
+  await loadMonthlyTracker();
+  return true;
+};
 
 async function savePrepaidPort() {
   const result = await api("/api/phone-prepaid-ports", {
@@ -3405,6 +3550,10 @@ function formatDateTime(value) {
 
 function localTodayInput() {
   return localDateKey(new Date());
+}
+
+function localMonthInput() {
+  return localTodayInput().slice(0, 7);
 }
 
 function renderAppleTradeInReference() {

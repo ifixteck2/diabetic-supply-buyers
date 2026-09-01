@@ -60,6 +60,7 @@ const onlineOrdersOnlyTables = {
   lines: "online_order_portal_lines",
   invoices: "online_order_portal_invoices",
   ports: "online_order_portal_prepaid_ports",
+  tracker: "online_order_portal_monthly_tracker",
 };
 
 app.use(express.json({ limit: "25mb" }));
@@ -585,6 +586,58 @@ app.patch("/api/phone-prepaid-ports/:id/status", requireOnlineOrdersAuth, async 
   );
   if (!result.rows[0]) return res.status(404).json({ error: "Prepaid card or port number not found." });
   res.json({ ok: true, port: result.rows[0] });
+});
+
+app.get("/api/online-monthly-tracker", requireOnlineOrdersAuth, async (req, res) => {
+  if (!req.onlineOrdersOnly) return res.status(403).json({ error: "Monthly Tracker is only available in the Online Orders portal." });
+  const month = normalizeMonthInput(req.query.month || localDateInTimeZone().slice(0, 7));
+  const result = await pool.query(
+    `select *
+       from ${onlineOrdersOnlyTables.tracker}
+      where entry_month = ($1::text || '-01')::date
+      order by entry_date desc, created_at desc, id desc`,
+    [month]
+  );
+  res.json({ month, entries: result.rows });
+});
+
+app.post("/api/online-monthly-tracker", requireOnlineOrdersAuth, async (req, res) => {
+  if (!req.onlineOrdersOnly) return res.status(403).json({ error: "Monthly Tracker is only available in the Online Orders portal." });
+  const input = req.body || {};
+  const month = normalizeMonthInput(input.month || localDateInTimeZone().slice(0, 7));
+  const entryType = normalizeTrackerEntryType(input.entry_type || "");
+  const amount = Number(input.amount || 0);
+  const quantity = Math.max(1, Math.floor(Number(input.quantity || 1)));
+  if (!entryType) return res.status(400).json({ error: "Choose profit, expense, cash in, or cash out." });
+  if (!Number.isFinite(amount) || amount < 0) return res.status(400).json({ error: "Enter a valid amount." });
+  const result = await pool.query(
+    `insert into ${onlineOrdersOnlyTables.tracker}
+       (entry_month, entry_date, entry_type, category, source, phone_model, quantity, amount, description, notes)
+     values (($1::text || '-01')::date, coalesce($2::date, current_date), $3, $4, $5, $6, $7, $8::numeric, $9, $10)
+     returning *`,
+    [
+      month,
+      String(input.entry_date || "").trim() || null,
+      entryType,
+      String(input.category || "").trim(),
+      String(input.source || "").trim(),
+      String(input.phone_model || "").trim(),
+      quantity,
+      amount,
+      String(input.description || "").trim(),
+      String(input.notes || "").trim(),
+    ]
+  );
+  res.json({ ok: true, entry: result.rows[0] });
+});
+
+app.delete("/api/online-monthly-tracker/:id", requireOnlineOrdersAuth, async (req, res) => {
+  if (!req.onlineOrdersOnly) return res.status(403).json({ error: "Monthly Tracker is only available in the Online Orders portal." });
+  const id = Number(req.params.id);
+  if (!id) return res.status(400).json({ error: "Tracker entry ID is required." });
+  const result = await pool.query(`delete from ${onlineOrdersOnlyTables.tracker} where id = $1 returning *`, [id]);
+  if (!result.rows[0]) return res.status(404).json({ error: "Tracker entry not found." });
+  res.json({ ok: true, entry: result.rows[0] });
 });
 
 app.post("/api/phone-online-orders", requireOnlineOrdersAuth, async (req, res) => {
@@ -2883,6 +2936,22 @@ async function migrate() {
       updated_at timestamptz not null default now()
     );
 
+    create table if not exists online_order_portal_monthly_tracker (
+      id serial primary key,
+      entry_month date not null default date_trunc('month', current_date)::date,
+      entry_date date not null default current_date,
+      entry_type text not null default 'Phone Profit',
+      category text not null default '',
+      source text not null default '',
+      phone_model text not null default '',
+      quantity integer not null default 1,
+      amount numeric(12,2) not null default 0,
+      description text not null default '',
+      notes text not null default '',
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+
     create table if not exists app_migrations (
       migration_key text primary key,
       created_at timestamptz not null default now()
@@ -4432,6 +4501,23 @@ function requireOnlineOrdersAuth(req, res, next) {
 
 function onlineOrderTables(req) {
   return req.onlineOrdersOnly ? onlineOrdersOnlyTables : phoneOnlineOrderTables;
+}
+
+function normalizeMonthInput(value) {
+  const match = String(value || "").match(/^(\d{4})-(\d{2})/);
+  if (!match) return localDateInTimeZone().slice(0, 7);
+  const month = Number(match[2]);
+  if (month < 1 || month > 12) return localDateInTimeZone().slice(0, 7);
+  return `${match[1]}-${match[2]}`;
+}
+
+function normalizeTrackerEntryType(value) {
+  const text = String(value || "").trim().toLowerCase();
+  if (text === "phone profit" || text === "profit") return "Phone Profit";
+  if (text === "expense" || text === "expenses") return "Expense";
+  if (text === "cash in" || text === "income") return "Cash In";
+  if (text === "cash out" || text === "cashout") return "Cash Out";
+  return "";
 }
 
 function parseSession(req) {
