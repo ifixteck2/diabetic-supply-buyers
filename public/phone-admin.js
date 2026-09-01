@@ -1669,11 +1669,13 @@ async function saveOnlinePayable() {
       due_date: $("onlinePayableDueDate").value,
       category: $("onlinePayableCategory").value.trim(),
       payment_method: $("onlinePayableMethod").value.trim(),
+      is_monthly: $("onlinePayableMonthly").checked,
       notes: $("onlinePayableNotes").value.trim(),
     },
   });
   if (!result?.ok) return status("onlinePayableStatus", result?.error || "Could not add this payment.", "bad");
   ["onlinePayableTitle", "onlinePayableAmount", "onlinePayableCategory", "onlinePayableMethod", "onlinePayableNotes"].forEach((id) => { $(id).value = ""; });
+  $("onlinePayableMonthly").checked = false;
   $("onlinePayableDueDate").value = localTodayInput();
   status("onlinePayableStatus", "Added to pay list.");
   await loadOnlinePayables();
@@ -1683,18 +1685,26 @@ function renderOnlinePayables() {
   if (!onlineOrdersOnly || !$("onlinePayablesList")) return;
   const unpaid = onlinePayables.filter((item) => item.status !== "Paid");
   const paid = onlinePayables.filter((item) => item.status === "Paid");
+  const monthlyBills = onlinePayables.filter((item) => item.is_monthly);
+  const unpaidOneTime = unpaid.filter((item) => !item.is_monthly);
   const unpaidTotal = unpaid.reduce((sum, item) => sum + Number(item.amount || 0), 0);
   const paidTotal = paid.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  const monthlyTotal = monthlyBills.reduce((sum, item) => sum + Number(item.amount || 0), 0);
   const overdue = unpaid.filter((item) => item.due_date && String(item.due_date).slice(0, 10) < localTodayInput());
   $("onlinePayableStats").innerHTML = `
     <div class="stat"><span>Need To Pay</span><strong>${money(unpaidTotal)}</strong><em>${unpaid.length} unpaid item${unpaid.length === 1 ? "" : "s"}</em></div>
     <div class="stat"><span>Already Paid</span><strong class="profit-good">${money(paidTotal)}</strong><em>${paid.length} paid item${paid.length === 1 ? "" : "s"}</em></div>
+    <div class="stat"><span>Monthly Bills</span><strong>${money(monthlyTotal)}</strong><em>${monthlyBills.length} recurring item${monthlyBills.length === 1 ? "" : "s"}</em></div>
     <div class="stat"><span>Past Due</span><strong class="${overdue.length ? "profit-bad" : "profit-good"}">${overdue.length}</strong><em>${overdue.length ? money(overdue.reduce((sum, item) => sum + Number(item.amount || 0), 0)) : "nothing overdue"}</em></div>
   `;
   $("onlinePayablesList").innerHTML = `
     <section class="payable-table-block">
-      <div class="payable-table-head"><h3>Unpaid</h3><span>${money(unpaidTotal)}</span></div>
-      ${renderPayableTable(unpaid, "Nothing unpaid right now.")}
+      <div class="payable-table-head"><h3>Monthly Bills</h3><span>${money(monthlyTotal)}</span></div>
+      ${renderPayableTable(monthlyBills, "No monthly bills saved yet.")}
+    </section>
+    <section class="payable-table-block">
+      <div class="payable-table-head"><h3>Unpaid One-Time</h3><span>${money(unpaidOneTime.reduce((sum, item) => sum + Number(item.amount || 0), 0))}</span></div>
+      ${renderPayableTable(unpaidOneTime, "Nothing unpaid right now.")}
     </section>
     <section class="payable-table-block">
       <div class="payable-table-head"><h3>Paid</h3><span>${money(paidTotal)}</span></div>
@@ -1720,7 +1730,7 @@ function renderPayableRow(item) {
   return `
     <tr>
       <td>${item.due_date ? formatDate(item.due_date) : ""}</td>
-      <td><strong>${escapeHtml(item.title || "Payment")}</strong>${item.notes ? `<em>${escapeHtml(item.notes)}</em>` : ""}</td>
+      <td><strong>${escapeHtml(item.title || "Payment")}</strong>${item.is_monthly ? `<span class="payable-monthly-pill">Monthly</span>` : ""}${item.notes ? `<em>${escapeHtml(item.notes)}</em>` : ""}</td>
       <td>${escapeHtml(item.category || "")}</td>
       <td>${escapeHtml(item.payment_method || "")}</td>
       <td><strong>${money(item.amount)}</strong></td>

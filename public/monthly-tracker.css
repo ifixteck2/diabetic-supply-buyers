@@ -9,6 +9,16 @@
   padding: 10px;
 }
 
+.online-orders-only-body .online-orders-header-actions .online-order-search,
+.online-orders-only-body #onlineOrdersClearSearchBtn,
+.online-orders-only-body #onlineOrderSearchStatus {
+  display: none;
+}
+
+.online-orders-only-body .online-orders-header-actions {
+  justify-content: flex-end;
+}
+
 .online-order-sub-tab {
   background: #edf4fb;
   border: 1px solid #b8c7d8;
@@ -211,7 +221,7 @@
 }
 
 .payables-stats {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .payables-form {
@@ -274,6 +284,28 @@
 
 .payable-actions {
   white-space: nowrap;
+}
+
+.payable-monthly-check {
+  background: #f6f9fc;
+  border: 1px solid #dbe6f1;
+  border-radius: 10px;
+  display: inline-flex;
+  margin-top: 10px;
+  padding: 10px 12px;
+}
+
+.payable-monthly-pill {
+  background: #e8f3ff;
+  border: 1px solid #bdd9f7;
+  border-radius: 999px;
+  color: #1f5f99;
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 950;
+  margin-left: 8px;
+  padding: 4px 8px;
+  text-transform: uppercase;
 }
 
 .monthly-tracker-ledger-head {

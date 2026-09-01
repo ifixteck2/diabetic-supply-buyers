@@ -668,8 +668,8 @@ app.post("/api/online-payables", requireOnlineOrdersAuth, async (req, res) => {
   if (!Number.isFinite(amount) || amount < 0) return res.status(400).json({ error: "Enter a valid amount." });
   const result = await pool.query(
     `insert into ${onlineOrdersOnlyTables.payables}
-       (due_date, title, category, amount, payment_method, notes)
-     values (coalesce($1::date, current_date), $2, $3, $4::numeric, $5, $6)
+       (due_date, title, category, amount, payment_method, is_monthly, notes)
+     values (coalesce($1::date, current_date), $2, $3, $4::numeric, $5, $6, $7)
      returning *`,
     [
       String(input.due_date || "").trim() || null,
@@ -677,6 +677,7 @@ app.post("/api/online-payables", requireOnlineOrdersAuth, async (req, res) => {
       String(input.category || "").trim(),
       amount,
       String(input.payment_method || "").trim(),
+      Boolean(input.is_monthly),
       String(input.notes || "").trim(),
     ]
   );
@@ -3078,6 +3079,7 @@ async function migrate() {
       category text not null default '',
       amount numeric(12,2) not null default 0,
       payment_method text not null default '',
+      is_monthly boolean not null default false,
       status text not null default 'Unpaid',
       paid_at timestamptz,
       notes text not null default '',
@@ -3288,6 +3290,7 @@ async function migrate() {
     alter table online_order_portal_payables add column if not exists category text not null default '';
     alter table online_order_portal_payables add column if not exists amount numeric(12,2) not null default 0;
     alter table online_order_portal_payables add column if not exists payment_method text not null default '';
+    alter table online_order_portal_payables add column if not exists is_monthly boolean not null default false;
     alter table online_order_portal_payables add column if not exists status text not null default 'Unpaid';
     alter table online_order_portal_payables add column if not exists paid_at timestamptz;
     alter table online_order_portal_payables add column if not exists notes text not null default '';

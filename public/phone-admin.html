@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Phone Flipping Portal</title>
   <link rel="stylesheet" href="/styles.css?v=20260815-soft-phone-theme">
-  <link rel="stylesheet" href="/monthly-tracker.css?v=20260901-payables-tracker">
+  <link rel="stylesheet" href="/monthly-tracker.css?v=20260901-monthly-bills">
 </head>
 <body class="admin-body phone-admin-body">
   <main class="wrap admin-wrap">
@@ -485,6 +485,7 @@
                 <label>Payment Method<input id="onlinePayableMethod" placeholder="Amex, debit, cash, bank"></label>
                 <label>Notes<input id="onlinePayableNotes" placeholder="Optional note"></label>
               </div>
+              <label class="remember payable-monthly-check"><input id="onlinePayableMonthly" type="checkbox"> Monthly bill</label>
               <datalist id="onlinePayableCategoryOptions">
                 <option value="Business"></option>
                 <option value="Personal"></option>
@@ -686,6 +687,6 @@
       </section>
     </div>
   </main>
-  <script src="/phone-admin.js?v=20260901-payables-tracker"></script>
+  <script src="/phone-admin.js?v=20260901-monthly-bills"></script>
 </body>
 </html>
