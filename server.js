@@ -3327,6 +3327,21 @@ async function migrate() {
     select '2026-09-01'::date, entry_date, entry_type, category, source, phone_model, quantity, amount, description, notes
     from seed_rows
     where exists (select 1 from applied);
+    with applied as (
+      insert into app_migrations (migration_key)
+      values ('seed_september_2026_online_bill_payables')
+      on conflict do nothing
+      returning migration_key
+    ), seed_rows(due_date, title, category, amount, payment_method, is_monthly, notes) as (
+      values
+        ('2026-09-01'::date, 'September Monthly Expenses / Budget', 'Monthly Bills', 21150.00::numeric, '', true, 'From September 2026 cash-flow tracker'),
+        ('2026-09-01'::date, 'September Food Budget', 'Food', 800.00::numeric, '', true, 'From September 2026 food budget')
+    )
+    insert into online_order_portal_payables
+      (due_date, title, category, amount, payment_method, is_monthly, notes)
+    select due_date, title, category, amount, payment_method, is_monthly, notes
+    from seed_rows
+    where exists (select 1 from applied);
     alter table phone_invoices add column if not exists sale_price numeric(12,2);
     alter table phone_invoices add column if not exists sale_notes text not null default '';
     alter table phone_invoices add column if not exists status_updated_at timestamptz not null default now();

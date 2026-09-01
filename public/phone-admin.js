@@ -1692,7 +1692,7 @@ function renderOnlinePayables() {
   const monthlyTotal = monthlyBills.reduce((sum, item) => sum + Number(item.amount || 0), 0);
   const overdue = unpaid.filter((item) => item.due_date && String(item.due_date).slice(0, 10) < localTodayInput());
   $("onlinePayableStats").innerHTML = `
-    <div class="stat"><span>Need To Pay</span><strong>${money(unpaidTotal)}</strong><em>${unpaid.length} unpaid item${unpaid.length === 1 ? "" : "s"}</em></div>
+    <div class="stat"><span>Bills To Pay</span><strong>${money(unpaidTotal)}</strong><em>${unpaid.length} unpaid item${unpaid.length === 1 ? "" : "s"}</em></div>
     <div class="stat"><span>Already Paid</span><strong class="profit-good">${money(paidTotal)}</strong><em>${paid.length} paid item${paid.length === 1 ? "" : "s"}</em></div>
     <div class="stat"><span>Monthly Bills</span><strong>${money(monthlyTotal)}</strong><em>${monthlyBills.length} recurring item${monthlyBills.length === 1 ? "" : "s"}</em></div>
     <div class="stat"><span>Past Due</span><strong class="${overdue.length ? "profit-bad" : "profit-good"}">${overdue.length}</strong><em>${overdue.length ? money(overdue.reduce((sum, item) => sum + Number(item.amount || 0), 0)) : "nothing overdue"}</em></div>
@@ -1796,7 +1796,7 @@ function renderMonthlyTracker() {
     <div class="stat"><span>Total Profit</span><strong>${money(totals.phoneProfit)}</strong><em>money made this month</em></div>
     <div class="stat"><span>Total Spent</span><strong>${money(totalSpent)}</strong><em>tracker expenses + paid bills</em></div>
     <div class="stat"><span>Current Cash Flow</span><strong class="${cashFlow >= 0 ? "profit-good" : "profit-bad"}">${money(cashFlow)}</strong><em>profit minus spending</em></div>
-    <div class="stat"><span>Need To Pay</span><strong>${money(unpaidPayables)}</strong><em>unpaid list total</em></div>
+    <div class="stat"><span>Bills To Pay</span><strong>${money(unpaidPayables)}</strong><em>unpaid bill total</em></div>
     <div class="stat"><span>After Bills</span><strong class="${cashAfterPayables >= 0 ? "profit-good" : "profit-bad"}">${money(cashAfterPayables)}</strong><em>cash flow after unpaid</em></div>
     <div class="stat"><span>Break-Even Left</span><strong>${money(breakEvenRemaining)}</strong><em>monthly plan remaining</em></div>
   `;
@@ -1867,7 +1867,7 @@ function renderMonthlyCashFlowReport(entries, totals, orderSnapshot, month) {
           <small>${monthDays(month)} days in ${escapeHtml(monthLabel(month))}</small>
         </div>
         <div class="monthly-report-card monthly-report-totals">
-          <h4>What I Need To Pay</h4>
+          <h4>Bills</h4>
           <div><span>Unpaid Items</span><strong>${unpaidPayables.length}</strong></div>
           <div><span>Unpaid Total</span><strong>${money(unpaidPayablesTotal)}</strong></div>
           <div class="monthly-total-row"><span>Cash After Bills</span><strong class="${cashAfterPayables >= 0 ? "profit-good" : "profit-bad"}">${money(cashAfterPayables)}</strong></div>
