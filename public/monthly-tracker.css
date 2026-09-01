@@ -1,3 +1,33 @@
+.online-order-sub-tabs {
+  background: #fff;
+  border: 1px solid var(--phone-line);
+  border-radius: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+  padding: 10px;
+}
+
+.online-order-sub-tab {
+  background: #edf4fb;
+  border: 1px solid #b8c7d8;
+  border-radius: 9px;
+  color: #1f3b68;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 950;
+  min-height: 36px;
+  padding: 8px 11px;
+}
+
+.online-order-sub-tab:hover,
+.online-order-sub-tab.active {
+  background: #0f766e;
+  border-color: #0f766e;
+  color: #fff;
+}
+
 .monthly-tracker-panel .panel-head {
   align-items: flex-end;
 }

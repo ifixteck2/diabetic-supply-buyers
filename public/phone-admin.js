@@ -16,6 +16,7 @@ let prepaidPortRecords = [];
 let monthlyTrackerEntries = [];
 let editingPhonePurchaseId = null;
 let editingOnlineOrderId = null;
+let onlineOrderSubTab = "add";
 
 initPhonePortal();
 
@@ -81,6 +82,9 @@ function bindPhoneEvents() {
     renderOnlineOrders();
   };
   $("onlineOrderProvider").addEventListener("change", toggleOnlineOrderProvider);
+  document.querySelectorAll("[data-online-main-tab]").forEach((button) => {
+    button.onclick = () => openOnlineMainTab(button.dataset.onlineMainTab);
+  });
   document.querySelectorAll("[data-online-order-tab]").forEach((button) => {
     button.onclick = () => openOnlineOrderTab(button.dataset.onlineOrderTab);
   });
@@ -119,7 +123,7 @@ async function showPhoneApp() {
     document.querySelector(".admin-shell").classList.add("hidden");
     $("onlineOrdersPage").classList.remove("hidden");
     $("phoneApp").classList.remove("hidden");
-    openOnlineOrderTab("add");
+    openOnlineMainTab("tracker");
     await refreshOnlineOrdersOnlyPortal();
     return;
   }
@@ -236,7 +240,7 @@ function openOnlineOrdersPage() {
   document.querySelector(".admin-shell").classList.add("hidden");
   $("onlineOrdersPage").classList.remove("hidden");
   document.querySelectorAll("[data-phone-tab]").forEach((button) => button.classList.toggle("active", button.dataset.phoneTab === "onlineOrders"));
-  openOnlineOrderTab("add");
+  openOnlineMainTab(onlineOrdersOnly ? "tracker" : "orders");
   renderOnlineOrders();
 }
 
@@ -248,8 +252,10 @@ function closeOnlineOrdersPage(tabName = "dashboard") {
 }
 
 function openOnlineOrderTab(name) {
-  const panelNames = { add: "Add", stats: "Stats", tracker: "Tracker", pending: "Pending", transit: "Transit", stock: "Stock", invoices: "Invoices", prepaid: "Prepaid", addresses: "Addresses", lost: "Lost", completed: "Completed" };
+  const panelNames = { add: "Add", stats: "Stats", pending: "Pending", transit: "Transit", stock: "Stock", invoices: "Invoices", prepaid: "Prepaid", addresses: "Addresses", lost: "Lost", completed: "Completed" };
   const selected = panelNames[name] ? name : "add";
+  onlineOrderSubTab = selected;
+  openOnlineMainTab("orders", { keepSubTab: true });
   document.querySelectorAll("[data-online-order-tab]").forEach((button) => {
     button.classList.toggle("active", button.dataset.onlineOrderTab === selected);
   });
@@ -257,6 +263,26 @@ function openOnlineOrderTab(name) {
     const panel = $(`onlineOrders${panelName}Panel`);
     if (panel) panel.classList.toggle("hidden", tabName !== selected);
   });
+}
+
+function openOnlineMainTab(name, options = {}) {
+  const selected = name === "tracker" && onlineOrdersOnly ? "tracker" : "orders";
+  document.querySelectorAll("[data-online-main-tab]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.onlineMainTab === selected);
+  });
+  const subTabs = document.querySelector(".online-order-sub-tabs");
+  if (subTabs) subTabs.classList.toggle("hidden", selected !== "orders");
+  const trackerPanel = $("onlineOrdersTrackerPanel");
+  if (trackerPanel) trackerPanel.classList.toggle("hidden", selected !== "tracker");
+  if (selected === "tracker") {
+    ["Add", "Stats", "Pending", "Transit", "Stock", "Invoices", "Prepaid", "Addresses", "Lost", "Completed"].forEach((panelName) => {
+      const panel = $(`onlineOrders${panelName}Panel`);
+      if (panel) panel.classList.add("hidden");
+    });
+    renderMonthlyTracker();
+    return;
+  }
+  if (!options.keepSubTab) openOnlineOrderTab(onlineOrderSubTab);
 }
 
 function handlePriceCheckerChange(event) {

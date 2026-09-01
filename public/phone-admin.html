@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Phone Flipping Portal</title>
   <link rel="stylesheet" href="/styles.css?v=20260815-soft-phone-theme">
-  <link rel="stylesheet" href="/monthly-tracker.css?v=20260831-monthly-tracker">
+  <link rel="stylesheet" href="/monthly-tracker.css?v=20260901-online-main-tabs">
 </head>
 <body class="admin-body phone-admin-body">
   <main class="wrap admin-wrap">
@@ -315,22 +315,25 @@
 
         <div class="online-order-workspace">
           <aside class="online-order-left">
-            <nav class="online-order-tabs" aria-label="Online order sections">
-              <button class="online-order-tab active" data-online-order-tab="add">Add Order</button>
-              <button class="online-order-tab" data-online-order-tab="stats">Stats</button>
-              <button class="online-order-tab" data-online-order-tab="tracker" data-online-only="true">Monthly Tracker</button>
-              <button class="online-order-tab" data-online-order-tab="pending">Orders Pending</button>
-              <button class="online-order-tab" data-online-order-tab="transit">In Transit</button>
-              <button class="online-order-tab" data-online-order-tab="stock">In Stock</button>
-              <button class="online-order-tab" data-online-order-tab="invoices">Invoices</button>
-              <button class="online-order-tab" data-online-order-tab="prepaid">Prepaid / Ports</button>
-              <button class="online-order-tab" data-online-order-tab="addresses">Addresses</button>
-              <button class="online-order-tab" data-online-order-tab="lost">Lost Packages</button>
-              <button class="online-order-tab" data-online-order-tab="completed">Completed</button>
+            <nav class="online-order-tabs online-order-main-tabs" aria-label="Main online order sections">
+              <button class="online-order-tab online-order-main-tab active" data-online-main-tab="tracker" data-online-only="true">Monthly Tracker</button>
+              <button class="online-order-tab online-order-main-tab" data-online-main-tab="orders">Online Orders</button>
             </nav>
           </aside>
 
           <div class="online-order-content">
+        <nav class="online-order-sub-tabs" aria-label="Online order details">
+          <button class="online-order-sub-tab active" data-online-order-tab="add">Add Order</button>
+          <button class="online-order-sub-tab" data-online-order-tab="stats">Stats</button>
+          <button class="online-order-sub-tab" data-online-order-tab="pending">Orders Pending</button>
+          <button class="online-order-sub-tab" data-online-order-tab="transit">In Transit</button>
+          <button class="online-order-sub-tab" data-online-order-tab="stock">In Stock</button>
+          <button class="online-order-sub-tab" data-online-order-tab="invoices">Invoices</button>
+          <button class="online-order-sub-tab" data-online-order-tab="prepaid">Prepaid / Ports</button>
+          <button class="online-order-sub-tab" data-online-order-tab="addresses">Addresses</button>
+          <button class="online-order-sub-tab" data-online-order-tab="lost">Lost Packages</button>
+          <button class="online-order-sub-tab" data-online-order-tab="completed">Completed</button>
+        </nav>
         <section id="onlineOrdersAddPanel" class="online-order-tab-panel">
           <section class="panel online-order-entry-panel online-order-add-panel">
             <div class="panel-head">
@@ -634,6 +637,6 @@
       </section>
     </div>
   </main>
-  <script src="/phone-admin.js?v=20260831-monthly-tracker"></script>
+  <script src="/phone-admin.js?v=20260901-online-main-tabs"></script>
 </body>
 </html>
