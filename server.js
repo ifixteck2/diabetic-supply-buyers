@@ -664,12 +664,16 @@ app.post("/api/online-payables", requireOnlineOrdersAuth, async (req, res) => {
   const input = req.body || {};
   const title = String(input.title || "").trim();
   const amount = Number(input.amount || 0);
+  const longTermMonths = Math.max(0, Math.floor(Number(input.long_term_months || 0)));
+  const longTermBalance = Number(input.long_term_balance || 0);
   if (!title) return res.status(400).json({ error: "Enter what needs to be paid." });
   if (!Number.isFinite(amount) || amount < 0) return res.status(400).json({ error: "Enter a valid amount." });
+  if (!Number.isFinite(longTermMonths) || longTermMonths < 0) return res.status(400).json({ error: "Enter valid long-term months." });
+  if (!Number.isFinite(longTermBalance) || longTermBalance < 0) return res.status(400).json({ error: "Enter a valid long-term balance." });
   const result = await pool.query(
     `insert into ${onlineOrdersOnlyTables.payables}
-       (due_date, title, category, amount, payment_method, is_monthly, notes)
-     values (coalesce($1::date, current_date), $2, $3, $4::numeric, $5, $6, $7)
+       (due_date, title, category, amount, payment_method, is_monthly, long_term_months, long_term_balance, notes)
+     values (coalesce($1::date, current_date), $2, $3, $4::numeric, $5, $6, $7, $8::numeric, $9)
      returning *`,
     [
       String(input.due_date || "").trim() || null,
@@ -678,6 +682,8 @@ app.post("/api/online-payables", requireOnlineOrdersAuth, async (req, res) => {
       amount,
       String(input.payment_method || "").trim(),
       Boolean(input.is_monthly),
+      longTermMonths,
+      longTermBalance,
       String(input.notes || "").trim(),
     ]
   );
@@ -3080,6 +3086,8 @@ async function migrate() {
       amount numeric(12,2) not null default 0,
       payment_method text not null default '',
       is_monthly boolean not null default false,
+      long_term_months integer not null default 0,
+      long_term_balance numeric(12,2) not null default 0,
       status text not null default 'Unpaid',
       paid_at timestamptz,
       notes text not null default '',
@@ -3291,6 +3299,8 @@ async function migrate() {
     alter table online_order_portal_payables add column if not exists amount numeric(12,2) not null default 0;
     alter table online_order_portal_payables add column if not exists payment_method text not null default '';
     alter table online_order_portal_payables add column if not exists is_monthly boolean not null default false;
+    alter table online_order_portal_payables add column if not exists long_term_months integer not null default 0;
+    alter table online_order_portal_payables add column if not exists long_term_balance numeric(12,2) not null default 0;
     alter table online_order_portal_payables add column if not exists status text not null default 'Unpaid';
     alter table online_order_portal_payables add column if not exists paid_at timestamptz;
     alter table online_order_portal_payables add column if not exists notes text not null default '';
@@ -3332,14 +3342,14 @@ async function migrate() {
       values ('seed_september_2026_online_bill_payables')
       on conflict do nothing
       returning migration_key
-    ), seed_rows(due_date, title, category, amount, payment_method, is_monthly, notes) as (
+    ), seed_rows(due_date, title, category, amount, payment_method, is_monthly, long_term_months, long_term_balance, notes) as (
       values
-        ('2026-09-01'::date, 'September Monthly Expenses / Budget', 'Monthly Bills', 21150.00::numeric, '', true, 'From September 2026 cash-flow tracker'),
-        ('2026-09-01'::date, 'September Food Budget', 'Food', 800.00::numeric, '', true, 'From September 2026 food budget')
+        ('2026-09-01'::date, 'September Monthly Expenses / Budget', 'Monthly Bills', 21150.00::numeric, '', true, 0, 0.00::numeric, 'From September 2026 cash-flow tracker'),
+        ('2026-09-01'::date, 'September Food Budget', 'Food', 800.00::numeric, '', true, 0, 0.00::numeric, 'From September 2026 food budget')
     )
     insert into online_order_portal_payables
-      (due_date, title, category, amount, payment_method, is_monthly, notes)
-    select due_date, title, category, amount, payment_method, is_monthly, notes
+      (due_date, title, category, amount, payment_method, is_monthly, long_term_months, long_term_balance, notes)
+    select due_date, title, category, amount, payment_method, is_monthly, long_term_months, long_term_balance, notes
     from seed_rows
     where exists (select 1 from applied);
     with applied as (
@@ -3352,23 +3362,23 @@ async function migrate() {
        where exists (select 1 from applied)
          and status = 'Unpaid'
          and title in ('September Monthly Expenses / Budget', 'September Food Budget')
-    ), seed_rows(due_date, title, category, amount, payment_method, is_monthly, notes) as (
+    ), seed_rows(due_date, title, category, amount, payment_method, is_monthly, long_term_months, long_term_balance, notes) as (
       values
-        ('2026-09-01'::date, 'Jose Ordoñez', 'Long-Term Balance', 10000.00::numeric, '', true, 'Monthly for 18 months. Long-term balance: $180,000.'),
-        ('2026-09-01'::date, 'Rent', 'Rent', 2950.00::numeric, '', true, 'Monthly rent'),
-        ('2026-09-01'::date, 'Cesar Torres', 'Long-Term Balance', 2000.00::numeric, '', true, 'Monthly for 24 months. Long-term balance: $48,000.'),
-        ('2026-09-01'::date, 'Mostafa', 'Long-Term Balance', 1500.00::numeric, '', true, 'Monthly for 24 months. Long-term balance: $36,000.'),
-        ('2026-09-01'::date, 'Bravo Rent', 'Rent', 1200.00::numeric, '', true, 'Monthly bill'),
-        ('2026-09-01'::date, 'Food', 'Food', 800.00::numeric, '', true, 'Monthly food budget'),
-        ('2026-09-01'::date, 'Car + Insurance', 'Car', 750.00::numeric, '', true, 'Monthly bill'),
-        ('2026-09-01'::date, 'Advertising', 'Advertising', 750.00::numeric, '', true, '$25/day advertising budget'),
-        ('2026-09-01'::date, 'Barber', 'Long-Term Balance', 500.00::numeric, '', true, 'Monthly for 8 months. Long-term balance: $4,000.'),
-        ('2026-09-01'::date, 'Luis Rey', 'Long-Term Balance', 500.00::numeric, '', true, 'Monthly for 13 months. Long-term balance: $6,500.'),
-        ('2026-09-01'::date, 'Phone Bills', 'Phone Bills', 200.00::numeric, '', true, 'Monthly phone bills')
+        ('2026-09-01'::date, 'Jose Ordoñez', 'Long-Term Balance', 10000.00::numeric, '', true, 18, 180000.00::numeric, 'Monthly for 18 months. Long-term balance: $180,000.'),
+        ('2026-09-01'::date, 'Rent', 'Rent', 2950.00::numeric, '', true, 0, 0.00::numeric, 'Monthly rent'),
+        ('2026-09-01'::date, 'Cesar Torres', 'Long-Term Balance', 2000.00::numeric, '', true, 24, 48000.00::numeric, 'Monthly for 24 months. Long-term balance: $48,000.'),
+        ('2026-09-01'::date, 'Mostafa', 'Long-Term Balance', 1500.00::numeric, '', true, 24, 36000.00::numeric, 'Monthly for 24 months. Long-term balance: $36,000.'),
+        ('2026-09-01'::date, 'Bravo Rent', 'Rent', 1200.00::numeric, '', true, 0, 0.00::numeric, 'Monthly bill'),
+        ('2026-09-01'::date, 'Food', 'Food', 800.00::numeric, '', true, 0, 0.00::numeric, 'Monthly food budget'),
+        ('2026-09-01'::date, 'Car + Insurance', 'Car', 750.00::numeric, '', true, 0, 0.00::numeric, 'Monthly bill'),
+        ('2026-09-01'::date, 'Advertising', 'Advertising', 750.00::numeric, '', true, 0, 0.00::numeric, '$25/day advertising budget'),
+        ('2026-09-01'::date, 'Barber', 'Long-Term Balance', 500.00::numeric, '', true, 8, 4000.00::numeric, 'Monthly for 8 months. Long-term balance: $4,000.'),
+        ('2026-09-01'::date, 'Luis Rey', 'Long-Term Balance', 500.00::numeric, '', true, 13, 6500.00::numeric, 'Monthly for 13 months. Long-term balance: $6,500.'),
+        ('2026-09-01'::date, 'Phone Bills', 'Phone Bills', 200.00::numeric, '', true, 0, 0.00::numeric, 'Monthly phone bills')
     )
     insert into online_order_portal_payables
-      (due_date, title, category, amount, payment_method, is_monthly, notes)
-    select due_date, title, category, amount, payment_method, is_monthly, notes
+      (due_date, title, category, amount, payment_method, is_monthly, long_term_months, long_term_balance, notes)
+    select due_date, title, category, amount, payment_method, is_monthly, long_term_months, long_term_balance, notes
     from seed_rows
     where exists (select 1 from applied);
     with applied as (
@@ -3381,9 +3391,32 @@ async function migrate() {
        set category = 'Long-Term Balance',
          notes = 'Monthly for 18 months. Long-term balance: $180,000.',
          is_monthly = true,
+         long_term_months = 18,
+         long_term_balance = 180000.00,
          updated_at = now()
      where exists (select 1 from applied)
        and title = 'Jose Ordoñez';
+    with applied as (
+      insert into app_migrations (migration_key)
+      values ('backfill_long_term_bill_balances')
+      on conflict do nothing
+      returning migration_key
+    ), balances(title, months, balance) as (
+      values
+        ('Jose Ordoñez', 18, 180000.00::numeric),
+        ('Cesar Torres', 24, 48000.00::numeric),
+        ('Mostafa', 24, 36000.00::numeric),
+        ('Luis Rey', 13, 6500.00::numeric),
+        ('Barber', 8, 4000.00::numeric)
+    )
+    update online_order_portal_payables p
+       set category = 'Long-Term Balance',
+         long_term_months = balances.months,
+         long_term_balance = balances.balance,
+         updated_at = now()
+      from balances
+     where exists (select 1 from applied)
+       and p.title = balances.title;
     alter table phone_invoices add column if not exists sale_price numeric(12,2);
     alter table phone_invoices add column if not exists sale_notes text not null default '';
     alter table phone_invoices add column if not exists status_updated_at timestamptz not null default now();

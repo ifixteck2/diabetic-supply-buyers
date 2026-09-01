@@ -1670,11 +1670,13 @@ async function saveOnlinePayable() {
       category: $("onlinePayableCategory").value.trim(),
       payment_method: $("onlinePayableMethod").value.trim(),
       is_monthly: $("onlinePayableMonthly").checked,
+      long_term_months: Number($("onlinePayableLongTermMonths").value || 0),
+      long_term_balance: Number($("onlinePayableLongTermBalance").value || 0),
       notes: $("onlinePayableNotes").value.trim(),
     },
   });
   if (!result?.ok) return status("onlinePayableStatus", result?.error || "Could not add this payment.", "bad");
-  ["onlinePayableTitle", "onlinePayableAmount", "onlinePayableCategory", "onlinePayableMethod", "onlinePayableNotes"].forEach((id) => { $(id).value = ""; });
+  ["onlinePayableTitle", "onlinePayableAmount", "onlinePayableCategory", "onlinePayableMethod", "onlinePayableNotes", "onlinePayableLongTermMonths", "onlinePayableLongTermBalance"].forEach((id) => { $(id).value = ""; });
   $("onlinePayableMonthly").checked = false;
   $("onlinePayableDueDate").value = localTodayInput();
   status("onlinePayableStatus", "Added to pay list.");
@@ -1686,18 +1688,25 @@ function renderOnlinePayables() {
   const unpaid = onlinePayables.filter((item) => item.status !== "Paid");
   const paid = onlinePayables.filter((item) => item.status === "Paid");
   const monthlyBills = onlinePayables.filter((item) => item.is_monthly);
+  const longTermBalances = onlinePayables.filter((item) => Number(item.long_term_balance || 0) > 0 || Number(item.long_term_months || 0) > 0 || item.category === "Long-Term Balance");
   const unpaidOneTime = unpaid.filter((item) => !item.is_monthly);
   const unpaidTotal = unpaid.reduce((sum, item) => sum + Number(item.amount || 0), 0);
   const paidTotal = paid.reduce((sum, item) => sum + Number(item.amount || 0), 0);
   const monthlyTotal = monthlyBills.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  const longTermTotal = longTermBalances.reduce((sum, item) => sum + longTermBalanceValue(item), 0);
   const overdue = unpaid.filter((item) => item.due_date && String(item.due_date).slice(0, 10) < localTodayInput());
   $("onlinePayableStats").innerHTML = `
     <div class="stat"><span>Bills To Pay</span><strong>${money(unpaidTotal)}</strong><em>${unpaid.length} unpaid item${unpaid.length === 1 ? "" : "s"}</em></div>
     <div class="stat"><span>Already Paid</span><strong class="profit-good">${money(paidTotal)}</strong><em>${paid.length} paid item${paid.length === 1 ? "" : "s"}</em></div>
     <div class="stat"><span>Monthly Bills</span><strong>${money(monthlyTotal)}</strong><em>${monthlyBills.length} recurring item${monthlyBills.length === 1 ? "" : "s"}</em></div>
+    <div class="stat"><span>Long-Term Balance</span><strong>${money(longTermTotal)}</strong><em>${longTermBalances.length} balance${longTermBalances.length === 1 ? "" : "s"}</em></div>
     <div class="stat"><span>Past Due</span><strong class="${overdue.length ? "profit-bad" : "profit-good"}">${overdue.length}</strong><em>${overdue.length ? money(overdue.reduce((sum, item) => sum + Number(item.amount || 0), 0)) : "nothing overdue"}</em></div>
   `;
   $("onlinePayablesList").innerHTML = `
+    <section class="payable-table-block long-term-balance-block">
+      <div class="payable-table-head"><h3>Long-Term Balances</h3><span>${money(longTermTotal)}</span></div>
+      ${renderLongTermBalances(longTermBalances)}
+    </section>
     <section class="payable-table-block">
       <div class="payable-table-head"><h3>Monthly Bills</h3><span>${money(monthlyTotal)}</span></div>
       ${renderPayableTable(monthlyBills, "No monthly bills saved yet.")}
@@ -1711,6 +1720,33 @@ function renderOnlinePayables() {
       ${renderPayableTable(paid, "No paid items yet.")}
     </section>
   `;
+}
+
+function renderLongTermBalances(items) {
+  if (!items.length) return `<div class="empty">No long-term balances saved yet.</div>`;
+  return `
+    <div class="long-term-balance-list">
+      ${items.map((item) => `
+        <div class="long-term-balance-row">
+          <div>
+            <strong>${escapeHtml(item.title || "Balance")}</strong>
+            <span>${money(item.amount)} / month${Number(item.long_term_months || 0) ? ` for ${Number(item.long_term_months)} months` : ""}</span>
+            ${item.notes ? `<em>${escapeHtml(item.notes)}</em>` : ""}
+          </div>
+          <div>
+            <small>Total Balance</small>
+            <b>${money(longTermBalanceValue(item))}</b>
+          </div>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+function longTermBalanceValue(item) {
+  const savedBalance = Number(item.long_term_balance || 0);
+  if (savedBalance > 0) return savedBalance;
+  return Number(item.amount || 0) * Number(item.long_term_months || 0);
 }
 
 function renderPayableTable(items, emptyText) {

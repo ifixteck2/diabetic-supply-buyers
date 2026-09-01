@@ -260,6 +260,67 @@
   font-weight: 950;
 }
 
+.long-term-balance-block .payable-table-head {
+  background: #102235;
+  border-bottom-color: #183550;
+}
+
+.long-term-balance-block .payable-table-head h3,
+.long-term-balance-block .payable-table-head span {
+  color: #fff;
+}
+
+.long-term-balance-list {
+  display: grid;
+}
+
+.long-term-balance-row {
+  align-items: center;
+  border-bottom: 1px solid #e5edf5;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) 180px;
+  padding: 14px;
+}
+
+.long-term-balance-row:last-child {
+  border-bottom: 0;
+}
+
+.long-term-balance-row strong,
+.long-term-balance-row span,
+.long-term-balance-row em,
+.long-term-balance-row small,
+.long-term-balance-row b {
+  display: block;
+}
+
+.long-term-balance-row strong {
+  color: #102235;
+  font-size: 16px;
+}
+
+.long-term-balance-row span,
+.long-term-balance-row em,
+.long-term-balance-row small {
+  color: var(--phone-muted);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 850;
+  margin-top: 4px;
+}
+
+.long-term-balance-row b {
+  color: #0f766e;
+  font-size: 20px;
+  text-align: right;
+}
+
+.long-term-balance-row small {
+  text-align: right;
+  text-transform: uppercase;
+}
+
 .payables-table {
   min-width: 920px;
 }
@@ -397,6 +458,15 @@
 
   .monthly-tracker-panel .panel-head {
     align-items: flex-start;
+  }
+
+  .long-term-balance-row {
+    grid-template-columns: 1fr;
+  }
+
+  .long-term-balance-row b,
+  .long-term-balance-row small {
+    text-align: left;
   }
 
   .monthly-report-title {
