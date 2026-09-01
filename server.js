@@ -3354,7 +3354,7 @@ async function migrate() {
          and title in ('September Monthly Expenses / Budget', 'September Food Budget')
     ), seed_rows(due_date, title, category, amount, payment_method, is_monthly, notes) as (
       values
-        ('2026-09-01'::date, 'Jose Ordoñez', 'Monthly Bills', 10000.00::numeric, '', true, 'Monthly bill'),
+        ('2026-09-01'::date, 'Jose Ordoñez', 'Long-Term Balance', 10000.00::numeric, '', true, 'Monthly for 18 months. Long-term balance: $180,000.'),
         ('2026-09-01'::date, 'Rent', 'Rent', 2950.00::numeric, '', true, 'Monthly rent'),
         ('2026-09-01'::date, 'Cesar Torres', 'Long-Term Balance', 2000.00::numeric, '', true, 'Monthly for 24 months. Long-term balance: $48,000.'),
         ('2026-09-01'::date, 'Mostafa', 'Long-Term Balance', 1500.00::numeric, '', true, 'Monthly for 24 months. Long-term balance: $36,000.'),
@@ -3371,6 +3371,19 @@ async function migrate() {
     select due_date, title, category, amount, payment_method, is_monthly, notes
     from seed_rows
     where exists (select 1 from applied);
+    with applied as (
+      insert into app_migrations (migration_key)
+      values ('mark_jose_ordonez_long_term_18_months')
+      on conflict do nothing
+      returning migration_key
+    )
+    update online_order_portal_payables
+       set category = 'Long-Term Balance',
+         notes = 'Monthly for 18 months. Long-term balance: $180,000.',
+         is_monthly = true,
+         updated_at = now()
+     where exists (select 1 from applied)
+       and title = 'Jose Ordoñez';
     alter table phone_invoices add column if not exists sale_price numeric(12,2);
     alter table phone_invoices add column if not exists sale_notes text not null default '';
     alter table phone_invoices add column if not exists status_updated_at timestamptz not null default now();
