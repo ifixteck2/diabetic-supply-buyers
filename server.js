@@ -62,6 +62,7 @@ const onlineOrdersOnlyTables = {
   ports: "online_order_portal_prepaid_ports",
   tracker: "online_order_portal_monthly_tracker",
   trackerSettings: "online_order_portal_monthly_settings",
+  payables: "online_order_portal_payables",
 };
 
 app.use(express.json({ limit: "25mb" }));
@@ -641,6 +642,73 @@ app.patch("/api/online-monthly-tracker/settings", requireOnlineOrdersAuth, async
     [month, monthlyBudget, foodBudget, String(input.notes || "").trim()]
   );
   res.json({ ok: true, settings: result.rows[0] });
+});
+
+app.get("/api/online-payables", requireOnlineOrdersAuth, async (req, res) => {
+  if (!req.onlineOrdersOnly) return res.status(403).json({ error: "Payables are only available in the Online Orders portal." });
+  const result = await pool.query(
+    `select *
+       from ${onlineOrdersOnlyTables.payables}
+      order by
+        case when status = 'Unpaid' then 1 else 2 end,
+        due_date asc nulls last,
+        created_at desc,
+        id desc
+      limit 1000`
+  );
+  res.json({ payables: result.rows });
+});
+
+app.post("/api/online-payables", requireOnlineOrdersAuth, async (req, res) => {
+  if (!req.onlineOrdersOnly) return res.status(403).json({ error: "Payables are only available in the Online Orders portal." });
+  const input = req.body || {};
+  const title = String(input.title || "").trim();
+  const amount = Number(input.amount || 0);
+  if (!title) return res.status(400).json({ error: "Enter what needs to be paid." });
+  if (!Number.isFinite(amount) || amount < 0) return res.status(400).json({ error: "Enter a valid amount." });
+  const result = await pool.query(
+    `insert into ${onlineOrdersOnlyTables.payables}
+       (due_date, title, category, amount, payment_method, notes)
+     values (coalesce($1::date, current_date), $2, $3, $4::numeric, $5, $6)
+     returning *`,
+    [
+      String(input.due_date || "").trim() || null,
+      title,
+      String(input.category || "").trim(),
+      amount,
+      String(input.payment_method || "").trim(),
+      String(input.notes || "").trim(),
+    ]
+  );
+  res.json({ ok: true, payable: result.rows[0] });
+});
+
+app.patch("/api/online-payables/:id/status", requireOnlineOrdersAuth, async (req, res) => {
+  if (!req.onlineOrdersOnly) return res.status(403).json({ error: "Payables are only available in the Online Orders portal." });
+  const id = Number(req.params.id);
+  const status = String(req.body?.status || "").trim();
+  if (!id) return res.status(400).json({ error: "Payable ID is required." });
+  if (!["Unpaid", "Paid"].includes(status)) return res.status(400).json({ error: "Choose Paid or Unpaid." });
+  const result = await pool.query(
+    `update ${onlineOrdersOnlyTables.payables}
+        set status = $2,
+          paid_at = case when $2 = 'Paid' then coalesce(paid_at, now()) else null end,
+          updated_at = now()
+      where id = $1
+      returning *`,
+    [id, status]
+  );
+  if (!result.rows[0]) return res.status(404).json({ error: "Payable not found." });
+  res.json({ ok: true, payable: result.rows[0] });
+});
+
+app.delete("/api/online-payables/:id", requireOnlineOrdersAuth, async (req, res) => {
+  if (!req.onlineOrdersOnly) return res.status(403).json({ error: "Payables are only available in the Online Orders portal." });
+  const id = Number(req.params.id);
+  if (!id) return res.status(400).json({ error: "Payable ID is required." });
+  const result = await pool.query(`delete from ${onlineOrdersOnlyTables.payables} where id = $1 returning *`, [id]);
+  if (!result.rows[0]) return res.status(404).json({ error: "Payable not found." });
+  res.json({ ok: true, payable: result.rows[0] });
 });
 
 app.post("/api/online-monthly-tracker", requireOnlineOrdersAuth, async (req, res) => {
@@ -3003,6 +3071,20 @@ async function migrate() {
       updated_at timestamptz not null default now()
     );
 
+    create table if not exists online_order_portal_payables (
+      id serial primary key,
+      due_date date not null default current_date,
+      title text not null default '',
+      category text not null default '',
+      amount numeric(12,2) not null default 0,
+      payment_method text not null default '',
+      status text not null default 'Unpaid',
+      paid_at timestamptz,
+      notes text not null default '',
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+
     create table if not exists app_migrations (
       migration_key text primary key,
       created_at timestamptz not null default now()
@@ -3201,6 +3283,15 @@ async function migrate() {
     alter table online_order_portal_monthly_settings add column if not exists food_budget numeric(12,2) not null default 0;
     alter table online_order_portal_monthly_settings add column if not exists notes text not null default '';
     alter table online_order_portal_monthly_settings add column if not exists updated_at timestamptz not null default now();
+    alter table online_order_portal_payables add column if not exists due_date date not null default current_date;
+    alter table online_order_portal_payables add column if not exists title text not null default '';
+    alter table online_order_portal_payables add column if not exists category text not null default '';
+    alter table online_order_portal_payables add column if not exists amount numeric(12,2) not null default 0;
+    alter table online_order_portal_payables add column if not exists payment_method text not null default '';
+    alter table online_order_portal_payables add column if not exists status text not null default 'Unpaid';
+    alter table online_order_portal_payables add column if not exists paid_at timestamptz;
+    alter table online_order_portal_payables add column if not exists notes text not null default '';
+    alter table online_order_portal_payables add column if not exists updated_at timestamptz not null default now();
     with applied as (
       insert into app_migrations (migration_key)
       values ('seed_september_2026_online_cash_flow_tracker')

@@ -15,6 +15,7 @@ let phoneOnlineOrderInvoices = [];
 let prepaidPortRecords = [];
 let monthlyTrackerEntries = [];
 let monthlyTrackerSettings = defaultMonthlyTrackerSettings();
+let onlinePayables = [];
 let editingPhonePurchaseId = null;
 let editingOnlineOrderId = null;
 let onlineOrderSubTab = "add";
@@ -27,6 +28,7 @@ async function initPhonePortal() {
   $("manualGiftCardDate").value = localTodayInput();
   $("directHoldingDate").value = localTodayInput();
   $("onlineOrderDate").value = localTodayInput();
+  if ($("onlinePayableDueDate")) $("onlinePayableDueDate").value = localTodayInput();
   if ($("monthlyTrackerMonth")) $("monthlyTrackerMonth").value = localMonthInput();
   if ($("monthlyTrackerDate")) $("monthlyTrackerDate").value = localTodayInput();
   bindPhoneEvents();
@@ -64,6 +66,7 @@ function bindPhoneEvents() {
   if ($("saveMonthlyTrackerBtn")) $("saveMonthlyTrackerBtn").onclick = saveMonthlyTrackerEntry;
   if ($("saveMonthlyTrackerSettingsBtn")) $("saveMonthlyTrackerSettingsBtn").onclick = saveMonthlyTrackerSettings;
   if ($("monthlyTrackerMonth")) $("monthlyTrackerMonth").onchange = loadMonthlyTracker;
+  if ($("saveOnlinePayableBtn")) $("saveOnlinePayableBtn").onclick = saveOnlinePayable;
   $("cancelOnlineOrderEditBtn").onclick = () => resetOnlineOrderForm();
   $("saveOnlineOrderEditBtn").onclick = saveOnlineOrderEdit;
   $("editOnlineOrderProvider").addEventListener("change", toggleEditOnlineOrderProvider);
@@ -149,6 +152,7 @@ async function refreshOnlineOrdersOnlyPortal() {
   await loadPhoneOnlineOrderInvoices();
   await loadPrepaidPorts();
   await loadMonthlyTracker();
+  await loadOnlinePayables();
 }
 
 async function loadAtlasPrices() {
@@ -206,6 +210,14 @@ async function loadMonthlyTracker() {
   monthlyTrackerEntries = result?.entries || [];
   monthlyTrackerSettings = result?.settings || defaultMonthlyTrackerSettings(month);
   fillMonthlyTrackerSettings();
+  renderMonthlyTracker();
+}
+
+async function loadOnlinePayables() {
+  if (!onlineOrdersOnly || !$("onlinePayablesList")) return;
+  const result = await api("/api/online-payables", { silent: true });
+  onlinePayables = result?.payables || [];
+  renderOnlinePayables();
   renderMonthlyTracker();
 }
 
@@ -270,7 +282,7 @@ function openOnlineOrderTab(name) {
 }
 
 function openOnlineMainTab(name, options = {}) {
-  const selected = name === "tracker" && onlineOrdersOnly ? "tracker" : "orders";
+  const selected = (name === "tracker" || name === "payables") && onlineOrdersOnly ? name : "orders";
   document.querySelectorAll("[data-online-main-tab]").forEach((button) => {
     button.classList.toggle("active", button.dataset.onlineMainTab === selected);
   });
@@ -278,12 +290,15 @@ function openOnlineMainTab(name, options = {}) {
   if (subTabs) subTabs.classList.toggle("hidden", selected !== "orders");
   const trackerPanel = $("onlineOrdersTrackerPanel");
   if (trackerPanel) trackerPanel.classList.toggle("hidden", selected !== "tracker");
-  if (selected === "tracker") {
+  const payablesPanel = $("onlineOrdersPayablesPanel");
+  if (payablesPanel) payablesPanel.classList.toggle("hidden", selected !== "payables");
+  if (selected === "tracker" || selected === "payables") {
     ["Add", "Stats", "Pending", "Transit", "Stock", "Invoices", "Prepaid", "Addresses", "Lost", "Completed"].forEach((panelName) => {
       const panel = $(`onlineOrders${panelName}Panel`);
       if (panel) panel.classList.add("hidden");
     });
-    renderMonthlyTracker();
+    if (selected === "tracker") renderMonthlyTracker();
+    if (selected === "payables") renderOnlinePayables();
     return;
   }
   if (!options.keepSubTab) openOnlineOrderTab(onlineOrderSubTab);
@@ -1645,6 +1660,94 @@ async function saveMonthlyTrackerEntry() {
   await loadMonthlyTracker();
 }
 
+async function saveOnlinePayable() {
+  const result = await api("/api/online-payables", {
+    method: "POST",
+    body: {
+      title: $("onlinePayableTitle").value.trim(),
+      amount: Number($("onlinePayableAmount").value || 0),
+      due_date: $("onlinePayableDueDate").value,
+      category: $("onlinePayableCategory").value.trim(),
+      payment_method: $("onlinePayableMethod").value.trim(),
+      notes: $("onlinePayableNotes").value.trim(),
+    },
+  });
+  if (!result?.ok) return status("onlinePayableStatus", result?.error || "Could not add this payment.", "bad");
+  ["onlinePayableTitle", "onlinePayableAmount", "onlinePayableCategory", "onlinePayableMethod", "onlinePayableNotes"].forEach((id) => { $(id).value = ""; });
+  $("onlinePayableDueDate").value = localTodayInput();
+  status("onlinePayableStatus", "Added to pay list.");
+  await loadOnlinePayables();
+}
+
+function renderOnlinePayables() {
+  if (!onlineOrdersOnly || !$("onlinePayablesList")) return;
+  const unpaid = onlinePayables.filter((item) => item.status !== "Paid");
+  const paid = onlinePayables.filter((item) => item.status === "Paid");
+  const unpaidTotal = unpaid.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  const paidTotal = paid.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  const overdue = unpaid.filter((item) => item.due_date && String(item.due_date).slice(0, 10) < localTodayInput());
+  $("onlinePayableStats").innerHTML = `
+    <div class="stat"><span>Need To Pay</span><strong>${money(unpaidTotal)}</strong><em>${unpaid.length} unpaid item${unpaid.length === 1 ? "" : "s"}</em></div>
+    <div class="stat"><span>Already Paid</span><strong class="profit-good">${money(paidTotal)}</strong><em>${paid.length} paid item${paid.length === 1 ? "" : "s"}</em></div>
+    <div class="stat"><span>Past Due</span><strong class="${overdue.length ? "profit-bad" : "profit-good"}">${overdue.length}</strong><em>${overdue.length ? money(overdue.reduce((sum, item) => sum + Number(item.amount || 0), 0)) : "nothing overdue"}</em></div>
+  `;
+  $("onlinePayablesList").innerHTML = `
+    <section class="payable-table-block">
+      <div class="payable-table-head"><h3>Unpaid</h3><span>${money(unpaidTotal)}</span></div>
+      ${renderPayableTable(unpaid, "Nothing unpaid right now.")}
+    </section>
+    <section class="payable-table-block">
+      <div class="payable-table-head"><h3>Paid</h3><span>${money(paidTotal)}</span></div>
+      ${renderPayableTable(paid, "No paid items yet.")}
+    </section>
+  `;
+}
+
+function renderPayableTable(items, emptyText) {
+  if (!items.length) return `<div class="empty">${escapeHtml(emptyText)}</div>`;
+  return `
+    <div class="table-wrap">
+      <table class="payables-table">
+        <thead><tr><th>Due</th><th>What</th><th>Category</th><th>Method</th><th>Amount</th><th>Status</th><th></th></tr></thead>
+        <tbody>${items.map(renderPayableRow).join("")}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderPayableRow(item) {
+  const paid = item.status === "Paid";
+  return `
+    <tr>
+      <td>${item.due_date ? formatDate(item.due_date) : ""}</td>
+      <td><strong>${escapeHtml(item.title || "Payment")}</strong>${item.notes ? `<em>${escapeHtml(item.notes)}</em>` : ""}</td>
+      <td>${escapeHtml(item.category || "")}</td>
+      <td>${escapeHtml(item.payment_method || "")}</td>
+      <td><strong>${money(item.amount)}</strong></td>
+      <td><span class="pill ${paid ? "sold" : "pending"}">${paid ? "Paid" : "Unpaid"}</span>${item.paid_at ? `<em>${formatDate(item.paid_at)}</em>` : ""}</td>
+      <td class="payable-actions">
+        <button class="mini-btn ${paid ? "secondary" : "phone-btn"}" onclick="setOnlinePayableStatus(${item.id}, '${paid ? "Unpaid" : "Paid"}')">${paid ? "Mark Unpaid" : "Paid"}</button>
+        <button class="mini-btn danger" onclick="deleteOnlinePayable(${item.id})">Delete</button>
+      </td>
+    </tr>
+  `;
+}
+
+window.setOnlinePayableStatus = async (id, nextStatus) => {
+  const result = await api(`/api/online-payables/${id}/status`, { method: "PATCH", body: { status: nextStatus } });
+  if (!result?.ok) return alert(result?.error || "Could not update this payment.");
+  await loadOnlinePayables();
+  return true;
+};
+
+window.deleteOnlinePayable = async (id) => {
+  if (!confirm("Delete this payment from the list?")) return false;
+  const result = await api(`/api/online-payables/${id}`, { method: "DELETE" });
+  if (!result?.ok) return alert(result?.error || "Could not delete this payment.");
+  await loadOnlinePayables();
+  return true;
+};
+
 async function saveMonthlyTrackerSettings() {
   const result = await api("/api/online-monthly-tracker/settings", {
     method: "PATCH",
@@ -1671,17 +1774,21 @@ function renderMonthlyTracker() {
   const monthlyBudget = Number(monthlyTrackerSettings.monthly_budget || 0);
   const foodBudget = Number(monthlyTrackerSettings.food_budget || 0);
   const foodSpent = monthlyTrackerFoodSpent(entries);
-  const cashFlow = totals.phoneProfit + totals.cashIn - totals.expense - totals.cashOut;
+  const paidPayables = monthlyPayablesTotal(month, "Paid");
+  const unpaidPayables = monthlyPayablesTotal(month, "Unpaid");
+  const totalSpent = totals.expense + paidPayables;
+  const cashFlow = totals.phoneProfit + totals.cashIn - totalSpent - totals.cashOut;
+  const cashAfterPayables = cashFlow - unpaidPayables;
   const breakEvenRemaining = Math.max(0, monthlyBudget - totals.phoneProfit);
   const neededPerDay = monthlyBudget ? breakEvenRemaining / monthDays(month) : 0;
   const foodRemaining = foodBudget - foodSpent;
   $("monthlyTrackerStats").innerHTML = `
     <div class="stat"><span>Total Profit</span><strong>${money(totals.phoneProfit)}</strong><em>money made this month</em></div>
-    <div class="stat"><span>Total Spent</span><strong>${money(totals.expense)}</strong><em>${totals.expenseCount} expense entries</em></div>
+    <div class="stat"><span>Total Spent</span><strong>${money(totalSpent)}</strong><em>tracker expenses + paid bills</em></div>
     <div class="stat"><span>Current Cash Flow</span><strong class="${cashFlow >= 0 ? "profit-good" : "profit-bad"}">${money(cashFlow)}</strong><em>profit minus spending</em></div>
+    <div class="stat"><span>Need To Pay</span><strong>${money(unpaidPayables)}</strong><em>unpaid list total</em></div>
+    <div class="stat"><span>After Bills</span><strong class="${cashAfterPayables >= 0 ? "profit-good" : "profit-bad"}">${money(cashAfterPayables)}</strong><em>cash flow after unpaid</em></div>
     <div class="stat"><span>Break-Even Left</span><strong>${money(breakEvenRemaining)}</strong><em>monthly plan remaining</em></div>
-    <div class="stat"><span>Needed Per Day</span><strong>${money(neededPerDay)}</strong><em>${monthDays(month)} days in ${escapeHtml(monthLabel(month))}</em></div>
-    <div class="stat"><span>Food Remaining</span><strong class="${foodRemaining >= 0 ? "profit-good" : "profit-bad"}">${money(foodRemaining)}</strong><em>${money(foodSpent)} food spent</em></div>
   `;
   $("monthlyTrackerList").innerHTML = `
     ${renderMonthlyCashFlowReport(entries, totals, orderSnapshot, month)}
@@ -1708,7 +1815,12 @@ function renderMonthlyCashFlowReport(entries, totals, orderSnapshot, month) {
   const foodBudget = Number(settings.food_budget || 0);
   const foodSpent = monthlyTrackerFoodSpent(entries);
   const foodRemaining = foodBudget - foodSpent;
-  const cashFlow = totals.phoneProfit + totals.cashIn - totals.expense - totals.cashOut;
+  const paidPayablesTotal = monthlyPayablesTotal(month, "Paid");
+  const unpaidPayables = monthlyPayables(month, "Unpaid");
+  const unpaidPayablesTotal = unpaidPayables.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  const totalSpent = totals.expense + paidPayablesTotal;
+  const cashFlow = totals.phoneProfit + totals.cashIn - totalSpent - totals.cashOut;
+  const cashAfterPayables = cashFlow - unpaidPayablesTotal;
   const breakEvenRemaining = Math.max(0, monthlyBudget - totals.phoneProfit);
   const neededPerDay = monthlyBudget ? breakEvenRemaining / monthDays(month) : 0;
   const profitEntries = entries.filter((entry) => entry.entry_type === "Phone Profit");
@@ -1731,7 +1843,8 @@ function renderMonthlyCashFlowReport(entries, totals, orderSnapshot, month) {
         <div class="monthly-report-card monthly-report-totals">
           <h4>Current Cash Flow</h4>
           <div><span>Profit</span><strong>${money(totals.phoneProfit + totals.cashIn)}</strong></div>
-          <div><span>Minus Spending</span><strong>${money(totals.expense + totals.cashOut)}</strong></div>
+          <div><span>Tracker Spending</span><strong>${money(totals.expense + totals.cashOut)}</strong></div>
+          <div><span>Paid From Pay List</span><strong>${money(paidPayablesTotal)}</strong></div>
           <div class="monthly-total-row"><span>Cash Flow</span><strong class="${cashFlow >= 0 ? "profit-good" : "profit-bad"}">${money(cashFlow)}</strong></div>
           ${cashEntries.length ? `<small>Includes ${cashEntries.length} cash in/out adjustment${cashEntries.length === 1 ? "" : "s"}.</small>` : ""}
         </div>
@@ -1744,17 +1857,16 @@ function renderMonthlyCashFlowReport(entries, totals, orderSnapshot, month) {
           <small>${monthDays(month)} days in ${escapeHtml(monthLabel(month))}</small>
         </div>
         <div class="monthly-report-card monthly-report-totals">
+          <h4>What I Need To Pay</h4>
+          <div><span>Unpaid Items</span><strong>${unpaidPayables.length}</strong></div>
+          <div><span>Unpaid Total</span><strong>${money(unpaidPayablesTotal)}</strong></div>
+          <div class="monthly-total-row"><span>Cash After Bills</span><strong class="${cashAfterPayables >= 0 ? "profit-good" : "profit-bad"}">${money(cashAfterPayables)}</strong></div>
+        </div>
+        <div class="monthly-report-card monthly-report-totals">
           <h4>Food Budget</h4>
           <div><span>Budget</span><strong>${money(foodBudget)}</strong></div>
           <div><span>Spent</span><strong>${money(foodSpent)}</strong></div>
           <div class="monthly-total-row"><span>Remaining</span><strong class="${foodRemainingClass(foodRemaining)}">${money(foodRemaining)}</strong></div>
-        </div>
-        <div class="monthly-report-card monthly-report-totals">
-          <h4>Online Orders Snapshot</h4>
-          <div><span>System Profit</span><strong class="${orderSnapshot.profit >= 0 ? "profit-good" : "profit-bad"}">${money(orderSnapshot.profit)}</strong></div>
-          <div><span>Orders Collected</span><strong>${money(orderSnapshot.value)}</strong></div>
-          <div><span>Orders Cost</span><strong>${money(orderSnapshot.cost)}</strong></div>
-          <small>${orderSnapshot.count} completed order${orderSnapshot.count === 1 ? "" : "s"} this month</small>
         </div>
       </div>
     </section>
@@ -1789,6 +1901,20 @@ function fillMonthlyTrackerSettings() {
   $("monthlyTrackerBudget").value = Number(monthlyTrackerSettings.monthly_budget || 0) || "";
   $("monthlyTrackerFoodBudget").value = Number(monthlyTrackerSettings.food_budget || 0) || "";
   $("monthlyTrackerPlanNotes").value = monthlyTrackerSettings.notes || "";
+}
+
+function monthlyPayables(month, statusValue) {
+  const monthKey = String(month || localMonthInput());
+  return onlinePayables.filter((item) => {
+    if (statusValue === "Unpaid") return item.status !== "Paid";
+    if (item.status !== statusValue) return false;
+    const paidMonth = String(item.paid_at || item.updated_at || "").slice(0, 7);
+    return paidMonth === monthKey;
+  });
+}
+
+function monthlyPayablesTotal(month, statusValue) {
+  return monthlyPayables(month, statusValue).reduce((sum, item) => sum + Number(item.amount || 0), 0);
 }
 
 function monthlyTrackerFoodSpent(entries) {
