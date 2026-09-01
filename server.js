@@ -61,6 +61,7 @@ const onlineOrdersOnlyTables = {
   invoices: "online_order_portal_invoices",
   ports: "online_order_portal_prepaid_ports",
   tracker: "online_order_portal_monthly_tracker",
+  trackerSettings: "online_order_portal_monthly_settings",
 };
 
 app.use(express.json({ limit: "25mb" }));
@@ -591,14 +592,55 @@ app.patch("/api/phone-prepaid-ports/:id/status", requireOnlineOrdersAuth, async 
 app.get("/api/online-monthly-tracker", requireOnlineOrdersAuth, async (req, res) => {
   if (!req.onlineOrdersOnly) return res.status(403).json({ error: "Monthly Tracker is only available in the Online Orders portal." });
   const month = normalizeMonthInput(req.query.month || localDateInTimeZone().slice(0, 7));
-  const result = await pool.query(
+  const [result, settings] = await Promise.all([
+    pool.query(
     `select *
        from ${onlineOrdersOnlyTables.tracker}
       where entry_month = ($1::text || '-01')::date
       order by entry_date desc, created_at desc, id desc`,
     [month]
+    ),
+    pool.query(
+      `select *
+         from ${onlineOrdersOnlyTables.trackerSettings}
+        where entry_month = ($1::text || '-01')::date
+        limit 1`,
+      [month]
+    ),
+  ]);
+  res.json({
+    month,
+    entries: result.rows,
+    settings: settings.rows[0] || {
+      entry_month: `${month}-01`,
+      monthly_budget: 0,
+      food_budget: 0,
+      notes: "",
+    },
+  });
+});
+
+app.patch("/api/online-monthly-tracker/settings", requireOnlineOrdersAuth, async (req, res) => {
+  if (!req.onlineOrdersOnly) return res.status(403).json({ error: "Monthly Tracker is only available in the Online Orders portal." });
+  const input = req.body || {};
+  const month = normalizeMonthInput(input.month || localDateInTimeZone().slice(0, 7));
+  const monthlyBudget = Number(input.monthly_budget || 0);
+  const foodBudget = Number(input.food_budget || 0);
+  if (!Number.isFinite(monthlyBudget) || monthlyBudget < 0) return res.status(400).json({ error: "Enter a valid monthly budget." });
+  if (!Number.isFinite(foodBudget) || foodBudget < 0) return res.status(400).json({ error: "Enter a valid food budget." });
+  const result = await pool.query(
+    `insert into ${onlineOrdersOnlyTables.trackerSettings}
+       (entry_month, monthly_budget, food_budget, notes)
+     values (($1::text || '-01')::date, $2::numeric, $3::numeric, $4)
+     on conflict (entry_month) do update
+       set monthly_budget = excluded.monthly_budget,
+         food_budget = excluded.food_budget,
+         notes = excluded.notes,
+         updated_at = now()
+     returning *`,
+    [month, monthlyBudget, foodBudget, String(input.notes || "").trim()]
   );
-  res.json({ month, entries: result.rows });
+  res.json({ ok: true, settings: result.rows[0] });
 });
 
 app.post("/api/online-monthly-tracker", requireOnlineOrdersAuth, async (req, res) => {
@@ -2952,6 +2994,15 @@ async function migrate() {
       updated_at timestamptz not null default now()
     );
 
+    create table if not exists online_order_portal_monthly_settings (
+      entry_month date primary key,
+      monthly_budget numeric(12,2) not null default 0,
+      food_budget numeric(12,2) not null default 0,
+      notes text not null default '',
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+
     create table if not exists app_migrations (
       migration_key text primary key,
       created_at timestamptz not null default now()
@@ -3146,6 +3197,42 @@ async function migrate() {
        set status = 'Ordered', updated_at = now()
      where exists (select 1 from applied)
        and id in (select id from latest_lines);
+    alter table online_order_portal_monthly_settings add column if not exists monthly_budget numeric(12,2) not null default 0;
+    alter table online_order_portal_monthly_settings add column if not exists food_budget numeric(12,2) not null default 0;
+    alter table online_order_portal_monthly_settings add column if not exists notes text not null default '';
+    alter table online_order_portal_monthly_settings add column if not exists updated_at timestamptz not null default now();
+    with applied as (
+      insert into app_migrations (migration_key)
+      values ('seed_september_2026_online_cash_flow_tracker')
+      on conflict do nothing
+      returning migration_key
+    )
+    insert into online_order_portal_monthly_settings
+      (entry_month, monthly_budget, food_budget, notes)
+    select '2026-09-01'::date, 21150.00, 800.00, 'September 2026 plan from cash-flow tracker'
+    where exists (select 1 from applied)
+    on conflict (entry_month) do update
+      set monthly_budget = excluded.monthly_budget,
+        food_budget = excluded.food_budget,
+        notes = excluded.notes,
+        updated_at = now();
+    with applied as (
+      insert into app_migrations (migration_key)
+      values ('seed_september_2026_online_cash_flow_tracker_entries')
+      on conflict do nothing
+      returning migration_key
+    ), seed_rows(entry_date, entry_type, category, source, phone_model, quantity, amount, description, notes) as (
+      values
+        ('2026-08-31'::date, 'Phone Profit', 'September Head Start', 'Miami', '4 Phones', 4, 745.00::numeric, 'Miami - 4 Phones', 'September head start'),
+        ('2026-09-01'::date, 'Expense', 'Food', 'Popeyes', '', 1, 50.44::numeric, 'Popeyes', 'Food budget'),
+        ('2026-09-01'::date, 'Expense', 'Personal', 'Vanity Set', '', 1, 100.00::numeric, 'Vanity set', 'Actual expense'),
+        ('2026-09-01'::date, 'Phone Profit', 'Online Ordering', 'Online Ordering', 'Samsung A37', 1, 110.00::numeric, 'Online Order - A37', '')
+    )
+    insert into online_order_portal_monthly_tracker
+      (entry_month, entry_date, entry_type, category, source, phone_model, quantity, amount, description, notes)
+    select '2026-09-01'::date, entry_date, entry_type, category, source, phone_model, quantity, amount, description, notes
+    from seed_rows
+    where exists (select 1 from applied);
     alter table phone_invoices add column if not exists sale_price numeric(12,2);
     alter table phone_invoices add column if not exists sale_notes text not null default '';
     alter table phone_invoices add column if not exists status_updated_at timestamptz not null default now();

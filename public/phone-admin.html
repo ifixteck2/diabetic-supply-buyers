@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Phone Flipping Portal</title>
   <link rel="stylesheet" href="/styles.css?v=20260815-soft-phone-theme">
-  <link rel="stylesheet" href="/monthly-tracker.css?v=20260901-online-main-tabs">
+  <link rel="stylesheet" href="/monthly-tracker.css?v=20260901-cash-flow-tracker">
 </head>
 <body class="admin-body phone-admin-body">
   <main class="wrap admin-wrap">
@@ -417,6 +417,16 @@
             </div>
             <div id="monthlyTrackerStats" class="stats online-order-stats monthly-tracker-stats"></div>
             <div class="online-order-form-sections monthly-tracker-form">
+              <div class="online-order-form-section monthly-plan-form-section">
+                <h3>Monthly Plan</h3>
+                <div class="form-grid three">
+                  <label>Monthly Expenses / Budget<input id="monthlyTrackerBudget" type="number" min="0" step="0.01" placeholder="21150"></label>
+                  <label>Food Budget<input id="monthlyTrackerFoodBudget" type="number" min="0" step="0.01" placeholder="800"></label>
+                  <label>Plan Notes<input id="monthlyTrackerPlanNotes" placeholder="September plan, notes, goals"></label>
+                </div>
+                <div class="actions"><button class="btn secondary" id="saveMonthlyTrackerSettingsBtn">Save Monthly Plan</button></div>
+                <div id="monthlyTrackerSettingsStatus"></div>
+              </div>
               <div class="online-order-form-section">
                 <h3>Add Entry</h3>
                 <div class="form-grid three">
@@ -436,6 +446,9 @@
                 </div>
                 <datalist id="monthlyTrackerCategoryOptions">
                   <option value="Phone Profit"></option>
+                  <option value="Food"></option>
+                  <option value="Personal"></option>
+                  <option value="Online Ordering"></option>
                   <option value="Inventory"></option>
                   <option value="Shipping"></option>
                   <option value="Port Numbers"></option>
@@ -637,6 +650,6 @@
       </section>
     </div>
   </main>
-  <script src="/phone-admin.js?v=20260901-online-main-tabs"></script>
+  <script src="/phone-admin.js?v=20260901-cash-flow-tracker"></script>
 </body>
 </html>

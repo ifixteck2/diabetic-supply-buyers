@@ -14,6 +14,7 @@ let phoneOnlineOrders = [];
 let phoneOnlineOrderInvoices = [];
 let prepaidPortRecords = [];
 let monthlyTrackerEntries = [];
+let monthlyTrackerSettings = defaultMonthlyTrackerSettings();
 let editingPhonePurchaseId = null;
 let editingOnlineOrderId = null;
 let onlineOrderSubTab = "add";
@@ -61,6 +62,7 @@ function bindPhoneEvents() {
   $("bulkPrepaidCardsBtn").onclick = saveBulkPrepaidCards;
   $("refreshPrepaidPortsBtn").onclick = loadPrepaidPorts;
   if ($("saveMonthlyTrackerBtn")) $("saveMonthlyTrackerBtn").onclick = saveMonthlyTrackerEntry;
+  if ($("saveMonthlyTrackerSettingsBtn")) $("saveMonthlyTrackerSettingsBtn").onclick = saveMonthlyTrackerSettings;
   if ($("monthlyTrackerMonth")) $("monthlyTrackerMonth").onchange = loadMonthlyTracker;
   $("cancelOnlineOrderEditBtn").onclick = () => resetOnlineOrderForm();
   $("saveOnlineOrderEditBtn").onclick = saveOnlineOrderEdit;
@@ -202,6 +204,8 @@ async function loadMonthlyTracker() {
   const month = $("monthlyTrackerMonth").value || localMonthInput();
   const result = await api(`/api/online-monthly-tracker?month=${encodeURIComponent(month)}`, { silent: true });
   monthlyTrackerEntries = result?.entries || [];
+  monthlyTrackerSettings = result?.settings || defaultMonthlyTrackerSettings(month);
+  fillMonthlyTrackerSettings();
   renderMonthlyTracker();
 }
 
@@ -1641,30 +1645,46 @@ async function saveMonthlyTrackerEntry() {
   await loadMonthlyTracker();
 }
 
+async function saveMonthlyTrackerSettings() {
+  const result = await api("/api/online-monthly-tracker/settings", {
+    method: "PATCH",
+    body: {
+      month: $("monthlyTrackerMonth").value || localMonthInput(),
+      monthly_budget: Number($("monthlyTrackerBudget").value || 0),
+      food_budget: Number($("monthlyTrackerFoodBudget").value || 0),
+      notes: $("monthlyTrackerPlanNotes").value.trim(),
+    },
+  });
+  if (!result?.ok) return status("monthlyTrackerSettingsStatus", result?.error || "Could not save monthly plan.", "bad");
+  monthlyTrackerSettings = result.settings || defaultMonthlyTrackerSettings();
+  fillMonthlyTrackerSettings();
+  status("monthlyTrackerSettingsStatus", "Monthly plan saved.");
+  renderMonthlyTracker();
+}
+
 function renderMonthlyTracker() {
   if (!onlineOrdersOnly || !$("monthlyTrackerStats")) return;
   const month = $("monthlyTrackerMonth")?.value || localMonthInput();
   const entries = monthlyTrackerEntries.slice().sort((a, b) => new Date(b.entry_date || 0) - new Date(a.entry_date || 0) || Number(b.id || 0) - Number(a.id || 0));
   const totals = monthlyTrackerTotals(entries);
   const orderSnapshot = monthlyTrackerOrderSnapshot(month);
-  const accountingProfit = totals.phoneProfit - totals.expense;
-  const cashFlow = totals.cashIn - totals.cashOut;
-  const netPosition = accountingProfit + cashFlow;
+  const monthlyBudget = Number(monthlyTrackerSettings.monthly_budget || 0);
+  const foodBudget = Number(monthlyTrackerSettings.food_budget || 0);
+  const foodSpent = monthlyTrackerFoodSpent(entries);
+  const cashFlow = totals.phoneProfit + totals.cashIn - totals.expense - totals.cashOut;
+  const breakEvenRemaining = Math.max(0, monthlyBudget - totals.phoneProfit);
+  const neededPerDay = monthlyBudget ? breakEvenRemaining / monthDays(month) : 0;
+  const foodRemaining = foodBudget - foodSpent;
   $("monthlyTrackerStats").innerHTML = `
-    <div class="stat"><span>Phone Profit</span><strong>${money(totals.phoneProfit)}</strong><em>manual profit entries</em></div>
-    <div class="stat"><span>Expenses</span><strong>${money(totals.expense)}</strong><em>${totals.expenseCount} expense entries</em></div>
-    <div class="stat"><span>Cash In</span><strong>${money(totals.cashIn)}</strong><em>money received</em></div>
-    <div class="stat"><span>Cash Out</span><strong>${money(totals.cashOut)}</strong><em>money spent</em></div>
-    <div class="stat"><span>Net Position</span><strong class="${netPosition >= 0 ? "profit-good" : "profit-bad"}">${profitMoney(netPosition)}</strong><em>profit + cash flow</em></div>
-    <div class="stat"><span>System Order Profit</span><strong class="${orderSnapshot.profit >= 0 ? "profit-good" : "profit-bad"}">${profitMoney(orderSnapshot.profit)}</strong><em>${orderSnapshot.count} completed order${orderSnapshot.count === 1 ? "" : "s"}</em></div>
+    <div class="stat"><span>Total Profit</span><strong>${money(totals.phoneProfit)}</strong><em>money made this month</em></div>
+    <div class="stat"><span>Total Spent</span><strong>${money(totals.expense)}</strong><em>${totals.expenseCount} expense entries</em></div>
+    <div class="stat"><span>Current Cash Flow</span><strong class="${cashFlow >= 0 ? "profit-good" : "profit-bad"}">${money(cashFlow)}</strong><em>profit minus spending</em></div>
+    <div class="stat"><span>Break-Even Left</span><strong>${money(breakEvenRemaining)}</strong><em>monthly plan remaining</em></div>
+    <div class="stat"><span>Needed Per Day</span><strong>${money(neededPerDay)}</strong><em>${monthDays(month)} days in ${escapeHtml(monthLabel(month))}</em></div>
+    <div class="stat"><span>Food Remaining</span><strong class="${foodRemaining >= 0 ? "profit-good" : "profit-bad"}">${money(foodRemaining)}</strong><em>${money(foodSpent)} food spent</em></div>
   `;
   $("monthlyTrackerList").innerHTML = `
-    <section class="monthly-tracker-summary">
-      <div><span>Accounting Profit</span><strong class="${accountingProfit >= 0 ? "profit-good" : "profit-bad"}">${profitMoney(accountingProfit)}</strong><small>Phone profit minus expenses</small></div>
-      <div><span>Cash Flow</span><strong class="${cashFlow >= 0 ? "profit-good" : "profit-bad"}">${profitMoney(cashFlow)}</strong><small>Cash in minus cash out</small></div>
-      <div><span>Orders Cost</span><strong>${money(orderSnapshot.cost)}</strong><small>Completed online orders this month</small></div>
-      <div><span>Orders Collected</span><strong>${money(orderSnapshot.value)}</strong><small>Sold invoice/local sale money</small></div>
-    </section>
+    ${renderMonthlyCashFlowReport(entries, totals, orderSnapshot, month)}
     <section class="monthly-tracker-ledger">
       <div class="monthly-tracker-ledger-head">
         <h3>Monthly Ledger</h3>
@@ -1680,6 +1700,117 @@ function renderMonthlyTracker() {
       ` : `<div class="empty">No monthly tracker entries yet.</div>`}
     </section>
   `;
+}
+
+function renderMonthlyCashFlowReport(entries, totals, orderSnapshot, month) {
+  const settings = monthlyTrackerSettings || defaultMonthlyTrackerSettings(month);
+  const monthlyBudget = Number(settings.monthly_budget || 0);
+  const foodBudget = Number(settings.food_budget || 0);
+  const foodSpent = monthlyTrackerFoodSpent(entries);
+  const foodRemaining = foodBudget - foodSpent;
+  const cashFlow = totals.phoneProfit + totals.cashIn - totals.expense - totals.cashOut;
+  const breakEvenRemaining = Math.max(0, monthlyBudget - totals.phoneProfit);
+  const neededPerDay = monthlyBudget ? breakEvenRemaining / monthDays(month) : 0;
+  const profitEntries = entries.filter((entry) => entry.entry_type === "Phone Profit");
+  const expenseEntries = entries.filter((entry) => entry.entry_type === "Expense");
+  const cashEntries = entries.filter((entry) => entry.entry_type === "Cash In" || entry.entry_type === "Cash Out");
+  return `
+    <section class="monthly-report">
+      <div class="monthly-report-title">
+        <div>
+          <span>Cash Flow Tracker</span>
+          <h3>${escapeHtml(monthLabel(month))}</h3>
+        </div>
+        <strong class="${cashFlow >= 0 ? "profit-good" : "profit-bad"}">${money(cashFlow)}</strong>
+      </div>
+      <div class="monthly-report-grid">
+        ${renderMonthlyReportCard("Profit / Money Made", profitEntries, totals.phoneProfit, "No profit entered yet.", true)}
+        ${renderMonthlyReportCard("Actual Money Spent", expenseEntries, totals.expense, "No spending entered yet.", false)}
+      </div>
+      <div class="monthly-plan-grid">
+        <div class="monthly-report-card monthly-report-totals">
+          <h4>Current Cash Flow</h4>
+          <div><span>Profit</span><strong>${money(totals.phoneProfit + totals.cashIn)}</strong></div>
+          <div><span>Minus Spending</span><strong>${money(totals.expense + totals.cashOut)}</strong></div>
+          <div class="monthly-total-row"><span>Cash Flow</span><strong class="${cashFlow >= 0 ? "profit-good" : "profit-bad"}">${money(cashFlow)}</strong></div>
+          ${cashEntries.length ? `<small>Includes ${cashEntries.length} cash in/out adjustment${cashEntries.length === 1 ? "" : "s"}.</small>` : ""}
+        </div>
+        <div class="monthly-report-card monthly-report-totals">
+          <h4>Monthly Plan</h4>
+          <div><span>Monthly Expenses / Budget</span><strong>${money(monthlyBudget)}</strong></div>
+          <div><span>Profit Made</span><strong>${money(totals.phoneProfit)}</strong></div>
+          <div><span>Remaining To Break Even</span><strong>${money(breakEvenRemaining)}</strong></div>
+          <div class="monthly-total-row"><span>Needed Per Day</span><strong>${money(neededPerDay)}</strong></div>
+          <small>${monthDays(month)} days in ${escapeHtml(monthLabel(month))}</small>
+        </div>
+        <div class="monthly-report-card monthly-report-totals">
+          <h4>Food Budget</h4>
+          <div><span>Budget</span><strong>${money(foodBudget)}</strong></div>
+          <div><span>Spent</span><strong>${money(foodSpent)}</strong></div>
+          <div class="monthly-total-row"><span>Remaining</span><strong class="${foodRemainingClass(foodRemaining)}">${money(foodRemaining)}</strong></div>
+        </div>
+        <div class="monthly-report-card monthly-report-totals">
+          <h4>Online Orders Snapshot</h4>
+          <div><span>System Profit</span><strong class="${orderSnapshot.profit >= 0 ? "profit-good" : "profit-bad"}">${money(orderSnapshot.profit)}</strong></div>
+          <div><span>Orders Collected</span><strong>${money(orderSnapshot.value)}</strong></div>
+          <div><span>Orders Cost</span><strong>${money(orderSnapshot.cost)}</strong></div>
+          <small>${orderSnapshot.count} completed order${orderSnapshot.count === 1 ? "" : "s"} this month</small>
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function renderMonthlyReportCard(title, rows, total, emptyText, positive) {
+  return `
+    <div class="monthly-report-card">
+      <div class="monthly-report-card-head">
+        <h4>${escapeHtml(title)}</h4>
+        <strong class="${positive ? "profit-good" : "profit-bad"}">${positive ? "+" : "-"}${money(total).replace("-", "")}</strong>
+      </div>
+      <div class="monthly-report-lines">
+        ${rows.length ? rows.map((entry) => {
+          const detail = [entry.source, entry.phone_model].filter(Boolean).join(" - ") || entry.description || entry.category;
+          const label = [entry.entry_date ? formatDate(entry.entry_date) : "", entry.category || entry.description || title].filter(Boolean).join(" - ");
+          return `<div><span>${escapeHtml(label)}</span><em>${escapeHtml(detail || "")}</em><strong class="${positive ? "profit-good" : "profit-bad"}">${positive ? "+" : "-"}${money(entry.amount).replace("-", "")}</strong></div>`;
+        }).join("") : `<p class="empty compact-empty">${escapeHtml(emptyText)}</p>`}
+      </div>
+      <div class="monthly-report-total"><span>Total</span><strong>${money(total)}</strong></div>
+    </div>
+  `;
+}
+
+function defaultMonthlyTrackerSettings(month = localMonthInput()) {
+  return { entry_month: `${month}-01`, monthly_budget: 0, food_budget: 0, notes: "" };
+}
+
+function fillMonthlyTrackerSettings() {
+  if (!$("monthlyTrackerBudget")) return;
+  $("monthlyTrackerBudget").value = Number(monthlyTrackerSettings.monthly_budget || 0) || "";
+  $("monthlyTrackerFoodBudget").value = Number(monthlyTrackerSettings.food_budget || 0) || "";
+  $("monthlyTrackerPlanNotes").value = monthlyTrackerSettings.notes || "";
+}
+
+function monthlyTrackerFoodSpent(entries) {
+  return entries.reduce((sum, entry) => {
+    if (entry.entry_type !== "Expense") return sum;
+    const text = `${entry.category || ""} ${entry.source || ""} ${entry.description || ""}`.toLowerCase();
+    return text.includes("food") || text.includes("popeyes") ? sum + Number(entry.amount || 0) : sum;
+  }, 0);
+}
+
+function foodRemainingClass(value) {
+  return value >= 0 ? "profit-good" : "profit-bad";
+}
+
+function monthDays(month) {
+  const [year, monthNumber] = String(month || localMonthInput()).split("-").map(Number);
+  return new Date(year || new Date().getFullYear(), monthNumber || 1, 0).getDate();
+}
+
+function monthLabel(month) {
+  const [year, monthNumber] = String(month || localMonthInput()).split("-").map(Number);
+  return new Date(year || new Date().getFullYear(), (monthNumber || 1) - 1, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
 }
 
 function monthlyTrackerTotals(entries) {
@@ -1730,7 +1861,7 @@ function renderMonthlyTrackerRow(entry) {
       <td><strong>${escapeHtml(entry.phone_model || "")}</strong><span>${escapeHtml(entry.source || "")}</span></td>
       <td>${escapeHtml(entry.description || "")}${entry.notes ? `<em>${escapeHtml(entry.notes)}</em>` : ""}</td>
       <td>${entry.quantity || 1}</td>
-      <td class="${signedAmount >= 0 ? "profit-good" : "profit-bad"}">${profitMoney(signedAmount)}</td>
+      <td class="${signedAmount >= 0 ? "profit-good" : "profit-bad"}">${money(signedAmount)}</td>
       <td><button class="mini-btn danger" onclick="deleteMonthlyTrackerEntry(${entry.id})">Delete</button></td>
     </tr>
   `;
