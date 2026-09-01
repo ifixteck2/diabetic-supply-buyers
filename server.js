@@ -3342,6 +3342,35 @@ async function migrate() {
     select due_date, title, category, amount, payment_method, is_monthly, notes
     from seed_rows
     where exists (select 1 from applied);
+    with applied as (
+      insert into app_migrations (migration_key)
+      values ('seed_detailed_september_2026_bills')
+      on conflict do nothing
+      returning migration_key
+    ), cleanup as (
+      delete from online_order_portal_payables
+       where exists (select 1 from applied)
+         and status = 'Unpaid'
+         and title in ('September Monthly Expenses / Budget', 'September Food Budget')
+    ), seed_rows(due_date, title, category, amount, payment_method, is_monthly, notes) as (
+      values
+        ('2026-09-01'::date, 'Jose Ordoñez', 'Monthly Bills', 10000.00::numeric, '', true, 'Monthly bill'),
+        ('2026-09-01'::date, 'Rent', 'Rent', 2950.00::numeric, '', true, 'Monthly rent'),
+        ('2026-09-01'::date, 'Cesar Torres', 'Long-Term Balance', 2000.00::numeric, '', true, 'Monthly for 24 months. Long-term balance: $48,000.'),
+        ('2026-09-01'::date, 'Mostafa', 'Long-Term Balance', 1500.00::numeric, '', true, 'Monthly for 24 months. Long-term balance: $36,000.'),
+        ('2026-09-01'::date, 'Bravo Rent', 'Rent', 1200.00::numeric, '', true, 'Monthly bill'),
+        ('2026-09-01'::date, 'Food', 'Food', 800.00::numeric, '', true, 'Monthly food budget'),
+        ('2026-09-01'::date, 'Car + Insurance', 'Car', 750.00::numeric, '', true, 'Monthly bill'),
+        ('2026-09-01'::date, 'Advertising', 'Advertising', 750.00::numeric, '', true, '$25/day advertising budget'),
+        ('2026-09-01'::date, 'Barber', 'Long-Term Balance', 500.00::numeric, '', true, 'Monthly for 8 months. Long-term balance: $4,000.'),
+        ('2026-09-01'::date, 'Luis Rey', 'Long-Term Balance', 500.00::numeric, '', true, 'Monthly for 13 months. Long-term balance: $6,500.'),
+        ('2026-09-01'::date, 'Phone Bills', 'Phone Bills', 200.00::numeric, '', true, 'Monthly phone bills')
+    )
+    insert into online_order_portal_payables
+      (due_date, title, category, amount, payment_method, is_monthly, notes)
+    select due_date, title, category, amount, payment_method, is_monthly, notes
+    from seed_rows
+    where exists (select 1 from applied);
     alter table phone_invoices add column if not exists sale_price numeric(12,2);
     alter table phone_invoices add column if not exists sale_notes text not null default '';
     alter table phone_invoices add column if not exists status_updated_at timestamptz not null default now();
