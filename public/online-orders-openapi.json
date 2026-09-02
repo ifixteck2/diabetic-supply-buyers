@@ -1,5 +1,5 @@
 {
-  "openapi": "3.1.0",
+  "openapi": "3.0.3",
   "info": {
     "title": "iFixTeck Online Orders API",
     "version": "1.0.0",
@@ -7,7 +7,7 @@
   },
   "servers": [
     {
-      "url": "https://www.selldiabetics.com"
+      "url": "https://selldiabetics.com"
     }
   ],
   "components": {
@@ -21,7 +21,7 @@
       "TrackerEntry": {
         "type": "object",
         "properties": {
-          "month": { "type": "string", "examples": ["2026-09"] },
+          "month": { "type": "string", "example": "2026-09" },
           "entry_type": { "type": "string", "enum": ["Phone Profit", "Expense", "Cash In", "Cash Out"] },
           "entry_date": { "type": "string", "format": "date" },
           "category": { "type": "string" },
@@ -37,7 +37,7 @@
       "MonthlySettings": {
         "type": "object",
         "properties": {
-          "month": { "type": "string", "examples": ["2026-09"] },
+          "month": { "type": "string", "example": "2026-09" },
           "monthly_budget": { "type": "number", "minimum": 0 },
           "food_budget": { "type": "number", "minimum": 0 },
           "notes": { "type": "string" }
@@ -83,13 +83,13 @@
             "name": "X-Online-Orders-Only",
             "in": "header",
             "required": true,
-            "schema": { "type": "string", "const": "1" }
+            "schema": { "type": "string", "enum": ["1"] }
           },
           {
             "name": "month",
             "in": "query",
             "required": false,
-            "schema": { "type": "string", "examples": ["2026-09"] }
+            "schema": { "type": "string", "example": "2026-09" }
           }
         ],
         "responses": {
@@ -104,7 +104,7 @@
             "name": "X-Online-Orders-Only",
             "in": "header",
             "required": true,
-            "schema": { "type": "string", "const": "1" }
+            "schema": { "type": "string", "enum": ["1"] }
           }
         ],
         "requestBody": {
@@ -129,7 +129,7 @@
             "name": "X-Online-Orders-Only",
             "in": "header",
             "required": true,
-            "schema": { "type": "string", "const": "1" }
+            "schema": { "type": "string", "enum": ["1"] }
           }
         ],
         "requestBody": {
@@ -154,7 +154,7 @@
             "name": "X-Online-Orders-Only",
             "in": "header",
             "required": true,
-            "schema": { "type": "string", "const": "1" }
+            "schema": { "type": "string", "enum": ["1"] }
           },
           {
             "name": "id",
@@ -177,7 +177,7 @@
             "name": "X-Online-Orders-Only",
             "in": "header",
             "required": true,
-            "schema": { "type": "string", "const": "1" }
+            "schema": { "type": "string", "enum": ["1"] }
           }
         ],
         "responses": {
@@ -192,7 +192,7 @@
             "name": "X-Online-Orders-Only",
             "in": "header",
             "required": true,
-            "schema": { "type": "string", "const": "1" }
+            "schema": { "type": "string", "enum": ["1"] }
           }
         ],
         "requestBody": {
@@ -217,7 +217,7 @@
             "name": "X-Online-Orders-Only",
             "in": "header",
             "required": true,
-            "schema": { "type": "string", "const": "1" }
+            "schema": { "type": "string", "enum": ["1"] }
           },
           {
             "name": "id",
@@ -248,7 +248,7 @@
             "name": "X-Online-Orders-Only",
             "in": "header",
             "required": true,
-            "schema": { "type": "string", "const": "1" }
+            "schema": { "type": "string", "enum": ["1"] }
           },
           {
             "name": "id",
