@@ -6,11 +6,10 @@ Base URL:
 `https://www.selldiabetics.com`
 
 Authentication:
-Every request must include both headers:
+Every request must include this header:
 
 ```http
 Authorization: Bearer YOUR_ONLINE_ORDERS_API_TOKEN
-X-Online-Orders-Only: 1
 Content-Type: application/json
 ```
 
@@ -192,5 +191,3 @@ Set authentication as API Key:
 - Auth type: API Key
 - Header name: `Authorization`
 - Value: `Bearer YOUR_ONLINE_ORDERS_API_TOKEN`
-
-The schema already includes the required `X-Online-Orders-Only: 1` header.

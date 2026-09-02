@@ -4781,7 +4781,6 @@ function requireOnlineOrdersAuth(req, res, next) {
 }
 
 function parseOnlineOrdersApiToken(req) {
-  if (req.get("x-online-orders-only") !== "1") return null;
   const configuredToken = String(process.env.ONLINE_ORDERS_API_TOKEN || "");
   const auth = String(req.get("authorization") || "");
   const token = auth.match(/^Bearer\s+(.+)$/i)?.[1]?.trim() || "";

@@ -1,8 +1,8 @@
 {
-  "openapi": "3.0.3",
+  "openapi": "3.1.0",
   "info": {
     "title": "iFixTeck Online Orders API",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "description": "API for adding profits, expenses, bills, and monthly tracker settings to the Online Orders portal."
   },
   "servers": [
@@ -80,12 +80,6 @@
         "summary": "Get monthly tracker entries and settings",
         "parameters": [
           {
-            "name": "X-Online-Orders-Only",
-            "in": "header",
-            "required": true,
-            "schema": { "type": "string", "enum": ["1"] }
-          },
-          {
             "name": "month",
             "in": "query",
             "required": false,
@@ -99,14 +93,6 @@
       "post": {
         "operationId": "addMonthlyTrackerEntry",
         "summary": "Add a profit, expense, cash in, or cash out entry",
-        "parameters": [
-          {
-            "name": "X-Online-Orders-Only",
-            "in": "header",
-            "required": true,
-            "schema": { "type": "string", "enum": ["1"] }
-          }
-        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -124,14 +110,6 @@
       "patch": {
         "operationId": "updateMonthlyTrackerSettings",
         "summary": "Update monthly budget and food budget settings",
-        "parameters": [
-          {
-            "name": "X-Online-Orders-Only",
-            "in": "header",
-            "required": true,
-            "schema": { "type": "string", "enum": ["1"] }
-          }
-        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -151,12 +129,6 @@
         "summary": "Delete a tracker entry by ID",
         "parameters": [
           {
-            "name": "X-Online-Orders-Only",
-            "in": "header",
-            "required": true,
-            "schema": { "type": "string", "enum": ["1"] }
-          },
-          {
             "name": "id",
             "in": "path",
             "required": true,
@@ -172,14 +144,6 @@
       "get": {
         "operationId": "getBills",
         "summary": "Get bills",
-        "parameters": [
-          {
-            "name": "X-Online-Orders-Only",
-            "in": "header",
-            "required": true,
-            "schema": { "type": "string", "enum": ["1"] }
-          }
-        ],
         "responses": {
           "200": { "description": "Bills list" }
         }
@@ -187,14 +151,6 @@
       "post": {
         "operationId": "addBill",
         "summary": "Add a bill",
-        "parameters": [
-          {
-            "name": "X-Online-Orders-Only",
-            "in": "header",
-            "required": true,
-            "schema": { "type": "string", "enum": ["1"] }
-          }
-        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -213,12 +169,6 @@
         "operationId": "setBillStatus",
         "summary": "Mark a bill paid or unpaid",
         "parameters": [
-          {
-            "name": "X-Online-Orders-Only",
-            "in": "header",
-            "required": true,
-            "schema": { "type": "string", "enum": ["1"] }
-          },
           {
             "name": "id",
             "in": "path",
@@ -244,12 +194,6 @@
         "operationId": "deleteBill",
         "summary": "Delete a bill by ID",
         "parameters": [
-          {
-            "name": "X-Online-Orders-Only",
-            "in": "header",
-            "required": true,
-            "schema": { "type": "string", "enum": ["1"] }
-          },
           {
             "name": "id",
             "in": "path",
