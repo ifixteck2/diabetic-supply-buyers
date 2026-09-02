@@ -24,3 +24,5 @@ services:
         sync: false
       - key: ONLINE_ORDERS_PASSWORD_HASH
         sync: false
+      - key: ONLINE_ORDERS_API_TOKEN
+        sync: false

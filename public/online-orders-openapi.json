@@ -1,0 +1,266 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "iFixTeck Online Orders API",
+    "version": "1.0.0",
+    "description": "API for adding profits, expenses, bills, and monthly tracker settings to the Online Orders portal."
+  },
+  "servers": [
+    {
+      "url": "https://www.selldiabetics.com"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    },
+    "schemas": {
+      "TrackerEntry": {
+        "type": "object",
+        "properties": {
+          "month": { "type": "string", "examples": ["2026-09"] },
+          "entry_type": { "type": "string", "enum": ["Phone Profit", "Expense", "Cash In", "Cash Out"] },
+          "entry_date": { "type": "string", "format": "date" },
+          "category": { "type": "string" },
+          "source": { "type": "string" },
+          "phone_model": { "type": "string" },
+          "quantity": { "type": "integer", "minimum": 1 },
+          "amount": { "type": "number", "minimum": 0 },
+          "description": { "type": "string" },
+          "notes": { "type": "string" }
+        },
+        "required": ["entry_type", "amount"]
+      },
+      "MonthlySettings": {
+        "type": "object",
+        "properties": {
+          "month": { "type": "string", "examples": ["2026-09"] },
+          "monthly_budget": { "type": "number", "minimum": 0 },
+          "food_budget": { "type": "number", "minimum": 0 },
+          "notes": { "type": "string" }
+        },
+        "required": ["month"]
+      },
+      "Bill": {
+        "type": "object",
+        "properties": {
+          "title": { "type": "string" },
+          "amount": { "type": "number", "minimum": 0 },
+          "due_date": { "type": "string", "format": "date" },
+          "category": { "type": "string" },
+          "payment_method": { "type": "string" },
+          "is_monthly": { "type": "boolean" },
+          "long_term_months": { "type": "integer", "minimum": 0 },
+          "long_term_balance": { "type": "number", "minimum": 0 },
+          "notes": { "type": "string" }
+        },
+        "required": ["title", "amount"]
+      },
+      "BillStatus": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "enum": ["Paid", "Unpaid"] }
+        },
+        "required": ["status"]
+      }
+    }
+  },
+  "security": [
+    {
+      "BearerAuth": []
+    }
+  ],
+  "paths": {
+    "/api/online-monthly-tracker": {
+      "get": {
+        "operationId": "getMonthlyTracker",
+        "summary": "Get monthly tracker entries and settings",
+        "parameters": [
+          {
+            "name": "X-Online-Orders-Only",
+            "in": "header",
+            "required": true,
+            "schema": { "type": "string", "const": "1" }
+          },
+          {
+            "name": "month",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "examples": ["2026-09"] }
+          }
+        ],
+        "responses": {
+          "200": { "description": "Monthly tracker data" }
+        }
+      },
+      "post": {
+        "operationId": "addMonthlyTrackerEntry",
+        "summary": "Add a profit, expense, cash in, or cash out entry",
+        "parameters": [
+          {
+            "name": "X-Online-Orders-Only",
+            "in": "header",
+            "required": true,
+            "schema": { "type": "string", "const": "1" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/TrackerEntry" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Tracker entry added" }
+        }
+      }
+    },
+    "/api/online-monthly-tracker/settings": {
+      "patch": {
+        "operationId": "updateMonthlyTrackerSettings",
+        "summary": "Update monthly budget and food budget settings",
+        "parameters": [
+          {
+            "name": "X-Online-Orders-Only",
+            "in": "header",
+            "required": true,
+            "schema": { "type": "string", "const": "1" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/MonthlySettings" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Monthly settings updated" }
+        }
+      }
+    },
+    "/api/online-monthly-tracker/{id}": {
+      "delete": {
+        "operationId": "deleteMonthlyTrackerEntry",
+        "summary": "Delete a tracker entry by ID",
+        "parameters": [
+          {
+            "name": "X-Online-Orders-Only",
+            "in": "header",
+            "required": true,
+            "schema": { "type": "string", "const": "1" }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer" }
+          }
+        ],
+        "responses": {
+          "200": { "description": "Tracker entry deleted" }
+        }
+      }
+    },
+    "/api/online-payables": {
+      "get": {
+        "operationId": "getBills",
+        "summary": "Get bills",
+        "parameters": [
+          {
+            "name": "X-Online-Orders-Only",
+            "in": "header",
+            "required": true,
+            "schema": { "type": "string", "const": "1" }
+          }
+        ],
+        "responses": {
+          "200": { "description": "Bills list" }
+        }
+      },
+      "post": {
+        "operationId": "addBill",
+        "summary": "Add a bill",
+        "parameters": [
+          {
+            "name": "X-Online-Orders-Only",
+            "in": "header",
+            "required": true,
+            "schema": { "type": "string", "const": "1" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/Bill" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Bill added" }
+        }
+      }
+    },
+    "/api/online-payables/{id}/status": {
+      "patch": {
+        "operationId": "setBillStatus",
+        "summary": "Mark a bill paid or unpaid",
+        "parameters": [
+          {
+            "name": "X-Online-Orders-Only",
+            "in": "header",
+            "required": true,
+            "schema": { "type": "string", "const": "1" }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/BillStatus" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Bill status updated" }
+        }
+      }
+    },
+    "/api/online-payables/{id}": {
+      "delete": {
+        "operationId": "deleteBill",
+        "summary": "Delete a bill by ID",
+        "parameters": [
+          {
+            "name": "X-Online-Orders-Only",
+            "in": "header",
+            "required": true,
+            "schema": { "type": "string", "const": "1" }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer" }
+          }
+        ],
+        "responses": {
+          "200": { "description": "Bill deleted" }
+        }
+      }
+    }
+  }
+}

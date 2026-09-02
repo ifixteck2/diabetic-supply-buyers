@@ -43,6 +43,10 @@ if (!process.env.ONLINE_ORDERS_PASSWORD_HASH && !process.env.ONLINE_ORDERS_PASSW
   console.warn("Missing ONLINE_ORDERS_PASSWORD_HASH. ONLINE_ORDERS_PASSWORD fallback is also not set.");
 }
 
+if (!process.env.ONLINE_ORDERS_API_TOKEN) {
+  console.warn("Missing ONLINE_ORDERS_API_TOKEN. ChatGPT API token access is disabled until this is set.");
+}
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: isProduction ? { rejectUnauthorized: false } : false,
@@ -4758,6 +4762,12 @@ function requirePhoneAuth(req, res, next) {
 
 function requireOnlineOrdersAuth(req, res, next) {
   const wantsOnlineOrdersOnly = req.get("x-online-orders-only") === "1";
+  const apiTokenUser = parseOnlineOrdersApiToken(req);
+  if (apiTokenUser) {
+    req.user = apiTokenUser;
+    req.onlineOrdersOnly = true;
+    return next();
+  }
   const cookieName = wantsOnlineOrdersOnly ? "online_orders_session" : "phone_session";
   const session = parseNamedSession(req, cookieName);
   if (!session) {
@@ -4768,6 +4778,19 @@ function requireOnlineOrdersAuth(req, res, next) {
   req.user = session;
   req.onlineOrdersOnly = wantsOnlineOrdersOnly;
   next();
+}
+
+function parseOnlineOrdersApiToken(req) {
+  if (req.get("x-online-orders-only") !== "1") return null;
+  const configuredToken = String(process.env.ONLINE_ORDERS_API_TOKEN || "");
+  const auth = String(req.get("authorization") || "");
+  const token = auth.match(/^Bearer\s+(.+)$/i)?.[1]?.trim() || "";
+  if (!configuredToken || !token) return null;
+  const configured = Buffer.from(configuredToken);
+  const supplied = Buffer.from(token);
+  if (configured.length !== supplied.length) return null;
+  if (!crypto.timingSafeEqual(configured, supplied)) return null;
+  return { username: "online-orders-api" };
 }
 
 function onlineOrderTables(req) {
