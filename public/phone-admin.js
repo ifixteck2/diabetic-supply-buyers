@@ -1690,17 +1690,17 @@ function renderOnlinePayables() {
   const monthlyBills = onlinePayables.filter((item) => item.is_monthly);
   const longTermBalances = onlinePayables.filter((item) => Number(item.long_term_balance || 0) > 0 || Number(item.long_term_months || 0) > 0 || item.category === "Long-Term Balance");
   const unpaidOneTime = unpaid.filter((item) => !item.is_monthly);
-  const unpaidTotal = unpaid.reduce((sum, item) => sum + Number(item.amount || 0), 0);
-  const paidTotal = paid.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  const unpaidTotal = unpaid.reduce((sum, item) => sum + payableRemaining(item), 0);
+  const paidTotal = onlinePayables.reduce((sum, item) => sum + payablePaidAmount(item), 0);
   const monthlyTotal = monthlyBills.reduce((sum, item) => sum + Number(item.amount || 0), 0);
   const longTermTotal = longTermBalances.reduce((sum, item) => sum + longTermBalanceValue(item), 0);
   const overdue = unpaid.filter((item) => item.due_date && String(item.due_date).slice(0, 10) < localTodayInput());
   $("onlinePayableStats").innerHTML = `
     <div class="stat"><span>Bills To Pay</span><strong>${money(unpaidTotal)}</strong><em>${unpaid.length} unpaid item${unpaid.length === 1 ? "" : "s"}</em></div>
-    <div class="stat"><span>Already Paid</span><strong class="profit-good">${money(paidTotal)}</strong><em>${paid.length} paid item${paid.length === 1 ? "" : "s"}</em></div>
+    <div class="stat"><span>Already Paid</span><strong class="profit-good">${money(paidTotal)}</strong><em>full and partial payments</em></div>
     <div class="stat"><span>Monthly Bills</span><strong>${money(monthlyTotal)}</strong><em>${monthlyBills.length} recurring item${monthlyBills.length === 1 ? "" : "s"}</em></div>
     <div class="stat"><span>Long-Term Balance</span><strong>${money(longTermTotal)}</strong><em>${longTermBalances.length} balance${longTermBalances.length === 1 ? "" : "s"}</em></div>
-    <div class="stat"><span>Past Due</span><strong class="${overdue.length ? "profit-bad" : "profit-good"}">${overdue.length}</strong><em>${overdue.length ? money(overdue.reduce((sum, item) => sum + Number(item.amount || 0), 0)) : "nothing overdue"}</em></div>
+    <div class="stat"><span>Past Due</span><strong class="${overdue.length ? "profit-bad" : "profit-good"}">${overdue.length}</strong><em>${overdue.length ? money(overdue.reduce((sum, item) => sum + payableRemaining(item), 0)) : "nothing overdue"}</em></div>
   `;
   $("onlinePayablesList").innerHTML = `
     <section class="payable-table-block long-term-balance-block">
@@ -1712,7 +1712,7 @@ function renderOnlinePayables() {
       ${renderPayableTable(monthlyBills, "No monthly bills saved yet.")}
     </section>
     <section class="payable-table-block">
-      <div class="payable-table-head"><h3>Unpaid One-Time</h3><span>${money(unpaidOneTime.reduce((sum, item) => sum + Number(item.amount || 0), 0))}</span></div>
+      <div class="payable-table-head"><h3>Unpaid One-Time</h3><span>${money(unpaidOneTime.reduce((sum, item) => sum + payableRemaining(item), 0))}</span></div>
       ${renderPayableTable(unpaidOneTime, "Nothing unpaid right now.")}
     </section>
     <section class="payable-table-block">
@@ -1754,7 +1754,7 @@ function renderPayableTable(items, emptyText) {
   return `
     <div class="table-wrap">
       <table class="payables-table">
-        <thead><tr><th>Due</th><th>What</th><th>Category</th><th>Method</th><th>Amount</th><th>Status</th><th></th></tr></thead>
+        <thead><tr><th>Due</th><th>What</th><th>Category</th><th>Method</th><th>Amount</th><th>Paid</th><th>Remaining</th><th>Status</th><th></th></tr></thead>
         <tbody>${items.map(renderPayableRow).join("")}</tbody>
       </table>
     </div>
@@ -1763,21 +1763,60 @@ function renderPayableTable(items, emptyText) {
 
 function renderPayableRow(item) {
   const paid = item.status === "Paid";
+  const remaining = payableRemaining(item);
+  const payments = payablePayments(item);
+  const paymentText = payments.length
+    ? payments.slice(0, 3).map((payment) => `${formatDate(payment.payment_date || payment.created_at)} ${money(payment.amount)}`).join(" | ")
+    : "";
   return `
     <tr>
       <td>${item.due_date ? formatDate(item.due_date) : ""}</td>
-      <td><strong>${escapeHtml(item.title || "Payment")}</strong>${item.is_monthly ? `<span class="payable-monthly-pill">Monthly</span>` : ""}${item.notes ? `<em>${escapeHtml(item.notes)}</em>` : ""}</td>
+      <td><strong>${escapeHtml(item.title || "Payment")}</strong>${item.is_monthly ? `<span class="payable-monthly-pill">Monthly</span>` : ""}${item.notes ? `<em>${escapeHtml(item.notes)}</em>` : ""}${paymentText ? `<em>Payments: ${escapeHtml(paymentText)}</em>` : ""}</td>
       <td>${escapeHtml(item.category || "")}</td>
       <td>${escapeHtml(item.payment_method || "")}</td>
       <td><strong>${money(item.amount)}</strong></td>
+      <td><strong class="profit-good">${money(payablePaidAmount(item))}</strong></td>
+      <td><strong class="${remaining > 0 ? "profit-bad" : "profit-good"}">${money(remaining)}</strong></td>
       <td><span class="pill ${paid ? "sold" : "pending"}">${paid ? "Paid" : "Unpaid"}</span>${item.paid_at ? `<em>${formatDate(item.paid_at)}</em>` : ""}</td>
       <td class="payable-actions">
+        ${remaining > 0 ? `<button class="mini-btn secondary" onclick="addOnlinePayablePartialPayment(${item.id})">Partial</button>` : ""}
         <button class="mini-btn ${paid ? "secondary" : "phone-btn"}" onclick="setOnlinePayableStatus(${item.id}, '${paid ? "Unpaid" : "Paid"}')">${paid ? "Mark Unpaid" : "Paid"}</button>
         <button class="mini-btn danger" onclick="deleteOnlinePayable(${item.id})">Delete</button>
       </td>
     </tr>
   `;
 }
+
+function payablePaidAmount(item) {
+  if (item.status === "Paid" && Number(item.paid_amount || 0) === 0) return Number(item.amount || 0);
+  return Number(item.paid_amount || 0);
+}
+
+function payableRemaining(item) {
+  if (item.status === "Paid") return 0;
+  if (item.balance_remaining !== undefined && item.balance_remaining !== null) return Number(item.balance_remaining || 0);
+  return Math.max(0, Number(item.amount || 0) - payablePaidAmount(item));
+}
+
+function payablePayments(item) {
+  return Array.isArray(item.payments) ? item.payments : [];
+}
+
+window.addOnlinePayablePartialPayment = async (id) => {
+  const amountText = prompt("How much did you pay toward this bill?");
+  if (amountText === null) return false;
+  const amount = Number(String(amountText).replace(/[$,\s]/g, ""));
+  if (!Number.isFinite(amount) || amount <= 0) return alert("Enter a valid payment amount.");
+  const paymentMethod = prompt("Payment method? Leave blank if none.") || "";
+  const notes = prompt("Notes? Leave blank if none.") || "";
+  const result = await api(`/api/online-payables/${id}/payments`, {
+    method: "POST",
+    body: { amount, payment_date: localTodayInput(), payment_method: paymentMethod.trim(), notes: notes.trim() },
+  });
+  if (!result?.ok) return alert(result?.error || "Could not add partial payment.");
+  await loadOnlinePayables();
+  return true;
+};
 
 window.setOnlinePayableStatus = async (id, nextStatus) => {
   const result = await api(`/api/online-payables/${id}/status`, { method: "PATCH", body: { status: nextStatus } });
@@ -1820,7 +1859,7 @@ function renderMonthlyTracker() {
   const monthlyBudget = Number(monthlyTrackerSettings.monthly_budget || 0);
   const foodBudget = Number(monthlyTrackerSettings.food_budget || 0);
   const foodSpent = monthlyTrackerFoodSpent(entries);
-  const paidPayables = monthlyPayablesTotal(month, "Paid");
+  const paidPayables = monthlyBillPaymentsTotal(month);
   const unpaidPayables = monthlyPayablesTotal(month, "Unpaid");
   const totalSpent = totals.expense + paidPayables;
   const cashFlow = totals.phoneProfit + totals.cashIn - totalSpent - totals.cashOut;
@@ -1861,9 +1900,9 @@ function renderMonthlyCashFlowReport(entries, totals, orderSnapshot, month) {
   const foodBudget = Number(settings.food_budget || 0);
   const foodSpent = monthlyTrackerFoodSpent(entries);
   const foodRemaining = foodBudget - foodSpent;
-  const paidPayablesTotal = monthlyPayablesTotal(month, "Paid");
+  const paidPayablesTotal = monthlyBillPaymentsTotal(month);
   const unpaidPayables = monthlyPayables(month, "Unpaid");
-  const unpaidPayablesTotal = unpaidPayables.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  const unpaidPayablesTotal = unpaidPayables.reduce((sum, item) => sum + payableRemaining(item), 0);
   const totalSpent = totals.expense + paidPayablesTotal;
   const cashFlow = totals.phoneProfit + totals.cashIn - totalSpent - totals.cashOut;
   const cashAfterPayables = cashFlow - unpaidPayablesTotal;
@@ -1954,13 +1993,34 @@ function monthlyPayables(month, statusValue) {
   return onlinePayables.filter((item) => {
     if (statusValue === "Unpaid") return item.status !== "Paid";
     if (item.status !== statusValue) return false;
-    const paidMonth = String(item.paid_at || item.updated_at || "").slice(0, 7);
+    const paidMonth = String(item.last_payment_at || item.paid_at || item.updated_at || "").slice(0, 7);
     return paidMonth === monthKey;
   });
 }
 
 function monthlyPayablesTotal(month, statusValue) {
-  return monthlyPayables(month, statusValue).reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  return monthlyPayables(month, statusValue).reduce((sum, item) => {
+    if (statusValue === "Paid") return sum + payablePaidAmount(item);
+    if (statusValue === "Unpaid") return sum + payableRemaining(item);
+    return sum + Number(item.amount || 0);
+  }, 0);
+}
+
+function monthlyBillPaymentsTotal(month) {
+  const monthKey = String(month || localMonthInput());
+  const paymentsTotal = onlinePayables.reduce((sum, item) => {
+    const payments = payablePayments(item);
+    return sum + payments.reduce((paymentSum, payment) => {
+      const paymentMonth = String(payment.payment_date || payment.created_at || "").slice(0, 7);
+      return paymentMonth === monthKey ? paymentSum + Number(payment.amount || 0) : paymentSum;
+    }, 0);
+  }, 0);
+  const fallbackPaidTotal = onlinePayables.reduce((sum, item) => {
+    if (payablePayments(item).length) return sum;
+    const paidMonth = String(item.last_payment_at || item.paid_at || "").slice(0, 7);
+    return paidMonth === monthKey ? sum + payablePaidAmount(item) : sum;
+  }, 0);
+  return paymentsTotal + fallbackPaidTotal;
 }
 
 function monthlyTrackerFoodSpent(entries) {

@@ -136,6 +136,28 @@ PATCH /api/online-payables/BILL_ID/status
 
 When a bill is marked `Paid`, the website deducts it from Monthly Tracker cash flow.
 
+## Add Partial Bill Payment
+
+Use this when Mike says something like:
+`Paid $500 toward Jose Ordoñez`
+
+First call `GET /api/online-payables` to find the matching bill ID, then call:
+
+```http
+POST /api/online-payables/BILL_ID/payments
+```
+
+```json
+{
+  "amount": 500,
+  "payment_date": "2026-09-04",
+  "payment_method": "Cash",
+  "notes": "Partial payment toward Jose Ordoñez"
+}
+```
+
+The website adds this to the bill's paid amount and deducts it from Monthly Tracker cash flow. If the total paid reaches the bill amount, the bill becomes `Paid` automatically.
+
 ## Mark Bill Unpaid
 
 ```http

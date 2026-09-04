@@ -651,13 +651,23 @@ app.patch("/api/online-monthly-tracker/settings", requireOnlineOrdersAuth, async
 app.get("/api/online-payables", requireOnlineOrdersAuth, async (req, res) => {
   if (!req.onlineOrdersOnly) return res.status(403).json({ error: "Payables are only available in the Online Orders portal." });
   const result = await pool.query(
-    `select *
-       from ${onlineOrdersOnlyTables.payables}
+    `select p.*,
+        greatest(p.amount - p.paid_amount, 0)::numeric(12,2) as balance_remaining,
+        coalesce(payments.items, '[]'::json) as payments
+       from ${onlineOrdersOnlyTables.payables} p
+       left join lateral (
+         select json_agg(payment_rows order by payment_rows.payment_date desc, payment_rows.id desc) as items
+         from (
+           select id, amount, payment_date, payment_method, notes, created_at
+           from online_order_portal_payable_payments
+           where payable_id = p.id
+         ) payment_rows
+       ) payments on true
       order by
-        case when status = 'Unpaid' then 1 else 2 end,
-        due_date asc nulls last,
-        created_at desc,
-        id desc
+        case when p.status = 'Unpaid' then 1 else 2 end,
+        p.due_date asc nulls last,
+        p.created_at desc,
+        p.id desc
       limit 1000`
   );
   res.json({ payables: result.rows });
@@ -700,17 +710,109 @@ app.patch("/api/online-payables/:id/status", requireOnlineOrdersAuth, async (req
   const status = String(req.body?.status || "").trim();
   if (!id) return res.status(400).json({ error: "Payable ID is required." });
   if (!["Unpaid", "Paid"].includes(status)) return res.status(400).json({ error: "Choose Paid or Unpaid." });
-  const result = await pool.query(
-    `update ${onlineOrdersOnlyTables.payables}
-        set status = $2,
-          paid_at = case when $2 = 'Paid' then coalesce(paid_at, now()) else null end,
-          updated_at = now()
-      where id = $1
-      returning *`,
-    [id, status]
-  );
-  if (!result.rows[0]) return res.status(404).json({ error: "Payable not found." });
-  res.json({ ok: true, payable: result.rows[0] });
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    const existing = await client.query(`select * from ${onlineOrdersOnlyTables.payables} where id = $1 for update`, [id]);
+    const payable = existing.rows[0];
+    if (!payable) {
+      await client.query("rollback");
+      return res.status(404).json({ error: "Payable not found." });
+    }
+
+    if (status === "Unpaid") {
+      await client.query(`delete from online_order_portal_payable_payments where payable_id = $1`, [id]);
+    } else {
+      const remaining = Math.max(0, Number(payable.amount || 0) - Number(payable.paid_amount || 0));
+      if (remaining > 0) {
+        await client.query(
+          `insert into online_order_portal_payable_payments
+             (payable_id, amount, payment_date, payment_method, notes)
+           values ($1, $2::numeric, current_date, $3, $4)`,
+          [id, remaining, String(payable.payment_method || ""), "Marked paid"]
+        );
+      }
+    }
+
+    const result = await client.query(
+      `update ${onlineOrdersOnlyTables.payables}
+          set status = $2,
+            paid_amount = case when $2 = 'Paid' then amount else 0 end,
+            paid_at = case when $2 = 'Paid' then coalesce(paid_at, now()) else null end,
+            last_payment_at = case when $2 = 'Paid' then now() else null end,
+            updated_at = now()
+        where id = $1
+        returning *, greatest(amount - paid_amount, 0)::numeric(12,2) as balance_remaining`,
+      [id, status]
+    );
+    await client.query("commit");
+    res.json({ ok: true, payable: result.rows[0] });
+  } catch (err) {
+    await client.query("rollback").catch(() => {});
+    console.error("online payable status error", err);
+    res.status(500).json({ error: "Could not update this payment." });
+  } finally {
+    client.release();
+  }
+});
+
+app.post("/api/online-payables/:id/payments", requireOnlineOrdersAuth, async (req, res) => {
+  if (!req.onlineOrdersOnly) return res.status(403).json({ error: "Payables are only available in the Online Orders portal." });
+  const id = Number(req.params.id);
+  const amount = Number(req.body?.amount || 0);
+  const paymentDate = String(req.body?.payment_date || "").trim();
+  const paymentMethod = String(req.body?.payment_method || "").trim();
+  const notes = String(req.body?.notes || "").trim();
+  if (!id) return res.status(400).json({ error: "Payable ID is required." });
+  if (!Number.isFinite(amount) || amount <= 0) return res.status(400).json({ error: "Enter a valid partial payment amount." });
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    const existing = await client.query(`select * from ${onlineOrdersOnlyTables.payables} where id = $1 for update`, [id]);
+    const payable = existing.rows[0];
+    if (!payable) {
+      await client.query("rollback");
+      return res.status(404).json({ error: "Payable not found." });
+    }
+    const remaining = Math.max(0, Number(payable.amount || 0) - Number(payable.paid_amount || 0));
+    if (remaining <= 0) {
+      await client.query("rollback");
+      return res.status(400).json({ error: "This bill is already paid." });
+    }
+    const appliedAmount = Math.min(amount, remaining);
+    const paymentResult = await client.query(
+      `insert into online_order_portal_payable_payments
+         (payable_id, amount, payment_date, payment_method, notes)
+       values ($1, $2::numeric, coalesce($3::date, current_date), $4, $5)
+       returning *`,
+      [id, appliedAmount, paymentDate || null, paymentMethod, notes]
+    );
+    const result = await client.query(
+      `update ${onlineOrdersOnlyTables.payables}
+          set paid_amount = least(amount, paid_amount + $2::numeric),
+            status = case when least(amount, paid_amount + $2::numeric) >= amount then 'Paid' else 'Unpaid' end,
+            paid_at = case when least(amount, paid_amount + $2::numeric) >= amount then coalesce(paid_at, now()) else null end,
+            last_payment_at = now(),
+            payment_method = case when $3 = '' then payment_method else $3 end,
+            notes = case
+              when $4 = '' then notes
+              when notes = '' then $4
+              else notes || ' | ' || $4
+            end,
+            updated_at = now()
+        where id = $1
+        returning *, greatest(amount - paid_amount, 0)::numeric(12,2) as balance_remaining`,
+      [id, appliedAmount, paymentMethod, notes]
+    );
+    await client.query("commit");
+    res.json({ ok: true, payment: paymentResult.rows[0], payable: result.rows[0] });
+  } catch (err) {
+    await client.query("rollback").catch(() => {});
+    console.error("online payable partial payment error", err);
+    res.status(500).json({ error: "Could not add partial payment." });
+  } finally {
+    client.release();
+  }
 });
 
 app.delete("/api/online-payables/:id", requireOnlineOrdersAuth, async (req, res) => {
@@ -3092,11 +3194,23 @@ async function migrate() {
       is_monthly boolean not null default false,
       long_term_months integer not null default 0,
       long_term_balance numeric(12,2) not null default 0,
+      paid_amount numeric(12,2) not null default 0,
       status text not null default 'Unpaid',
       paid_at timestamptz,
+      last_payment_at timestamptz,
       notes text not null default '',
       created_at timestamptz not null default now(),
       updated_at timestamptz not null default now()
+    );
+
+    create table if not exists online_order_portal_payable_payments (
+      id serial primary key,
+      payable_id integer not null references online_order_portal_payables(id) on delete cascade,
+      amount numeric(12,2) not null default 0,
+      payment_date date not null default current_date,
+      payment_method text not null default '',
+      notes text not null default '',
+      created_at timestamptz not null default now()
     );
 
     create table if not exists app_migrations (
@@ -3305,10 +3419,26 @@ async function migrate() {
     alter table online_order_portal_payables add column if not exists is_monthly boolean not null default false;
     alter table online_order_portal_payables add column if not exists long_term_months integer not null default 0;
     alter table online_order_portal_payables add column if not exists long_term_balance numeric(12,2) not null default 0;
+    alter table online_order_portal_payables add column if not exists paid_amount numeric(12,2) not null default 0;
     alter table online_order_portal_payables add column if not exists status text not null default 'Unpaid';
     alter table online_order_portal_payables add column if not exists paid_at timestamptz;
+    alter table online_order_portal_payables add column if not exists last_payment_at timestamptz;
     alter table online_order_portal_payables add column if not exists notes text not null default '';
     alter table online_order_portal_payables add column if not exists updated_at timestamptz not null default now();
+    create table if not exists online_order_portal_payable_payments (
+      id serial primary key,
+      payable_id integer not null references online_order_portal_payables(id) on delete cascade,
+      amount numeric(12,2) not null default 0,
+      payment_date date not null default current_date,
+      payment_method text not null default '',
+      notes text not null default '',
+      created_at timestamptz not null default now()
+    );
+    update online_order_portal_payables
+       set paid_amount = amount,
+         last_payment_at = coalesce(last_payment_at, paid_at, updated_at)
+     where status = 'Paid'
+       and paid_amount = 0;
     with applied as (
       insert into app_migrations (migration_key)
       values ('seed_september_2026_online_cash_flow_tracker')

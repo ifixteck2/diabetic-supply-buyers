@@ -326,7 +326,11 @@
 }
 
 .payables-table td:nth-child(5),
-.payables-table th:nth-child(5) {
+.payables-table td:nth-child(6),
+.payables-table td:nth-child(7),
+.payables-table th:nth-child(5),
+.payables-table th:nth-child(6),
+.payables-table th:nth-child(7) {
   text-align: right;
 }
 
