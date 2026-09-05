@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "iFixTeck Online Orders API",
-    "version": "1.1.0",
-    "description": "API for adding profits, expenses, bills, and monthly tracker settings to the Online Orders portal."
+    "version": "1.1.1",
+    "description": "Read and update the same financial records shown in the iFixTeck Financial Workspace. Authenticate with the saved Bearer API key. Use checkTrackerConnection to verify authentication. Record bill payments only through bill payment actions; never duplicate them as tracker expenses."
   },
   "servers": [
     {
@@ -28,7 +28,7 @@
           "source": { "type": "string" },
           "phone_model": { "type": "string" },
           "quantity": { "type": "integer", "minimum": 1 },
-          "amount": { "type": "number", "minimum": 0 },
+          "amount": { "type": "number", "minimum": 0, "description": "Total amount for this entry, not per device. Phone Profit is after phone purchase cost." },
           "description": { "type": "string" },
           "notes": { "type": "string" }
         },
@@ -36,6 +36,7 @@
       },
       "MonthlySettings": {
         "type": "object",
+        "description": "Only supplied fields are changed. Omitted budgets and notes are preserved.",
         "properties": {
           "month": { "type": "string", "example": "2026-09" },
           "monthly_budget": { "type": "number", "minimum": 0 },
@@ -84,6 +85,17 @@
     }
   ],
   "paths": {
+    "/api/online-orders-me": {
+      "get": {
+        "operationId": "checkTrackerConnection",
+        "summary": "Check the saved tracker API connection",
+        "description": "Read-only authentication check. A successful response contains ok=true and portal=online_orders. Then use getMonthlyTracker and getBills to verify record access.",
+        "responses": {
+          "200": { "description": "Authenticated tracker connection" },
+          "401": { "description": "The saved API key is missing or invalid" }
+        }
+      }
+    },
     "/api/online-monthly-tracker": {
       "get": {
         "operationId": "getMonthlyTracker",
@@ -243,7 +255,8 @@
     "/api/online-payables/{id}/payments": {
       "post": {
         "operationId": "addBillPartialPayment",
-        "summary": "Add a partial payment toward a bill",
+        "summary": "Record a full or partial payment toward a bill",
+        "description": "Use the bill ID from getBills. Supply the actual payment date when backdating. This updates paid amount, remaining balance, and the financial ledger automatically; do not add a duplicate Expense entry.",
         "parameters": [
           {
             "name": "id",

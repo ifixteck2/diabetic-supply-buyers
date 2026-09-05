@@ -2,6 +2,16 @@
 
 Use this to add profits, expenses, bills, and monthly settings to the Online Orders portal.
 
+## Verify the GPT Connection
+
+Import the current schema from `https://selldiabetics.com/online-orders-openapi.json` into the GPT's existing Action and keep its API Key / Bearer authentication. No extra routing header is needed for Bearer-token requests.
+
+Run `checkTrackerConnection` first. It must return `ok: true` and `portal: "online_orders"`. Then run `getMonthlyTracker` for the desired month and `getBills`. Only report a save after the write action returns `ok: true`; read the updated records afterward to confirm. Never claim a connection is verified from an unauthenticated 401 response.
+
+Monthly settings updates preserve fields that were not supplied. Full bill payments use the business date in America/New_York; partial-payment actions support an explicit payment date. Existing tracker and bill action names remain compatible.
+
+For local database regression checks, install `@electric-sql/pglite` in a temporary directory, set `PGLITE_TEST_MODULE` to its `dist/index.js`, and run `node --test scripts/tracker-api-postgres.test.js`. These tests exercise the server's actual SQL and authentication middleware using disposable in-memory PostgreSQL tables, never production records.
+
 ## Financial Reporting and Corrections
 
 `GET /api/online-monthly-tracker?month=2026-09&history_months=6` returns selected-month `entries`, `settings`, and `history_entries` covering six reporting months. History accepts 1 to 12 months.

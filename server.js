@@ -644,23 +644,29 @@ app.patch("/api/online-monthly-tracker/settings", requireOnlineOrdersAuth, async
   if (!req.onlineOrdersOnly) return res.status(403).json({ error: "Monthly Tracker is only available in the Online Orders portal." });
   const input = req.body || {};
   const month = normalizeMonthInput(input.month || localDateInTimeZone().slice(0, 7));
-  const monthlyBudget = Number(input.monthly_budget || 0);
-  const foodBudget = Number(input.food_budget || 0);
-  if (!Number.isFinite(monthlyBudget) || monthlyBudget < 0) return res.status(400).json({ error: "Enter a valid monthly budget." });
-  if (!Number.isFinite(foodBudget) || foodBudget < 0) return res.status(400).json({ error: "Enter a valid food budget." });
+  const monthlyBudget = input.monthly_budget === undefined ? null : Number(input.monthly_budget);
+  const foodBudget = input.food_budget === undefined ? null : Number(input.food_budget);
+  const notes = input.notes === undefined ? null : String(input.notes || "").trim();
+  if (monthlyBudget !== null && (!Number.isFinite(monthlyBudget) || monthlyBudget < 0)) return res.status(400).json({ error: "Enter a valid monthly budget." });
+  if (foodBudget !== null && (!Number.isFinite(foodBudget) || foodBudget < 0)) return res.status(400).json({ error: "Enter a valid food budget." });
+  try {
   const result = await pool.query(
     `insert into ${onlineOrdersOnlyTables.trackerSettings}
        (entry_month, monthly_budget, food_budget, notes)
-     values (($1::text || '-01')::date, $2::numeric, $3::numeric, $4)
+     values (($1::text || '-01')::date, coalesce($2::numeric, 0), coalesce($3::numeric, 0), coalesce($4::text, ''))
      on conflict (entry_month) do update
-       set monthly_budget = excluded.monthly_budget,
-         food_budget = excluded.food_budget,
-         notes = excluded.notes,
+       set monthly_budget = coalesce($2::numeric, ${onlineOrdersOnlyTables.trackerSettings}.monthly_budget),
+         food_budget = coalesce($3::numeric, ${onlineOrdersOnlyTables.trackerSettings}.food_budget),
+         notes = coalesce($4::text, ${onlineOrdersOnlyTables.trackerSettings}.notes),
          updated_at = now()
      returning *`,
-    [month, monthlyBudget, foodBudget, String(input.notes || "").trim()]
+    [month, monthlyBudget, foodBudget, notes]
   );
   res.json({ ok: true, settings: result.rows[0] });
+  } catch (error) {
+    console.error("monthly settings save error", error);
+    res.status(500).json({ error: "Could not save monthly settings. Please try again." });
+  }
 });
 
 app.get("/api/online-payables", requireOnlineOrdersAuth, async (req, res) => {
@@ -743,8 +749,8 @@ app.patch("/api/online-payables/:id/status", requireOnlineOrdersAuth, async (req
         await client.query(
           `insert into online_order_portal_payable_payments
              (payable_id, amount, payment_date, payment_method, notes)
-           values ($1, $2::numeric, current_date, $3, $4)`,
-          [id, remaining, String(payable.payment_method || ""), "Marked paid"]
+           values ($1, $2::numeric, $5::date, $3, $4)`,
+          [id, remaining, String(payable.payment_method || ""), "Marked paid", localDateInTimeZone()]
         );
       }
     }
