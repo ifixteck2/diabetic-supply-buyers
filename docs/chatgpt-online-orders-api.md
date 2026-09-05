@@ -2,6 +2,14 @@
 
 Use this to add profits, expenses, bills, and monthly settings to the Online Orders portal.
 
+## Financial Reporting and Corrections
+
+`GET /api/online-monthly-tracker?month=2026-09&history_months=6` returns selected-month `entries`, `settings`, and `history_entries` covering six reporting months. History accepts 1 to 12 months.
+
+`PATCH /api/online-monthly-tracker/{id}` corrects a tracker entry. Send only fields that should change, for example `{"amount":19.72,"category":"Food","description":"Taco Bell"}`. Supported fields match tracker entries, including date and reporting month.
+
+Phone Profit is net of the phone's purchase cost. Entry amounts are totals for the stated quantity. Cash In is not phone profit. Cash Out is separate from expenses. Bill payments are counted from their payment dates and must not also be entered as tracker expenses. The ledger's running total is monthly net movement, not a bank balance. Original long-term commitments are reduced only by payments recorded against those bills; no interest or unrecorded payments are assumed. A monthly bill flag describes frequency; it does not create future installments automatically.
+
 Base URL:
 `https://www.selldiabetics.com`
 

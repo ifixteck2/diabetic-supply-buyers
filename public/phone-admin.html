@@ -5,7 +5,8 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Phone Flipping Portal</title>
   <link rel="stylesheet" href="/styles.css?v=20260815-soft-phone-theme">
-  <link rel="stylesheet" href="/monthly-tracker.css?v=20260904-partial-bills">
+  <link rel="stylesheet" href="/monthly-tracker.css?v=20260904-financial-workspace">
+  <link rel="stylesheet" href="/financial-tracker.css?v=20260904-financial-workspace">
 </head>
 <body class="admin-body phone-admin-body">
   <main class="wrap admin-wrap">
@@ -413,27 +414,42 @@
         <section id="onlineOrdersTrackerPanel" class="online-order-tab-panel hidden" data-online-only="true">
           <section class="panel online-order-list-panel monthly-tracker-panel">
             <div class="panel-head">
-              <div><h2>Monthly Tracker</h2><p>Track iPhone profits, expenses, and cash flow by month.</p></div>
-              <label class="compact-select">Month<input id="monthlyTrackerMonth" type="month"></label>
+              <div><span class="finance-eyebrow">iFixTeck / Financials</span><h2>Monthly Tracker</h2></div>
+              <div class="finance-header-actions">
+                <label class="compact-select">Reporting month<input id="monthlyTrackerMonth" type="month"></label>
+                <button class="btn secondary" type="button" onclick="FinancialTracker.exportCsv()">Export CSV</button>
+                <button class="btn phone-btn" type="button" onclick="FinancialTracker.openEntry()">Add Entry</button>
+              </div>
             </div>
+            <div id="financialLoadStatus" role="status"></div>
+            <nav class="finance-tabs" aria-label="Financial views">
+              <button type="button" class="active" data-finance-tab="overview" aria-pressed="true">Overview</button>
+              <button type="button" data-finance-tab="transactions" aria-pressed="false">Transactions</button>
+              <button type="button" data-finance-tab="plan" aria-pressed="false">Budget &amp; Balances</button>
+            </nav>
             <div id="monthlyTrackerStats" class="stats online-order-stats monthly-tracker-stats"></div>
-            <div class="online-order-form-sections monthly-tracker-form">
+            <div id="financialOverview"></div>
+            <div id="financialPlanView" class="hidden">
+              <div id="financialPlanReport"></div>
               <div class="online-order-form-section monthly-plan-form-section">
-                <h3>Monthly Plan</h3>
+                <h3>Monthly Targets</h3>
                 <div class="form-grid three">
-                  <label>Monthly Expenses / Budget<input id="monthlyTrackerBudget" type="number" min="0" step="0.01" placeholder="21150"></label>
+                  <label>Monthly Profit Target<input id="monthlyTrackerBudget" type="number" min="0" step="0.01" placeholder="21150"></label>
                   <label>Food Budget<input id="monthlyTrackerFoodBudget" type="number" min="0" step="0.01" placeholder="800"></label>
                   <label>Plan Notes<input id="monthlyTrackerPlanNotes" placeholder="September plan, notes, goals"></label>
                 </div>
                 <div class="actions"><button class="btn secondary" id="saveMonthlyTrackerSettingsBtn">Save Monthly Plan</button></div>
                 <div id="monthlyTrackerSettingsStatus"></div>
               </div>
-              <div class="online-order-form-section">
-                <h3>Add Entry</h3>
+            </div>
+            <dialog id="financialEntryDialog" class="finance-dialog" aria-labelledby="financialEntryTitle">
+              <form id="financialEntryForm">
+                <div class="finance-section-head"><h3 id="financialEntryTitle">Add Entry</h3><button type="button" class="btn secondary" onclick="document.getElementById('financialEntryDialog').close()">Cancel</button></div>
+                <p class="finance-note">Phone Profit is the amount earned after the phone's cost. Record each expense or bill payment once.</p>
                 <div class="form-grid three">
                   <label>Type<select id="monthlyTrackerType"><option>Phone Profit</option><option>Expense</option><option>Cash In</option><option>Cash Out</option></select></label>
-                  <label>Date<input id="monthlyTrackerDate" type="date"></label>
-                  <label>Amount<input id="monthlyTrackerAmount" type="number" min="0" step="0.01"></label>
+                  <label>Date<input id="monthlyTrackerDate" type="date" required></label>
+                  <label>Total Amount<input id="monthlyTrackerAmount" type="number" min="0.01" step="0.01" required></label>
                 </div>
                 <div class="form-grid three">
                   <label>Category<input id="monthlyTrackerCategory" list="monthlyTrackerCategoryOptions" placeholder="Inventory, ads, shipping, supplies"></label>
@@ -459,22 +475,30 @@
                   <option value="Refund"></option>
                   <option value="Other"></option>
                 </datalist>
-                <div class="actions"><button class="btn phone-btn" id="saveMonthlyTrackerBtn">Add Tracker Entry</button></div>
+                <div class="actions"><button class="btn phone-btn" type="submit" id="saveMonthlyTrackerBtn">Save Entry</button></div>
                 <div id="monthlyTrackerStatus"></div>
+              </form>
+            </dialog>
+            <div id="financialTransactionsView" class="hidden">
+              <div class="finance-ledger-tools">
+                <label>Search transactions<input id="financialSearch" type="search" placeholder="Description, source, category, model"></label>
+                <label>Type<select id="financialTypeFilter"><option value="">All transactions</option><option>Phone Profit</option><option>Expense</option><option>Bill Payment</option><option>Cash In</option><option>Cash Out</option></select></label>
+                <label>Category<select id="financialCategoryFilter"><option value="">All categories</option></select></label>
               </div>
+              <div id="monthlyTrackerList" class="monthly-tracker-list"></div>
             </div>
-            <div id="monthlyTrackerList" class="monthly-tracker-list"></div>
           </section>
         </section>
 
         <section id="onlineOrdersPayablesPanel" class="online-order-tab-panel hidden" data-online-only="true">
           <section class="panel online-order-list-panel payables-panel">
             <div class="panel-head">
-              <div><h2>Bills</h2><p>Track monthly bills, one-time payments, cards, ports, or anything else that needs to be paid.</p></div>
+              <div><span class="finance-eyebrow">iFixTeck / Payables</span><h2>Bills</h2></div>
+              <button class="btn phone-btn" type="button" onclick="document.getElementById('financialAddBill').open = true; document.getElementById('onlinePayableTitle').focus()">Add Bill</button>
             </div>
             <div id="onlinePayableStats" class="stats online-order-stats payables-stats"></div>
-            <div class="online-order-form-section payables-form">
-              <h3>Add Bill</h3>
+            <details id="financialAddBill" class="online-order-form-section payables-form">
+              <summary>Add Bill</summary>
               <div class="form-grid three">
                 <label>Bill Name<input id="onlinePayableTitle" placeholder="Rent, card, port numbers, supplier"></label>
                 <label>Amount<input id="onlinePayableAmount" type="number" min="0" step="0.01"></label>
@@ -502,6 +526,11 @@
               </datalist>
               <div class="actions"><button class="btn phone-btn" id="saveOnlinePayableBtn">Add Bill</button></div>
               <div id="onlinePayableStatus"></div>
+            </details>
+            <div class="finance-ledger-tools">
+              <label>Find a bill<input id="financialBillSearch" type="search" placeholder="Name or category"></label>
+              <label>Status<select id="financialBillFilter"><option value="open">Unpaid &amp; partially paid</option><option value="overdue">Overdue</option><option value="paid">Paid</option><option value="all">All bills</option></select></label>
+              <button class="btn secondary" type="button" onclick="openOnlineMainTab('tracker'); FinancialTracker.setView('plan')">Long-Term Balances</button>
             </div>
             <div id="onlinePayablesList" class="payables-list"></div>
           </section>
@@ -691,6 +720,22 @@
       </section>
     </div>
   </main>
-  <script src="/phone-admin.js?v=20260904-partial-bills"></script>
+  <dialog id="financialPaymentDialog" class="finance-dialog" aria-labelledby="financialPaymentTitle">
+    <form id="financialPaymentForm">
+      <div class="finance-section-head"><h3 id="financialPaymentTitle">Record Payment</h3><button class="btn secondary" type="button" onclick="document.getElementById('financialPaymentDialog').close()">Cancel</button></div>
+      <p id="financialPaymentBalance" class="finance-note"></p>
+      <div class="form-grid two">
+        <label>Amount Paid<input id="financialPaymentAmount" type="number" min="0.01" step="0.01" required></label>
+        <label>Payment Date<input id="financialPaymentDate" type="date" required></label>
+        <label>Payment Method<input id="financialPaymentMethod" placeholder="Cash, bank, card"></label>
+        <label>Notes<input id="financialPaymentNotes"></label>
+      </div>
+      <div class="actions"><button type="submit" class="btn phone-btn" id="financialPaymentSave">Save Payment</button></div>
+      <div id="financialPaymentStatus" role="status"></div>
+    </form>
+  </dialog>
+  <script src="/financial-core.js?v=20260904-financial-workspace"></script>
+  <script src="/financial-tracker.js?v=20260904-financial-workspace"></script>
+  <script src="/phone-admin.js?v=20260904-financial-workspace"></script>
 </body>
 </html>

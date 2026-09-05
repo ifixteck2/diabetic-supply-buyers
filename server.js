@@ -597,7 +597,10 @@ app.patch("/api/phone-prepaid-ports/:id/status", requireOnlineOrdersAuth, async 
 app.get("/api/online-monthly-tracker", requireOnlineOrdersAuth, async (req, res) => {
   if (!req.onlineOrdersOnly) return res.status(403).json({ error: "Monthly Tracker is only available in the Online Orders portal." });
   const month = normalizeMonthInput(req.query.month || localDateInTimeZone().slice(0, 7));
-  const [result, settings] = await Promise.all([
+  const historyMonths = Number(req.query.history_months || 1);
+  if (!Number.isInteger(historyMonths) || historyMonths < 1 || historyMonths > 12) return res.status(400).json({ error: "History must be between 1 and 12 months." });
+  try {
+  const [result, settings, history] = await Promise.all([
     pool.query(
     `select *
        from ${onlineOrdersOnlyTables.tracker}
@@ -612,10 +615,18 @@ app.get("/api/online-monthly-tracker", requireOnlineOrdersAuth, async (req, res)
         limit 1`,
       [month]
     ),
+    pool.query(
+      `select * from ${onlineOrdersOnlyTables.tracker}
+       where entry_month >= (($1::text || '-01')::date - (($2::int - 1) * interval '1 month'))
+         and entry_month <= ($1::text || '-01')::date
+       order by entry_month, entry_date, id`,
+      [month, historyMonths]
+    ),
   ]);
   res.json({
     month,
     entries: result.rows,
+    history_entries: history.rows,
     settings: settings.rows[0] || {
       entry_month: `${month}-01`,
       monthly_budget: 0,
@@ -623,6 +634,10 @@ app.get("/api/online-monthly-tracker", requireOnlineOrdersAuth, async (req, res)
       notes: "",
     },
   });
+  } catch (error) {
+    console.error("monthly tracker load error", error);
+    res.status(500).json({ error: "Could not load financial records. Please try again." });
+  }
 });
 
 app.patch("/api/online-monthly-tracker/settings", requireOnlineOrdersAuth, async (req, res) => {
@@ -760,11 +775,12 @@ app.post("/api/online-payables/:id/payments", requireOnlineOrdersAuth, async (re
   if (!req.onlineOrdersOnly) return res.status(403).json({ error: "Payables are only available in the Online Orders portal." });
   const id = Number(req.params.id);
   const amount = Number(req.body?.amount || 0);
-  const paymentDate = String(req.body?.payment_date || "").trim();
+  const paymentDate = String(req.body?.payment_date || localDateInTimeZone()).trim();
   const paymentMethod = String(req.body?.payment_method || "").trim();
   const notes = String(req.body?.notes || "").trim();
   if (!id) return res.status(400).json({ error: "Payable ID is required." });
   if (!Number.isFinite(amount) || amount <= 0) return res.status(400).json({ error: "Enter a valid partial payment amount." });
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(paymentDate) || !Number.isFinite(Date.parse(paymentDate)) || new Date(paymentDate).toISOString().slice(0, 10) !== paymentDate) return res.status(400).json({ error: "Enter a valid payment date." });
   const client = await pool.connect();
   try {
     await client.query("begin");
@@ -852,6 +868,40 @@ app.post("/api/online-monthly-tracker", requireOnlineOrdersAuth, async (req, res
     ]
   );
   res.json({ ok: true, entry: result.rows[0] });
+});
+
+app.patch("/api/online-monthly-tracker/:id", requireOnlineOrdersAuth, async (req, res) => {
+  if (!req.onlineOrdersOnly) return res.status(403).json({ error: "Monthly Tracker is only available in the Online Orders portal." });
+  const id = Number(req.params.id);
+  const input = req.body || {};
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: "A valid entry ID is required." });
+  const type = input.entry_type === undefined ? null : normalizeTrackerEntryType(input.entry_type);
+  if (input.entry_type !== undefined && !type) return res.status(400).json({ error: "Choose profit, expense, cash in, or cash out." });
+  const amount = input.amount === undefined ? null : Number(input.amount);
+  if (amount !== null && (!Number.isFinite(amount) || amount <= 0)) return res.status(400).json({ error: "Enter an amount greater than zero." });
+  const quantity = input.quantity === undefined ? null : Number(input.quantity);
+  if (quantity !== null && (!Number.isInteger(quantity) || quantity < 1)) return res.status(400).json({ error: "Quantity must be a positive whole number." });
+  if (input.month !== undefined && !/^\d{4}-(0[1-9]|1[0-2])$/.test(input.month)) return res.status(400).json({ error: "Use YYYY-MM for the reporting month." });
+  if (input.entry_date !== undefined && (!/^\d{4}-\d{2}-\d{2}$/.test(input.entry_date) || !Number.isFinite(Date.parse(input.entry_date)) || new Date(input.entry_date).toISOString().slice(0, 10) !== input.entry_date)) return res.status(400).json({ error: "Enter a valid transaction date." });
+  const optionalText = (key) => input[key] === undefined ? null : String(input[key] || "").trim();
+  try {
+    const result = await pool.query(
+      `update ${onlineOrdersOnlyTables.tracker} set
+        entry_month = coalesce($2::date, entry_month), entry_date = coalesce($3::date, entry_date),
+        entry_type = coalesce($4::text, entry_type), amount = coalesce($5::numeric, amount),
+        quantity = coalesce($6::int, quantity), category = coalesce($7::text, category),
+        source = coalesce($8::text, source), phone_model = coalesce($9::text, phone_model),
+        description = coalesce($10::text, description), notes = coalesce($11::text, notes), updated_at = now()
+       where id = $1::int returning *`,
+      [id, input.month ? `${input.month}-01` : null, input.entry_date || null, type, amount, quantity,
+        optionalText("category"), optionalText("source"), optionalText("phone_model"), optionalText("description"), optionalText("notes")]
+    );
+    if (!result.rows[0]) return res.status(404).json({ error: "Tracker entry not found." });
+    res.json({ ok: true, entry: result.rows[0] });
+  } catch (error) {
+    console.error("monthly tracker edit error", error);
+    res.status(500).json({ error: "Could not save this transaction. Please try again." });
+  }
 });
 
 app.delete("/api/online-monthly-tracker/:id", requireOnlineOrdersAuth, async (req, res) => {

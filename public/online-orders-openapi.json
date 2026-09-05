@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "iFixTeck Online Orders API",
-    "version": "1.0.2",
+    "version": "1.1.0",
     "description": "API for adding profits, expenses, bills, and monthly tracker settings to the Online Orders portal."
   },
   "servers": [
@@ -94,6 +94,12 @@
             "in": "query",
             "required": false,
             "schema": { "type": "string", "example": "2026-09" }
+          },
+          {
+            "name": "history_months",
+            "in": "query",
+            "description": "Also return history_entries for this many reporting months, including the selected month.",
+            "schema": { "type": "integer", "minimum": 1, "maximum": 12, "default": 1 }
           }
         ],
         "responses": {
@@ -134,6 +140,41 @@
       }
     },
     "/api/online-monthly-tracker/{id}": {
+      "patch": {
+        "operationId": "editMonthlyTrackerEntry",
+        "summary": "Correct an existing profit, expense, or cash entry",
+        "description": "Only supplied fields change. Amount is a positive total for the entry, not a per-phone amount. Bill payments must be recorded through bill payment actions, not duplicated as expenses.",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "month": { "type": "string", "example": "2026-09" },
+                  "entry_type": { "type": "string", "enum": ["Phone Profit", "Expense", "Cash In", "Cash Out"] },
+                  "entry_date": { "type": "string", "format": "date" },
+                  "amount": { "type": "number", "exclusiveMinimum": 0 },
+                  "quantity": { "type": "integer", "minimum": 1 },
+                  "category": { "type": "string" },
+                  "source": { "type": "string" },
+                  "phone_model": { "type": "string" },
+                  "description": { "type": "string" },
+                  "notes": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Updated entry" },
+          "400": { "description": "Invalid fields" },
+          "404": { "description": "Entry not found" }
+        }
+      },
       "delete": {
         "operationId": "deleteMonthlyTrackerEntry",
         "summary": "Delete a tracker entry by ID",
