@@ -121,7 +121,12 @@
     if (!groups.length) return empty(kind === "profit" ? "No phone profits recorded." : "No expenses or bill payments recorded.");
     const total = groups.reduce((sum, row) => sum + C.cents(row.amount), 0);
     const max = Math.max(...groups.map((row) => row.amount), 1);
-    const renderGroup = (row) => `<div class="finance-breakdown-row"><div><span>${esc(row.label)}</span><strong>${usd(row.amount)}</strong></div><div class="finance-bar-track"><span class="${kind}" style="width:${row.amount / max * 100}%"></span></div><small>${total ? Math.round(C.cents(row.amount) / total * 100) : 0}% ${kind === "profit" ? ` / ${row.quantity} phones` : ` / ${row.count} payments`}</small></div>`;
+    const renderGroup = (row) => {
+      const content = `<span class="finance-breakdown-heading"><span>${esc(row.label)}</span><strong>${usd(row.amount)}</strong></span><span class="finance-bar-track"><span class="${kind}" style="width:${row.amount / max * 100}%"></span></span><small>${total ? Math.round(C.cents(row.amount) / total * 100) : 0}% ${kind === "profit" ? ` / ${row.quantity} phones` : ` / ${row.count} payments`}</small>`;
+      return kind === "spending"
+        ? `<button type="button" class="finance-breakdown-row finance-category-button" onclick="FinancialTracker.openSpendingCategory(${groups.indexOf(row)})" aria-label="View ${esc(row.label)} spending: ${usd(row.amount)}">${content}</button>`
+        : `<div class="finance-breakdown-row">${content}</div>`;
+    };
     return groups.slice(0, 5).map(renderGroup).join("") + (groups.length > 5 ? `<details><summary>${groups.length - 5} more categories</summary>${groups.slice(5).map(renderGroup).join("")}</details>` : "");
   }
   function renderHistory(input) {
@@ -154,7 +159,21 @@
     const text = el("financialSearch").value.toLowerCase().trim();
     const type = el("financialTypeFilter").value;
     const category = el("financialCategoryFilter").value;
-    return (currentReport?.rows || []).filter((row) => (!type || row.type === type) && (!category || row.category === category) && (!text || [row.description, row.source, row.category, row.model, row.notes, row.method, row.date, row.inflow, row.outflow].join(" ").toLowerCase().includes(text)));
+    return (currentReport?.rows || []).filter((row) => (!type || (type === "spending" ? row.type === "Expense" || row.type === "Bill Payment" : row.type === type)) && (!category || row.category.trim().toLowerCase() === category.trim().toLowerCase()) && (!text || [row.description, row.source, row.category, row.model, row.notes, row.method, row.date, row.inflow, row.outflow].join(" ").toLowerCase().includes(text)));
+  }
+  function openSpendingCategory(index) {
+    const category = currentReport?.categories[index];
+    if (!category) return;
+    const option = [...el("financialCategoryFilter").options].find((item) => item.value.trim().toLowerCase() === category.label.toLowerCase());
+    if (!option) return;
+    el("financialSearch").value = "";
+    el("financialTypeFilter").value = "spending";
+    el("financialCategoryFilter").value = option.value;
+    ledgerPage = 0;
+    renderLedger();
+    setView("transactions");
+    el("financialTypeFilter").focus({ preventScroll: true });
+    el("financialTransactionsView").scrollIntoView({ block: "start" });
   }
   function transactionTable(rows, full) {
     if (!rows.length) return empty("No transactions match this view.");
@@ -261,7 +280,7 @@
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
-  root.FinancialTracker = { init, render, renderBills, setView, openEntry, openPayment, showBill, exportCsv, invalidate,
+  root.FinancialTracker = { init, render, renderBills, setView, openEntry, openPayment, showBill, exportCsv, invalidate, openSpendingCategory,
     page(delta) { ledgerPage += delta; renderLedger(); },
     goMonth(month) { el("monthlyTrackerMonth").value = month; loadMonthlyTracker(); },
     async reopenBill(id) { if (confirm("Mark this bill unpaid and remove its recorded payments? This also changes cash flow and payment history.")) await setOnlinePayableStatus(id, "Unpaid"); },

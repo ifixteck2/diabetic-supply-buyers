@@ -94,11 +94,14 @@
 .finance-chart-legend span { display: inline-flex; gap: 6px; align-items: center; }
 .finance-dot { width: 8px; height: 8px; background: #207757; border-radius: 50%; }
 .finance-breakdown-row { padding: 9px 0; }
-.finance-breakdown-row > div:first-child { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; }
+.finance-breakdown-heading { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; }
+.finance-category-button { display: block; width: 100%; border: 0; border-radius: 4px; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.finance-category-button:hover, .finance-category-button:focus-visible { background: #f1f6f3; }
+.finance-category-button .finance-breakdown-heading > span { text-decoration: underline; text-underline-offset: 3px; }
 .finance-breakdown-row span { overflow-wrap: anywhere; }
 .finance-breakdown-row strong { font-weight: 600; font-variant-numeric: tabular-nums; }
 .finance-breakdown-row small { color: #5b686b; font-size: 12px; }
-.finance-bar-track { height: 6px; background: #edf0ee; margin: 8px 0 4px; }
+.finance-bar-track { display: block; height: 6px; background: #edf0ee; margin: 8px 0 4px; }
 .finance-bar-track > span { display: block; height: 6px; background: #ae475e; }
 .finance-bar-track > span.profit { background: #287d8c; }
 .finance-ledger-tools { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }

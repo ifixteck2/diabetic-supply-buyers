@@ -6,7 +6,7 @@
   <title>Phone Flipping Portal</title>
   <link rel="stylesheet" href="/styles.css?v=20260815-soft-phone-theme">
   <link rel="stylesheet" href="/monthly-tracker.css?v=20260904-financial-workspace">
-  <link rel="stylesheet" href="/financial-tracker.css?v=20260904-financial-workspace">
+  <link rel="stylesheet" href="/financial-tracker.css?v=20260904-category-details">
 </head>
 <body class="admin-body phone-admin-body">
   <main class="wrap admin-wrap">
@@ -481,7 +481,7 @@
             <div id="financialTransactionsView" class="hidden">
               <div class="finance-ledger-tools">
                 <label>Search transactions<input id="financialSearch" type="search" placeholder="Description, source, category, model"></label>
-                <label>Type<select id="financialTypeFilter"><option value="">All transactions</option><option>Phone Profit</option><option>Expense</option><option>Bill Payment</option><option>Cash In</option><option>Cash Out</option></select></label>
+                <label>Type<select id="financialTypeFilter"><option value="">All transactions</option><option value="spending">Expenses &amp; Bill Payments</option><option>Phone Profit</option><option>Expense</option><option>Bill Payment</option><option>Cash In</option><option>Cash Out</option></select></label>
                 <label>Category<select id="financialCategoryFilter"><option value="">All categories</option></select></label>
               </div>
               <div id="monthlyTrackerList" class="monthly-tracker-list"></div>
@@ -734,7 +734,7 @@
     </form>
   </dialog>
   <script src="/financial-core.js?v=20260904-financial-workspace"></script>
-  <script src="/financial-tracker.js?v=20260904-financial-workspace"></script>
+  <script src="/financial-tracker.js?v=20260904-category-details"></script>
   <script src="/phone-admin.js?v=20260904-financial-workspace"></script>
 </body>
 </html>

@@ -12,7 +12,7 @@ test("financial screen wiring renders records, filters, edits, and saves a dated
     classList: { toggle() {}, add() {}, remove() {} },
     parentElement: { classList: { toggle() {} } },
     addEventListener() {}, setAttribute() {}, reset() {}, reportValidity() { return true; },
-    showModal() { this.open = true; }, close() { this.open = false; }, focus() {},
+    showModal() { this.open = true; }, close() { this.open = false; }, focus() {}, scrollIntoView() {},
   });
   const controls = new Map(ids.map((id) => [id, control()]));
   controls.get("financialBillFilter").value = "open";
@@ -66,6 +66,30 @@ test("financial screen wiring renders records, filters, edits, and saves a dated
   assert.ok(controls.get("monthlyTrackerList").innerHTML.includes("Bill Payment"));
   assert.ok(controls.get("monthlyTrackerStats").innerHTML.includes("$70.00"));
   assert.equal(requests.find((request) => request.url.endsWith("/payments")).body.payment_date, "2026-09-02");
+  data.bills[0].category = "FOOD";
+  const expense = { entry_month: "2026-09-01", entry_date: "2026-09-04", entry_type: "Expense", quantity: 1 };
+  data.entries.push(
+    { ...expense, id: 3, amount: 12.1, category: "Food", description: "Popeyes test" },
+    { ...expense, id: 4, amount: 5.9, category: " food ", description: "Lunch test" },
+    { ...expense, id: 5, amount: 90, category: "Food", entry_type: "Cash Out", description: "Transfer test" },
+    { ...expense, id: 6, amount: 45, category: "Food", entry_type: "Phone Profit", description: "Sale test" },
+    { ...expense, id: 7, amount: 20, category: "Shipping", description: "Shipping test" },
+    { ...expense, id: 8, amount: 88, category: "Food", entry_month: "2026-08-01", description: "Previous month test" },
+  );
+  await vm.runInContext("loadMonthlyTracker();", sandbox);
+  await vm.runInContext("loadOnlinePayables();", sandbox);
+  controls.get("financialSearch").value = "unmatched old search";
+  controls.get("financialTypeFilter").value = "Cash In";
+  const categoryAction = controls.get("financialOverview").innerHTML.match(/onclick="(FinancialTracker.openSpendingCategory\(\d+\))" aria-label="View FOOD spending/);
+  assert.ok(categoryAction, "Spending category renders a clickable control");
+  vm.runInContext(categoryAction[1], sandbox);
+  assert.equal(controls.get("financialSearch").value, "");
+  assert.equal(controls.get("financialTypeFilter").value, "spending");
+  const detail = controls.get("monthlyTrackerList").innerHTML;
+  assert.ok(detail.includes("3 transactions"));
+  assert.ok(detail.includes("$68.00"), "Detail total matches the category total");
+  for (const description of ["Popeyes test", "Lunch test", "Bill Payment"]) assert.ok(detail.includes(description));
+  for (const description of ["Transfer test", "Sale test", "Shipping test", "Previous month test"]) assert.ok(!detail.includes(description));
   failed = true;
   await vm.runInContext("loadMonthlyTracker()", sandbox);
   assert.equal(controls.get("monthlyTrackerStats").innerHTML, "");
