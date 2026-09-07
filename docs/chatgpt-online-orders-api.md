@@ -6,6 +6,8 @@ Use this to add profits, expenses, bills, and monthly settings to the Online Ord
 
 Import the current schema from `https://selldiabetics.com/online-orders-openapi.json` into the GPT's existing Action and keep its API Key / Bearer authentication. No extra routing header is needed for Bearer-token requests.
 
+The GPT keeps an imported copy of this schema; deploying website changes does not update that copy. Re-import after action changes, verify `addBillPartialPayment` appears in Available actions, and click Update to publish the GPT. Put the contents of `docs/tracker-gpt-instructions.txt` in its Instructions field. Version 1.1.1 includes partial bill payments, entry edits, and the connection check; version 1.0.1 does not.
+
 Run `checkTrackerConnection` first. It must return `ok: true` and `portal: "online_orders"`. Then run `getMonthlyTracker` for the desired month and `getBills`. Only report a save after the write action returns `ok: true`; read the updated records afterward to confirm. Never claim a connection is verified from an unauthenticated 401 response.
 
 Monthly settings updates preserve fields that were not supplied. Full bill payments use the business date in America/New_York; partial-payment actions support an explicit payment date. Existing tracker and bill action names remain compatible.
