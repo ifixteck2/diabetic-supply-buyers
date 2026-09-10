@@ -6,6 +6,36 @@ import "../public/financial-core.js";
 const F = globalThis.FinancialCore;
 const entry = (id, type, amount, rest = {}) => ({ id, entry_type: type, amount, entry_month: "2026-09-01", entry_date: "2026-09-04", quantity: 1, ...rest });
 const report = (entries = [], bills = [], rest = {}) => F.report({ entries, bills, month: "2026-09", today: "2026-09-04", settings: { monthly_budget: 21150, food_budget: 800 }, ...rest });
+const trackerSource = fs.readFileSync(new URL("../server.js", import.meta.url), "utf8");
+const trackerTypes = {};
+vm.runInNewContext(trackerSource.slice(trackerSource.indexOf("function normalizeTrackerEntryType("), trackerSource.indexOf("function parseSession(")), trackerTypes);
+
+test("stocks profit stays separate from cash deposits and phone metrics without changing cash flow", () => {
+  const original = [entry(1, "Phone Profit", 100, { quantity: 2 }), entry(2, "Cash In", 250.25, { category: "Stocks Profit" }), entry(3, "Cash In", 300, { category: "Transfer" }), entry(4, "Expense", 20)];
+  const normalized = original.map(trackerTypes.serializeTrackerEntry);
+  const r = report(normalized);
+  assert.equal(r.stockProfit, 250.25);
+  assert.equal(r.profit, 100);
+  assert.equal(r.totalProfit, 350.25);
+  assert.equal(r.cashIn, 300);
+  assert.equal(r.net, report(original).net);
+  assert.equal(r.net, 630.25);
+  assert.equal(r.targetLeft, 20799.75);
+  assert.equal(r.quantity, 2);
+  assert.equal(r.profitPerPhone, 50);
+  assert.equal(r.rows.at(-1).movement, r.net);
+  assert.equal(r.daily.at(-1).net, r.net);
+  assert.ok(F.csv(r.rows).includes('"Stocks Profit"'));
+  assert.equal(original[1].entry_type, "Cash In", "Historical normalization must not mutate records");
+  for (const label of ["Stocks", " stock profit ", "STOCKS  PROFIT", "Stock Market", "Stock gains"]) {
+    assert.equal(trackerTypes.normalizeTrackerEntryType("Cash In", label), "Stocks Profit");
+  }
+  assert.equal(trackerTypes.normalizeTrackerEntryType("Cash In", "", "Stocks"), "Stocks Profit");
+  assert.equal(trackerTypes.normalizeTrackerEntryType("Cash In", "Transfer", "Stocks"), "Cash In");
+  assert.equal(trackerTypes.normalizeTrackerEntryType("Cash In", "", "Robinhood"), "Cash In");
+  assert.equal(trackerTypes.normalizeTrackerEntryType("Expense", "Stocks"), "Expense");
+  assert.equal(trackerTypes.normalizeTrackerEntryType("Phone Profit", "Stocks"), "Phone Profit");
+});
 
 test("reconciles the user's starting figures without counting cash injections as profit", () => {
   const r = report([entry(1, "Phone Profit", 745, { quantity: 4, source: "Miami", entry_date: "2026-08-31" }), entry(2, "Phone Profit", 110), entry(3, "Expense", 50.44, { category: "Food" }), entry(4, "Expense", 100), entry(5, "Cash In", 200), entry(6, "Cash Out", 30)]);
@@ -84,7 +114,7 @@ test("edit endpoint rejects invalid money, quantity, date, and unauthorized port
   const start = source.indexOf('app.patch("/api/online-monthly-tracker/:id",');
   const end = source.indexOf('app.delete("/api/online-monthly-tracker/:id",', start);
   let handler, queryCount = 0, queryValues;
-  const sandbox = { app: { patch: (_route, _auth, fn) => { handler = fn; } }, requireOnlineOrdersAuth() {}, onlineOrdersOnlyTables: { tracker: "online_order_portal_monthly_tracker" }, normalizeTrackerEntryType: (type) => ["Phone Profit", "Expense", "Cash In", "Cash Out"].includes(type) ? type : "", console, pool: { async query(_sql, values) { queryCount++; queryValues = values; return { rows: [{ id: 7 }] }; } } };
+  const sandbox = { ...trackerTypes, app: { patch: (_route, _auth, fn) => { handler = fn; } }, requireOnlineOrdersAuth() {}, onlineOrdersOnlyTables: { tracker: "online_order_portal_monthly_tracker" }, console, pool: { async query(_sql, values) { queryCount++; queryValues = values; return { rows: [{ id: 7 }] }; } } };
   vm.runInNewContext(source.slice(start, end), sandbox);
   async function request(body, only = true) {
     const res = { code: 200, status(code) { this.code = code; return this; }, json(value) { this.body = value; } };
@@ -106,7 +136,7 @@ test("six month read keeps portal isolation and returns selected entries plus hi
   const start = source.indexOf('app.get("/api/online-monthly-tracker",');
   const end = source.indexOf('app.patch("/api/online-monthly-tracker/settings",', start);
   let handler, calls = [];
-  vm.runInNewContext(source.slice(start, end), { app: { get: (_path, _auth, fn) => { handler = fn; } }, requireOnlineOrdersAuth() {}, localDateInTimeZone: () => "2026-09-04", normalizeMonthInput: (value) => value, onlineOrdersOnlyTables: { tracker: "tracker", trackerSettings: "settings" }, console, pool: { async query(sql, values) { calls.push({ sql, values }); return { rows: [] }; } } });
+  vm.runInNewContext(source.slice(start, end), { ...trackerTypes, app: { get: (_path, _auth, fn) => { handler = fn; } }, requireOnlineOrdersAuth() {}, localDateInTimeZone: () => "2026-09-04", normalizeMonthInput: (value) => value, onlineOrdersOnlyTables: { tracker: "tracker", trackerSettings: "settings" }, console, pool: { async query(sql, values) { calls.push({ sql, values }); return { rows: [] }; } } });
   const res = { code: 200, status(code) { this.code = code; return this; }, json(value) { this.body = value; } };
   await handler({ onlineOrdersOnly: false, query: {} }, res);
   assert.equal(res.code, 403);

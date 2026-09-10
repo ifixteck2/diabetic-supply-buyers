@@ -6,7 +6,9 @@ Use this to add profits, expenses, bills, and monthly settings to the Online Ord
 
 Import the current schema from `https://selldiabetics.com/online-orders-openapi.json` into the GPT's existing Action and keep its API Key / Bearer authentication. No extra routing header is needed for Bearer-token requests.
 
-The GPT keeps an imported copy of this schema; deploying website changes does not update that copy. Re-import after action changes, verify `addBillPartialPayment` appears in Available actions, and click Update to publish the GPT. Put the contents of `docs/tracker-gpt-instructions.txt` in its Instructions field. Version 1.1.1 includes partial bill payments, entry edits, and the connection check; version 1.0.1 does not.
+The GPT keeps an imported copy of this schema; deploying website changes does not update that copy. Re-import after action changes, verify `addBillPartialPayment` appears in Available actions, and click Update to publish the GPT. Put the contents of `docs/tracker-gpt-instructions.txt` in its Instructions field. Version 1.2.0 adds Stocks Profit; version 1.1.1 introduced partial bill payments, entry edits, and the connection check.
+
+Use `entry_type: "Stocks Profit"` and `category: "Stocks Profit"` for reported realized net stock profits. They contribute to total profit, cash flow, and the monthly profit target, but not phone counts or per-phone profit. Do not enter invested principal, gross proceeds, or unrealized gains as profit. For compatibility with older GPT schemas, Cash In entries explicitly categorized Stocks, Stock Profit, or Stocks Profit (or using those sources when category is blank) are returned as Stocks Profit in both monthly entries and history, retaining their IDs, dates, and amounts. New legacy-format submissions are saved as Stocks Profit; unrelated deposits are not reclassified.
 
 Run `checkTrackerConnection` first. It must return `ok: true` and `portal: "online_orders"`. Then run `getMonthlyTracker` for the desired month and `getBills`. Only report a save after the write action returns `ok: true`; read the updated records afterward to confirm. Never claim a connection is verified from an unauthenticated 401 response.
 
@@ -85,13 +87,14 @@ POST /api/online-monthly-tracker
 
 Valid tracker `entry_type` values:
 - `Phone Profit`
+- `Stocks Profit`
 - `Expense`
 - `Cash In`
 - `Cash Out`
 
 Rules:
 - Always send positive numbers for `amount`.
-- The website adds `Phone Profit` and `Cash In`.
+- The website adds `Phone Profit`, `Stocks Profit`, and `Cash In` to cash flow. Only the two profit types count toward the profit target.
 - The website subtracts `Expense`, `Cash Out`, and bills marked `Paid`.
 
 ## Add Bill

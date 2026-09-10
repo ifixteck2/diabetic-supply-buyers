@@ -55,9 +55,9 @@
     const r = currentReport;
     const previousMonth = C.shiftMonth(input.month, -1);
     const previous = C.report({ ...input, month: previousMonth, entries: input.history });
-    const compare = previous.rows.length ? `${usd(r.profit - previous.profit)} vs. previous month` : "No previous-month activity recorded";
+    const compare = previous.rows.length ? `${usd(r.totalProfit - previous.totalProfit)} vs. previous month` : "Phone profit + stocks profit";
     el("monthlyTrackerStats").innerHTML =
-      stat("Phone Profit", r.profit, compare, "finance-green") +
+      stat("Total Profit", r.totalProfit, compare, "finance-green") +
       stat("Expenses & Bill Payments", r.spent, `${usd(r.expense)} expenses / ${usd(r.billPaid)} bills`, "finance-rose") +
       stat("Net Cash Flow", r.net, "Recorded profit + cash in - all payments", "finance-teal") +
       stat("Unpaid Through Month-End", r.outstanding, `${r.due.length} open bills, including earlier balances`, "finance-gold");
@@ -71,6 +71,7 @@
         <section class="finance-section finance-statement">
           <div class="finance-section-head"><h3>Monthly Statement</h3></div>
           ${statementLine("Phone profit", r.profit)}
+          ${statementLine(`<button type="button" class="finance-text-button" onclick="FinancialTracker.openStocksProfit()">Stocks profit</button>`, r.stockProfit)}
           ${statementLine("Other cash in", r.cashIn)}
           ${statementLine("Expenses", -r.expense)}
           ${statementLine("Bill payments", -r.billPaid)}
@@ -80,10 +81,10 @@
           ${statementLine("Net after outstanding bills", r.afterBills, true)}
         </section>
       </div>
-      <p class="finance-note">Cash flow reflects recorded phone profits, cash adjustments, expenses, and bill payments. It is not a bank balance. Bill balances are current as of ${date(input.today)}. Online order totals are not added automatically.</p>
+      <p class="finance-note">Cash flow reflects recorded phone and stock profits, cash adjustments, expenses, and bill payments. It is not a bank balance. Bill balances are current as of ${date(input.today)}. Online order totals are not added automatically.</p>
       <div class="finance-overview-grid finance-equal-grid">
         <section class="finance-section"><div class="finance-section-head"><h3>Spending by Category</h3><span>${usd(r.spent)}</span></div>${renderBars(r.categories, "spending")}</section>
-        <section class="finance-section"><div class="finance-section-head"><h3>Profit by Source</h3><span>${r.quantity} phones / ${usd(r.profitPerPhone)} average</span></div>${renderBars(r.sources, "profit")}</section>
+        <section class="finance-section"><div class="finance-section-head"><h3>Phone Profit by Source</h3><span>${r.quantity} phones / ${usd(r.profitPerPhone)} average</span></div>${renderBars(r.sources, "profit")}</section>
       </div>
       <section class="finance-section"><div class="finance-section-head"><h3>Six-Month Comparison</h3><span>Recorded activity</span></div>${renderHistory(input)}</section>
       <section class="finance-section"><div class="finance-section-head"><h3>Recent Transactions</h3><button class="btn secondary" onclick="FinancialTracker.setView('transactions')">View All</button></div>${transactionTable(r.rows.slice(-5).reverse(), false)}</section>`;
@@ -134,7 +135,7 @@
       const month = C.shiftMonth(input.month, index - 5);
       return { month, ...C.report({ ...input, entries: input.history, month }) };
     });
-    return `<div class="table-wrap"><table class="finance-table"><thead><tr><th>Month</th><th class="num">Phone Profit</th><th class="num">Expenses</th><th class="num">Bill Payments</th><th class="num">Other Cash, Net</th><th class="num">Net Cash Flow</th></tr></thead><tbody>${reports.map((row) => `<tr class="${row.month === input.month ? "finance-selected-row" : ""}"><td><button class="finance-text-button" onclick="FinancialTracker.goMonth('${row.month}')">${new Date(`${row.month}-01T12:00:00`).toLocaleDateString("en-US", { month: "short", year: "numeric" })}</button>${!row.rows.length ? `<small>No records</small>` : ""}</td><td class="num">${usd(row.profit)}</td><td class="num">${usd(row.expense)}</td><td class="num">${usd(row.billPaid)}</td><td class="num">${usd(row.cashIn - row.cashOut)}</td><td class="num">${amount(row.net)}</td></tr>`).join("")}</tbody></table></div>`;
+    return `<div class="table-wrap"><table class="finance-table"><thead><tr><th>Month</th><th class="num">Phone Profit</th><th class="num">Stocks Profit</th><th class="num">Expenses</th><th class="num">Bill Payments</th><th class="num">Other Cash, Net</th><th class="num">Net Cash Flow</th></tr></thead><tbody>${reports.map((row) => `<tr class="${row.month === input.month ? "finance-selected-row" : ""}"><td><button class="finance-text-button" onclick="FinancialTracker.goMonth('${row.month}')">${new Date(`${row.month}-01T12:00:00`).toLocaleDateString("en-US", { month: "short", year: "numeric" })}</button>${!row.rows.length ? `<small>No records</small>` : ""}</td><td class="num">${usd(row.profit)}</td><td class="num">${usd(row.stockProfit)}</td><td class="num">${usd(row.expense)}</td><td class="num">${usd(row.billPaid)}</td><td class="num">${usd(row.cashIn - row.cashOut)}</td><td class="num">${amount(row.net)}</td></tr>`).join("")}</tbody></table></div>`;
   }
   function progress(value, total) {
     return `<progress max="${total || 1}" value="${Math.max(0, Math.min(value, total || 1))}" aria-label="${usd(value)} of ${usd(total)}"></progress>`;
@@ -143,7 +144,7 @@
     const debtRows = C.debts(input.bills);
     const debtTotal = C.dollars(debtRows.reduce((sum, row) => sum + C.cents(row.remaining), 0));
     return `<div class="finance-overview-grid finance-equal-grid">
-      <section class="finance-section"><div class="finance-section-head"><h3>Profit Target</h3><span>${r.budget ? Math.round(r.profit / r.budget * 100) + "% funded" : "No target set"}</span></div>${progress(r.profit, r.budget)}${statementLine("Target", r.budget)}${statementLine("Profit recorded", r.profit)}${statementLine("Remaining to target", r.targetLeft, true)}<div class="finance-statement-line"><span>${r.daysLeft} days remaining, including today</span><strong>${r.neededPerDay === null ? "Month ended" : `${usd(r.neededPerDay)} / day`}</strong></div></section>
+      <section class="finance-section"><div class="finance-section-head"><h3>Profit Target</h3><span>${r.budget ? Math.round(r.totalProfit / r.budget * 100) + "% funded" : "No target set"}</span></div>${progress(r.totalProfit, r.budget)}${statementLine("Target", r.budget)}${statementLine("Phone profit", r.profit)}${statementLine("Stocks profit", r.stockProfit)}${statementLine("Total profit recorded", r.totalProfit)}${statementLine("Remaining to target", r.targetLeft, true)}<div class="finance-statement-line"><span>${r.daysLeft} days remaining, including today</span><strong>${r.neededPerDay === null ? "Month ended" : `${usd(r.neededPerDay)} / day`}</strong></div></section>
       <section class="finance-section"><div class="finance-section-head"><h3>Food Budget</h3><span>${r.foodSpent > r.foodBudget ? "Over budget" : "Actual spending"}</span></div>${progress(r.foodSpent, r.foodBudget)}${statementLine("Budget", r.foodBudget)}${statementLine("Expenses + food bill payments", -r.foodSpent)}${statementLine("Remaining", r.foodRemaining, true)}</section>
       </div>
       <section class="finance-section"><div class="finance-section-head"><h3>Outstanding Bills</h3><button class="btn secondary" onclick="openOnlineMainTab('payables')">Open Bills</button></div>
@@ -173,6 +174,15 @@
     renderLedger();
     setView("transactions");
     el("financialTypeFilter").focus({ preventScroll: true });
+    el("financialTransactionsView").scrollIntoView({ block: "start" });
+  }
+  function openStocksProfit() {
+    el("financialSearch").value = "";
+    el("financialCategoryFilter").value = "";
+    el("financialTypeFilter").value = "Stocks Profit";
+    ledgerPage = 0;
+    renderLedger();
+    setView("transactions");
     el("financialTransactionsView").scrollIntoView({ block: "start" });
   }
   function transactionTable(rows, full) {
@@ -280,7 +290,7 @@
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
-  root.FinancialTracker = { init, render, renderBills, setView, openEntry, openPayment, showBill, exportCsv, invalidate, openSpendingCategory,
+  root.FinancialTracker = { init, render, renderBills, setView, openEntry, openPayment, showBill, exportCsv, invalidate, openSpendingCategory, openStocksProfit,
     page(delta) { ledgerPage += delta; renderLedger(); },
     goMonth(month) { el("monthlyTrackerMonth").value = month; loadMonthlyTracker(); },
     async reopenBill(id) { if (confirm("Mark this bill unpaid and remove its recorded payments? This also changes cash flow and payment history.")) await setOnlinePayableStatus(id, "Unpaid"); },

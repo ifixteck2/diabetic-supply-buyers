@@ -23,7 +23,7 @@
   }
   function ledger(entries, bills, month) {
     const rows = entries.filter((entry) => dateKey(entry.entry_month).slice(0, 7) === month).map((entry) => {
-      const incoming = entry.entry_type === "Phone Profit" || entry.entry_type === "Cash In";
+      const incoming = ["Phone Profit", "Stocks Profit", "Cash In"].includes(entry.entry_type);
       return {
         key: `entry-${entry.id}`, id: entry.id, kind: "entry", date: dateKey(entry.entry_date),
         type: entry.entry_type, category: entry.category || "Uncategorized", source: entry.source || "",
@@ -64,11 +64,13 @@
     const rows = ledger(entries, bills, month);
     const byType = (type) => rows.filter((row) => row.type === type);
     const profit = sum(byType("Phone Profit"), "inflow");
+    const stockProfit = sum(byType("Stocks Profit"), "inflow");
+    const totalProfit = profit + stockProfit;
     const expense = sum(byType("Expense"), "outflow");
     const billPaid = sum(byType("Bill Payment"), "outflow");
     const cashIn = sum(byType("Cash In"), "inflow");
     const cashOut = sum(byType("Cash Out"), "outflow");
-    const net = profit + cashIn - expense - billPaid - cashOut;
+    const net = totalProfit + cashIn - expense - billPaid - cashOut;
     const due = bills.filter((bill) => remaining(bill) > 0 && dateKey(bill.due_date) <= endOfMonth(month));
     const outstanding = due.reduce((total, bill) => total + remaining(bill), 0);
     const overdue = bills.filter((bill) => remaining(bill) > 0 && dateKey(bill.due_date) < today);
@@ -79,7 +81,7 @@
     const days = Number(endOfMonth(month).slice(-2));
     const currentMonth = today.slice(0, 7);
     const daysLeft = month < currentMonth ? 0 : month > currentMonth ? days : days - Number(today.slice(-2)) + 1;
-    const targetLeft = Math.max(0, budget - profit);
+    const targetLeft = Math.max(0, budget - totalProfit);
     const quantity = byType("Phone Profit").reduce((total, row) => total + Number(row.quantity || 0), 0);
     let running = 0;
     // Entries assigned to a different reporting month are carried into that month's first/last day.
@@ -91,8 +93,8 @@
       return { date, inflow: dollars(inflow), outflow: dollars(outflow), net: dollars(running) };
     });
     return { rows, daily, due, overdue, days, daysLeft, quantity,
-      profit: dollars(profit), expense: dollars(expense), billPaid: dollars(billPaid), cashIn: dollars(cashIn), cashOut: dollars(cashOut),
-      inflow: dollars(profit + cashIn), outflow: dollars(expense + billPaid + cashOut), spent: dollars(expense + billPaid), net: dollars(net),
+      profit: dollars(profit), stockProfit: dollars(stockProfit), totalProfit: dollars(totalProfit), expense: dollars(expense), billPaid: dollars(billPaid), cashIn: dollars(cashIn), cashOut: dollars(cashOut),
+      inflow: dollars(totalProfit + cashIn), outflow: dollars(expense + billPaid + cashOut), spent: dollars(expense + billPaid), net: dollars(net),
       outstanding: dollars(outstanding), afterBills: dollars(net - outstanding), budget: dollars(budget), targetLeft: dollars(targetLeft),
       neededPerDay: daysLeft ? dollars(Math.ceil(targetLeft / daysLeft)) : null,
       foodBudget: dollars(foodBudget), foodSpent: dollars(foodSpent), foodRemaining: dollars(foodBudget - foodSpent),

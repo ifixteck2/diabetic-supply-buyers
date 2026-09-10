@@ -446,7 +446,7 @@
                 <div class="finance-section-head"><h3 id="financialEntryTitle">Add Entry</h3><button type="button" class="btn secondary" onclick="document.getElementById('financialEntryDialog').close()">Cancel</button></div>
                 <p class="finance-note">Phone Profit is the amount earned after the phone's cost. Record each expense or bill payment once.</p>
                 <div class="form-grid three">
-                  <label>Type<select id="monthlyTrackerType"><option>Phone Profit</option><option>Expense</option><option>Cash In</option><option>Cash Out</option></select></label>
+                  <label>Type<select id="monthlyTrackerType"><option>Phone Profit</option><option>Stocks Profit</option><option>Expense</option><option>Cash In</option><option>Cash Out</option></select></label>
                   <label>Date<input id="monthlyTrackerDate" type="date" required></label>
                   <label>Total Amount<input id="monthlyTrackerAmount" type="number" min="0.01" step="0.01" required></label>
                 </div>
@@ -462,6 +462,7 @@
                 </div>
                 <datalist id="monthlyTrackerCategoryOptions">
                   <option value="Phone Profit"></option>
+                  <option value="Stocks Profit"></option>
                   <option value="Food"></option>
                   <option value="Personal"></option>
                   <option value="Online Ordering"></option>
@@ -481,7 +482,7 @@
             <div id="financialTransactionsView" class="hidden">
               <div class="finance-ledger-tools">
                 <label>Search transactions<input id="financialSearch" type="search" placeholder="Description, source, category, model"></label>
-                <label>Type<select id="financialTypeFilter"><option value="">All transactions</option><option value="spending">Expenses &amp; Bill Payments</option><option>Phone Profit</option><option>Expense</option><option>Bill Payment</option><option>Cash In</option><option>Cash Out</option></select></label>
+                <label>Type<select id="financialTypeFilter"><option value="">All transactions</option><option value="spending">Expenses &amp; Bill Payments</option><option>Phone Profit</option><option>Stocks Profit</option><option>Expense</option><option>Bill Payment</option><option>Cash In</option><option>Cash Out</option></select></label>
                 <label>Category<select id="financialCategoryFilter"><option value="">All categories</option></select></label>
               </div>
               <div id="monthlyTrackerList" class="monthly-tracker-list"></div>
@@ -733,8 +734,8 @@
       <div id="financialPaymentStatus" role="status"></div>
     </form>
   </dialog>
-  <script src="/financial-core.js?v=20260904-financial-workspace"></script>
-  <script src="/financial-tracker.js?v=20260904-category-details"></script>
+  <script src="/financial-core.js?v=20260910-stocks-profit"></script>
+  <script src="/financial-tracker.js?v=20260910-stocks-profit"></script>
   <script src="/phone-admin.js?v=20260904-financial-workspace"></script>
 </body>
 </html>

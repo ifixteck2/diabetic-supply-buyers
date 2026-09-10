@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "iFixTeck Online Orders API",
-    "version": "1.1.1",
+    "version": "1.2.0",
     "description": "Read and update the same financial records shown in the iFixTeck Financial Workspace. Authenticate with the saved Bearer API key. Use checkTrackerConnection to verify authentication. Record bill payments only through bill payment actions; never duplicate them as tracker expenses."
   },
   "servers": [
@@ -22,7 +22,7 @@
         "type": "object",
         "properties": {
           "month": { "type": "string", "example": "2026-09" },
-          "entry_type": { "type": "string", "enum": ["Phone Profit", "Expense", "Cash In", "Cash Out"] },
+          "entry_type": { "type": "string", "enum": ["Phone Profit", "Stocks Profit", "Expense", "Cash In", "Cash Out"], "description": "Use Stocks Profit for realized net stock-trading profit, not Cash In. Cash In is a cash adjustment, not profit." },
           "entry_date": { "type": "string", "format": "date" },
           "category": { "type": "string" },
           "source": { "type": "string" },
@@ -167,7 +167,7 @@
                 "type": "object",
                 "properties": {
                   "month": { "type": "string", "example": "2026-09" },
-                  "entry_type": { "type": "string", "enum": ["Phone Profit", "Expense", "Cash In", "Cash Out"] },
+                  "entry_type": { "type": "string", "enum": ["Phone Profit", "Stocks Profit", "Expense", "Cash In", "Cash Out"] },
                   "entry_date": { "type": "string", "format": "date" },
                   "amount": { "type": "number", "exclusiveMinimum": 0 },
                   "quantity": { "type": "integer", "minimum": 1 },

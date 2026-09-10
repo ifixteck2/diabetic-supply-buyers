@@ -66,6 +66,22 @@ test("all GPT tracker actions run against PostgreSQL with bearer authentication"
   assert.equal((await call("get", "/api/online-monthly-tracker", { query: { month: "2026-09", history_months: 6 } })).body.entries.length, 4);
   assert.equal((await call("delete", "/api/online-monthly-tracker/:id", { id: entryIds[2] })).body.ok, true);
 
+  const stock = await call("post", "/api/online-monthly-tracker", { body: { month: "2026-09", entry_type: "Stocks Profit", amount: 250.25, entry_date: "2026-09-10" } });
+  assert.equal(stock.body.entry.entry_type, "Stocks Profit");
+  assert.equal(stock.body.entry.category, "Stocks Profit");
+  assert.equal((await call("patch", "/api/online-monthly-tracker/:id", { id: stock.body.entry.id, body: { entry_type: "Stocks Profit", amount: 275.25 } })).body.entry.amount, "275.25");
+  const oldSchemaStock = await call("post", "/api/online-monthly-tracker", { body: { month: "2026-09", entry_type: "Cash In", category: "Stocks", amount: 20 } });
+  assert.equal(oldSchemaStock.body.entry.entry_type, "Stocks Profit");
+  const legacy = await db.query("insert into online_order_portal_monthly_tracker (entry_month, entry_date, entry_type, category, amount) values ('2026-09-01', '2026-09-10', 'Cash In', 'Stocks Profit', 30) returning id");
+  const legacyId = legacy.rows[0].id;
+  const stockRead = await call("get", "/api/online-monthly-tracker", { query: { month: "2026-09", history_months: 6 } });
+  for (const rows of [stockRead.body.entries, stockRead.body.history_entries]) {
+    assert.equal(rows.find(row => row.id === legacyId).entry_type, "Stocks Profit");
+    assert.equal(rows.find(row => row.id === legacyId).amount, "30.00");
+  }
+  assert.equal((await db.query("select entry_type from online_order_portal_monthly_tracker where id = $1", [legacyId])).rows[0].entry_type, "Cash In", "Reading does not rewrite historical data");
+  assert.ok(schema.components.schemas.TrackerEntry.properties.entry_type.enum.includes("Stocks Profit"));
+
   await call("patch", "/api/online-monthly-tracker/settings", { body: { month: "2026-09", monthly_budget: 21150, food_budget: 800, notes: "Keep this note" } });
   const partial = await call("patch", "/api/online-monthly-tracker/settings", { body: { month: "2026-09", food_budget: 900 } });
   assert.equal(Number(partial.body.settings.monthly_budget), 21150, "PATCH must preserve omitted profit target");
