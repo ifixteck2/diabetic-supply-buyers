@@ -147,6 +147,88 @@
 .finance-dialog .finance-section-head h3 { font-size: 22px; }
 #financialLoadStatus:not(:empty) { background: #f8edcf; color: #745314; padding: 12px; margin-bottom: 16px; }
 #financialPaymentStatus:not(:empty) { color: #a33046; padding-top: 12px; }
+.online-orders-only-body .payables-panel { container-type: inline-size; display: block; }
+.phone-admin-body .payables-panel > .panel-head { margin-bottom: 16px; }
+.online-orders-only-body .payables-stats { margin-bottom: 16px; }
+.payables-panel .finance-stat { padding: 14px 18px; }
+.phone-admin-body .payables-panel h2 { margin: 0 0 4px; }
+.payables-panel .finance-stat > span { min-height: 0; }
+.finance-bill-views { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid #dce2e1; margin-bottom: 12px; padding-bottom: 8px; }
+.finance-bill-views button { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 42px; padding: 9px 13px; border: 1px solid transparent; border-radius: 4px; background: transparent; color: #4e5e59; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+.finance-bill-views button:hover { background: #f1f5f3; }
+.finance-bill-views button.active { background: #e7f1ec; color: #15543e; border-color: #bfd6ca; }
+.finance-bill-views button span { font-size: 12px; font-variant-numeric: tabular-nums; background: #fff; border: 1px solid #dce2e1; border-radius: 4px; min-width: 25px; padding: 1px 5px; }
+.finance-bill-tools { margin-bottom: 10px; }
+.finance-bill-tools label:last-child { max-width: 230px; }
+.payables-panel .payables-list { display: block; }
+.finance-bill-result { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; font-size: 13px; color: #5b686b; padding: 10px 0 16px; }
+.finance-bill-result strong { color: #242c30; margin-left: 6px; font-variant-numeric: tabular-nums; }
+.finance-bill-group { margin-bottom: 26px; }
+.finance-bill-group > header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; background: #f0f3f2; color: #42534c; padding: 11px 14px; border-left: 3px solid #81968d; }
+.finance-bill-group > header h3 { display: flex; align-items: center; gap: 10px; font-size: 15px; font-weight: 650; color: inherit; margin: 0; text-transform: none; }
+.finance-bill-group > header h3 span { font-size: 12px; font-weight: 500; }
+.finance-bill-group > header > strong { font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.finance-bill-group.overdue > header { background: #f9eff1; color: #90344a; border-left-color: #b4546a; }
+.finance-bill-group.soon > header { background: #eaf4f5; color: #256775; border-left-color: #368493; }
+.finance-bill-group.paid > header { background: #ecf5ef; color: #216448; border-left-color: #348363; }
+.finance-bill-row { padding: 0 14px; border-bottom: 1px solid #dce2e1; background: #fff; }
+.finance-bill-row:hover { background: #fafcfb; }
+.finance-bill-main { display: grid; grid-template-columns: minmax(150px, 1.6fr) minmax(105px, 1fr) minmax(150px, 1.2fr) minmax(125px, 1fr) 150px; align-items: center; gap: 20px; padding: 18px 0 5px; }
+.finance-bill-main > div { min-width: 0; overflow-wrap: anywhere; }
+.finance-bill-identity { grid-column: 1; }
+.finance-bill-identity h4 { color: #242c30; font-size: 17px; font-weight: 650; line-height: 1.4; margin: 0 0 4px; }
+.finance-bill-identity > span, .finance-bill-due > span { display: block; font-size: 12px; color: #5b686b; }
+.finance-bill-due > strong { display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+.finance-bill-row.overdue .finance-bill-due > strong { color: #a13850; }
+.finance-bill-progress > span { display: block; font-size: 12px; font-weight: 600; color: #40584d; }
+.finance-bill-progress > small { display: block; color: #5b686b; font-size: 12px; font-variant-numeric: tabular-nums; }
+.finance-bill-progress progress { display: block; appearance: none; border: 0; border-radius: 2px; width: 100%; height: 5px; background: #e7ece9; accent-color: #348363; margin: 7px 0; overflow: hidden; }
+.finance-bill-progress progress::-webkit-progress-bar { background: #e7ece9; }
+.finance-bill-progress progress::-webkit-progress-value { background: #348363; }
+.finance-bill-progress progress::-moz-progress-bar { background: #348363; }
+.finance-bill-balance { text-align: right; }
+.finance-bill-balance > span { display: block; font-size: 12px; color: #5b686b; margin-bottom: 3px; }
+.finance-bill-balance > strong { font-size: 23px; font-weight: 650; color: #242c30; font-variant-numeric: tabular-nums; line-height: 1.3; }
+.finance-bill-action { text-align: right; }
+.phone-admin-body .payables-panel .finance-bill-action .btn { width: 150px; padding: 9px; }
+.phone-admin-body .payables-panel .finance-bill-details > summary { width: fit-content; max-width: 100%; font-size: 12px; font-weight: 500; color: #4b6860; padding: 9px 0 13px; }
+.finance-bill-detail-body { border-top: 1px solid #e5ebe7; padding: 18px 0; }
+.finance-bill-detail-meta { display: flex; flex-wrap: wrap; gap: 16px 36px; font-size: 14px; margin-bottom: 16px; }
+.finance-bill-detail-meta > span { min-width: 0; overflow-wrap: anywhere; }
+.finance-bill-detail-meta small { display: block; font-size: 12px; color: #5b686b; margin-bottom: 3px; }
+.finance-bill-note { flex-basis: 100%; white-space: pre-wrap; }
+.finance-bill-history { list-style: none; margin: 0 0 16px; padding: 0; max-width: 640px; }
+.finance-bill-history li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 20px; padding: 10px 0; border-bottom: 1px solid #e2e7e4; font-size: 14px; }
+.finance-bill-history small { display: block; font-size: 12px; color: #5b686b; }
+.finance-bill-history strong { font-variant-numeric: tabular-nums; color: #17664e; }
+.phone-admin-body .payables-panel .finance-bill-history p { grid-column: 1 / -1; margin: 2px 0 0; color: #5b686b; overflow-wrap: anywhere; }
+.phone-admin-body .payables-panel .finance-bill-no-payments { color: #5b686b; font-size: 13px; margin: 0 0 16px; }
+.phone-admin-body #financialAddBill .form-grid { margin-bottom: 16px; }
+.phone-admin-body #financialAddBill input[type="checkbox"] { min-height: 0; }
+@container (max-width: 800px) {
+  .finance-bill-main { grid-template-columns: minmax(0, 1fr) minmax(130px, .65fr); grid-template-areas: "identity balance" "due balance" "progress action"; gap: 8px 18px; padding-top: 16px; }
+  .finance-bill-identity { grid-area: identity; }
+  .finance-bill-due { grid-area: due; display: flex; flex-wrap: wrap; column-gap: 8px; }
+  .finance-bill-progress { grid-area: progress; max-width: 260px; padding-top: 6px; }
+  .finance-bill-balance { grid-area: balance; align-self: start; }
+  .finance-bill-action { grid-area: action; align-self: end; }
+  .phone-admin-body .payables-panel .finance-bill-action .btn { width: auto; max-width: 100%; }
+}
+@container (max-width: 480px) {
+  .payables-panel .finance-stat { padding: 12px; }
+  .payables-panel .finance-stat > small { display: none; }
+  .payables-panel .finance-stat > strong { margin-bottom: 0; }
+  .finance-bill-tools label:last-child { max-width: none; }
+  .finance-bill-views { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .finance-bill-views button { justify-content: space-between; padding: 9px; }
+  .finance-bill-row { padding: 0 6px; }
+  .finance-bill-group > header { padding: 10px; }
+  .finance-bill-group > header > strong { font-size: 12px; }
+  .finance-bill-main { grid-template-columns: minmax(0, 1fr) minmax(120px, .7fr); gap: 8px 12px; }
+  .finance-bill-balance > strong { font-size: 21px; }
+  .finance-bill-identity h4 { font-size: 16px; }
+  .phone-admin-body .payables-panel .finance-bill-action .btn { font-size: 13px; padding: 9px 6px; }
+}
 @media (max-width: 1200px) {
   .finance-overview-grid { grid-template-columns: 1fr; gap: 0; }
   .online-orders-only-body :is(.monthly-tracker-stats, .payables-stats) { grid-template-columns: repeat(2, minmax(0, 1fr)); }

@@ -32,6 +32,7 @@ test("financial screen wiring renders records, filters, edits, and saves a dated
       let result = {};
       if (url.includes("/api/online-orders-me")) result = { ok: false };
       else if (url.startsWith("/api/online-monthly-tracker?")) result = failed ? { error: "Records unavailable" } : { entries: data.entries, history_entries: data.entries, settings: { monthly_budget: 21150, food_budget: 800 } };
+      else if (url === "/api/online-payables" && options.method === "POST") { data.bills.push({ id: 40, ...body, payments: [], paid_amount: 0 }); result = { ok: true }; }
       else if (url === "/api/online-payables") result = { payables: data.bills };
       else if (url === "/api/online-monthly-tracker/1" && options.method === "PATCH") { Object.assign(data.entries[0], body); result = { ok: true }; }
       else if (url === "/api/online-payables/2/payments" && options.method === "POST") { data.bills[0].paid_amount = body.amount; data.bills[0].payments.push({ id: 3, ...body }); result = { ok: true }; }
@@ -105,6 +106,62 @@ test("financial screen wiring renders records, filters, edits, and saves a dated
   assert.ok(!controls.get("monthlyTrackerList").innerHTML.includes("Popeyes test"));
   vm.runInContext("FinancialTracker.openEntry(9)", sandbox);
   assert.equal(controls.get("monthlyTrackerType").value, "Stocks Profit");
+
+  data.bills.push(
+    { id: 10, title: "Phone", amount: 200, due_date: "2026-09-14", category: "Business" },
+    { id: 11, title: "Insurance", amount: 750, due_date: "2026-09-21" },
+    { id: 12, title: "Upcoming rent", amount: 2950, due_date: "2026-10-01" },
+    { id: 13, title: "Undated bill", amount: 50 },
+    { id: 14, title: "Settled bill", amount: 100, paid_amount: 100, due_date: "2026-09-01", payments: [{ payment_date: "2026-09-04", amount: 100 }] },
+    { id: 15, title: '<img src=x onerror="bad()">', amount: 800, due_date: "2026-09-12", notes: "Private supplier note", payment_method: "Cash" },
+  );
+  sandbox.billFixtures = data.bills;
+  const renderBills = () => vm.runInContext("FinancialTracker.renderBills(billFixtures, '2026-09-14')", sandbox);
+  const billList = () => controls.get("onlinePayablesList").innerHTML;
+  renderBills();
+  assert.ok(!billList().includes("Settled bill"), "Paid bills are hidden from open view");
+  assert.ok(billList().indexOf('id="billGroup-overdue"') < billList().indexOf('id="billGroup-soon"'));
+  assert.ok(billList().indexOf('id="billGroup-soon"') < billList().indexOf('id="billGroup-upcoming"'));
+  assert.ok(billList().includes("Due today"));
+  assert.ok(billList().includes("Due in 7 days"));
+  assert.ok(billList().includes("13 days overdue"));
+  assert.ok(billList().includes("&lt;img"));
+  assert.ok(!billList().includes('<img src=x'));
+  assert.ok(billList().includes("$450.00"), "Partial payments show the remaining amount");
+  assert.ok(billList().includes("Details &amp; payment history (1)"));
+  assert.ok(!billList().includes("<table"), "Bills use compact rows, not the old wide table");
+  const before = JSON.stringify(data.bills);
+  controls.get("financialBillSort").value = "balance";
+  renderBills();
+  assert.ok(billList().indexOf('id="financialBill-15"') < billList().indexOf('id="financialBill-2"'));
+  vm.runInContext("FinancialTracker.setBillFilter('partial')", sandbox);
+  assert.ok(billList().includes('id="financialBill-2"'));
+  assert.ok(!billList().includes('id="financialBill-15"'));
+  vm.runInContext("FinancialTracker.setBillFilter('paid')", sandbox);
+  assert.ok(billList().includes("Settled bill"));
+  assert.ok(!billList().includes("Record Payment"));
+  assert.ok(billList().includes("Mark Unpaid"));
+  vm.runInContext("FinancialTracker.setBillFilter('soon')", sandbox);
+  assert.ok(billList().includes("2 bills"));
+  assert.ok(!billList().includes("Upcoming rent"));
+  vm.runInContext("FinancialTracker.setBillFilter('all')", sandbox);
+  controls.get("financialBillSearch").value = "private supplier";
+  renderBills();
+  assert.ok(billList().includes("1 bill matching your search"));
+  assert.ok(billList().includes('id="financialBill-15"'));
+  controls.get("financialBillSearch").value = "nothing matches";
+  renderBills();
+  assert.ok(billList().includes("No bills match this view."));
+  assert.equal(JSON.stringify(data.bills), before, "Bill filters and sorting never modify financial records");
+  vm.runInContext("FinancialTracker.openBillForm()", sandbox);
+  assert.equal(controls.get("financialAddBill").open, true);
+  controls.get("onlinePayableTitle").value = "New bill test";
+  controls.get("onlinePayableAmount").value = "20.25";
+  controls.get("onlinePayableDueDate").value = "2026-09-20";
+  await vm.runInContext("saveOnlinePayable()", sandbox);
+  assert.equal(controls.get("financialAddBill").open, false);
+  assert.ok(data.bills.some((bill) => bill.title === "New bill test" && bill.amount === 20.25));
+  assert.ok(billList().includes("New bill test"), "New bill is visible even when previous filters would hide it");
   failed = true;
   await vm.runInContext("loadMonthlyTracker()", sandbox);
   assert.equal(controls.get("monthlyTrackerStats").innerHTML, "");

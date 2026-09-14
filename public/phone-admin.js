@@ -1718,7 +1718,9 @@ async function saveOnlinePayable() {
   $("onlinePayableMonthly").checked = false;
   $("onlinePayableDueDate").value = localTodayInput();
   status("onlinePayableStatus", "Bill added.");
-  if ($("financialAddBill")) $("financialAddBill").open = false;
+  if ($("financialAddBill")) $("financialAddBill").close();
+  if ($("financialBillFilter")) $("financialBillFilter").value = "open";
+  if ($("financialBillSearch")) $("financialBillSearch").value = "";
   await loadOnlinePayables();
 }
 

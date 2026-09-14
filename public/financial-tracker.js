@@ -27,7 +27,7 @@
     ["financialSearch", "financialTypeFilter", "financialCategoryFilter"].forEach((id) => {
       el(id).addEventListener("input", () => { ledgerPage = 0; renderLedger(); });
     });
-    ["financialBillSearch", "financialBillFilter"].forEach((id) => { el(id).addEventListener("input", () => renderBills(bills, today)); });
+    ["financialBillSearch", "financialBillFilter", "financialBillSort"].forEach((id) => { el(id).addEventListener("input", () => renderBills(bills, today)); });
     el("financialPaymentForm").onsubmit = savePayment;
     el("monthlyTrackerType").onchange = toggleEntryFields;
   }
@@ -212,20 +212,59 @@
     bills = items;
     today = dateToday;
     const open = bills.filter((bill) => C.remaining(bill) > 0);
-    const overdue = open.filter((bill) => C.dateKey(bill.due_date) < today);
+    const bucket = (bill) => C.billBucket(bill, today);
+    const overdue = open.filter((bill) => bucket(bill) === "overdue");
+    const soon = open.filter((bill) => bucket(bill) === "soon");
+    const partial = open.filter((bill) => C.paid(bill) > 0);
+    const settled = bills.filter((bill) => !C.remaining(bill));
     const paidThisMonth = bills.reduce((sum, bill) => sum + C.payments(bill).filter((payment) => C.dateKey(payment.payment_date).slice(0, 7) === today.slice(0, 7)).reduce((s, payment) => s + C.cents(payment.amount), 0), 0);
     const totalRemaining = (rows) => C.dollars(rows.reduce((sum, bill) => sum + C.remaining(bill), 0));
-    el("onlinePayableStats").innerHTML = stat("Outstanding", totalRemaining(open), `${open.length} open bills`, "finance-gold") + stat("Overdue", totalRemaining(overdue), `${overdue.length} bills past due`, "finance-rose") + stat("Paid This Month", C.dollars(paidThisMonth), "Full and partial payments", "finance-green") + stat("Long-Term Remaining", C.dollars(C.debts(bills).reduce((sum, bill) => sum + C.cents(bill.remaining), 0)), "After recorded payments", "finance-teal");
+    el("financialBillsAsOf").textContent = `As of ${date(today)}`;
+    el("onlinePayableStats").innerHTML = stat("Total Still Owed", totalRemaining(open), `${open.length} unpaid or partially paid bills`, "finance-gold") + stat("Overdue", totalRemaining(overdue), `${overdue.length} bills past their due date`, "finance-rose") + stat("Due in 7 Days", totalRemaining(soon), `${soon.length} bills, including today`, "finance-teal") + stat("Paid This Month", C.dollars(paidThisMonth), "Full and partial payments", "finance-green");
     const filter = el("financialBillFilter").value, search = el("financialBillSearch").value.toLowerCase().trim();
-    const rows = bills.filter((bill) => (!search || `${bill.title} ${bill.category} ${bill.notes}`.toLowerCase().includes(search)) && (filter === "all" || filter === "paid" && C.remaining(bill) === 0 || filter === "open" && C.remaining(bill) > 0 || filter === "overdue" && C.remaining(bill) > 0 && C.dateKey(bill.due_date) < today)).sort((a, b) => C.dateKey(a.due_date).localeCompare(C.dateKey(b.due_date)) || String(a.title).localeCompare(String(b.title)));
-    el("onlinePayablesList").innerHTML = `<div class="finance-section-head"><h3>${rows.length} Bills</h3><span>Current balances as of ${date(today)}</span></div>` + (rows.length ? `<div class="table-wrap"><table class="finance-table finance-bills"><thead><tr><th>Bill / Due Date</th><th>Category</th><th class="num">Amount</th><th class="num">Paid</th><th class="num">Remaining</th><th>Status</th><th>Actions</th></tr></thead><tbody>${rows.map(billRow).join("")}</tbody></table></div>` : empty("No bills match this view."));
+    const views = [["open", "Open", open.length], ["overdue", "Overdue", overdue.length], ["soon", "Due Soon", soon.length], ["partial", "Partially Paid", partial.length], ["paid", "Paid", settled.length], ["all", "All Bills", bills.length]];
+    el("financialBillViews").innerHTML = views.map(([key, label, count]) => `<button type="button" class="${filter === key ? "active" : ""}" aria-pressed="${filter === key}" onclick="FinancialTracker.setBillFilter('${key}')">${label}<span>${count}</span></button>`).join("");
+    const rows = bills.filter((bill) => (!search || `${bill.title} ${bill.category} ${bill.notes}`.toLowerCase().includes(search)) && (filter === "all" || filter === "paid" && !C.remaining(bill) || filter === "open" && C.remaining(bill) > 0 || filter === "partial" && C.remaining(bill) > 0 && C.paid(bill) > 0 || ["overdue", "soon"].includes(filter) && bucket(bill) === filter));
+    const sort = el("financialBillSort").value;
+    rows.sort((a, b) => (sort === "balance" ? C.remaining(b) - C.remaining(a) : sort === "name" ? String(a.title).localeCompare(String(b.title)) : (C.dateKey(a.due_date) || "9999").localeCompare(C.dateKey(b.due_date) || "9999")) || String(a.title).localeCompare(String(b.title)));
+    const groups = [["overdue", "Overdue"], ["soon", "Due Soon"], ["upcoming", "Upcoming"], ["undated", "No Due Date"], ["paid", "Paid"]];
+    el("onlinePayablesList").innerHTML = `<div class="finance-bill-result"><span>${rows.length} bill${rows.length === 1 ? "" : "s"}${search ? " matching your search" : ""}</span><span>Remaining <strong>${usd(totalRemaining(rows))}</strong></span></div>` + (rows.length ? groups.map(([key, title]) => {
+      const group = rows.filter((bill) => bucket(bill) === key);
+      if (!group.length) return "";
+      return `<section class="finance-bill-group ${key}" aria-labelledby="billGroup-${key}"><header><h3 id="billGroup-${key}">${title}<span>${group.length}</span></h3><strong>${key === "paid" ? "Paid in full" : `${usd(totalRemaining(group))} remaining`}</strong></header>${group.map(billRow).join("")}</section>`;
+    }).join("") : empty("No bills match this view."));
   }
   function billRow(bill) {
     const left = C.remaining(bill), paid = C.paid(bill), history = C.payments(bill);
     const label = left === 0 ? "Paid" : paid ? "Partially Paid" : "Unpaid";
-    return `<tr id="financialBill-${bill.id}"><td><strong>${esc(bill.title)}</strong><small>${date(bill.due_date)}${bill.is_monthly ? " / Monthly" : ""}</small>
-      ${history.length ? `<details><summary>${history.length} payment${history.length === 1 ? "" : "s"}</summary><ul class="finance-payment-history">${history.slice().sort((a, b) => C.dateKey(b.payment_date).localeCompare(C.dateKey(a.payment_date))).map((payment) => `<li><strong>${usd(payment.amount)}</strong> / ${date(payment.payment_date)}<small>${esc(payment.payment_method || "")}${payment.notes ? ` / ${esc(payment.notes)}` : ""}</small></li>`).join("")}</ul></details>` : ""}
-      ${bill.notes ? `<details><summary>Bill notes</summary><p>${esc(bill.notes)}</p></details>` : ""}</td><td>${esc(bill.category)}</td><td class="num">${usd(bill.amount)}</td><td class="num finance-positive">${usd(C.dollars(paid))}</td><td class="num"><strong>${usd(C.dollars(left))}</strong></td><td><span class="finance-status ${left === 0 ? "paid" : paid ? "partial" : "unpaid"}">${label}</span>${left && C.dateKey(bill.due_date) < today ? `<small class="finance-negative">Overdue</small>` : ""}</td><td><div class="finance-row-actions">${left ? `<button class="btn phone-btn" onclick="FinancialTracker.openPayment(${bill.id})">Record Payment</button>` : `<button class="btn secondary" onclick="FinancialTracker.reopenBill(${bill.id})">Mark Unpaid</button>`}<button class="btn danger" onclick="deleteOnlinePayable(${bill.id})">Delete</button></div></td></tr>`;
+    const bucket = C.billBucket(bill, today), due = C.dateKey(bill.due_date);
+    const days = due ? Math.round((Date.parse(`${due}T12:00:00Z`) - Date.parse(`${today}T12:00:00Z`)) / 86400000) : null;
+    const dueLabel = !left ? "Settled" : days === null ? "No due date" : days < 0 ? `${-days} day${days === -1 ? "" : "s"} overdue` : days === 0 ? "Due today" : days === 1 ? "Due tomorrow" : `Due in ${days} days`;
+    const debt = C.debts([bill])[0];
+    return `<article class="finance-bill-row ${bucket}" id="financialBill-${bill.id}">
+      <div class="finance-bill-main">
+        <div class="finance-bill-identity"><h4>${esc(bill.title)}</h4><span>${esc(bill.category || "Uncategorized")}${bill.is_monthly ? " / Monthly" : ""}</span></div>
+        <div class="finance-bill-due"><strong>${dueLabel}</strong><span>${due ? `Due ${date(due)}` : ""}</span></div>
+        <div class="finance-bill-progress"><span>${label}</span><progress value="${Math.min(paid, C.cents(bill.amount))}" max="${C.cents(bill.amount) || 1}" aria-label="${esc(bill.title)}: ${usd(C.dollars(paid))} paid of ${usd(bill.amount)}"></progress><small>${usd(C.dollars(paid))} paid of ${usd(bill.amount)}</small></div>
+        <div class="finance-bill-balance"><span>Remaining</span><strong>${usd(C.dollars(left))}</strong></div>
+        <div class="finance-bill-action">${left ? `<button class="btn phone-btn" type="button" onclick="FinancialTracker.openPayment(${bill.id})" aria-label="Record payment for ${esc(bill.title)}">Record Payment</button>` : `<span class="finance-status paid">Paid in full</span>`}</div>
+      </div>
+      <details class="finance-bill-details"><summary>Details &amp; payment history${history.length ? ` (${history.length})` : ""}</summary>
+        <div class="finance-bill-detail-body"><div class="finance-bill-detail-meta"><span><small>Payment method</small>${esc(bill.payment_method || "Not specified")}</span>${debt ? `<span><small>Long-term balance remaining</small>${usd(debt.remaining)}</span>` : ""}${bill.notes ? `<span class="finance-bill-note"><small>Notes</small>${esc(bill.notes)}</span>` : ""}</div>
+        ${history.length ? `<ul class="finance-bill-history">${history.slice().sort((a, b) => C.dateKey(b.payment_date).localeCompare(C.dateKey(a.payment_date))).map((payment) => `<li><span>${date(payment.payment_date)}<small>${esc(payment.payment_method || bill.payment_method || "No method recorded")}</small></span><strong>${usd(payment.amount)}</strong>${payment.notes ? `<p>${esc(payment.notes)}</p>` : ""}</li>`).join("")}</ul>` : `<p class="finance-bill-no-payments">No payments recorded.</p>`}
+        <div class="finance-row-actions">${!left ? `<button class="btn secondary" type="button" onclick="FinancialTracker.reopenBill(${bill.id})">Mark Unpaid</button>` : ""}<button class="btn danger" type="button" onclick="deleteOnlinePayable(${bill.id})">Delete Bill</button></div></div>
+      </details>
+    </article>`;
+  }
+  function setBillFilter(filter) {
+    el("financialBillFilter").value = filter;
+    renderBills(bills, today);
+    document.querySelector('#financialBillViews button[aria-pressed="true"]')?.focus();
+  }
+  function openBillForm() {
+    el("onlinePayableStatus").textContent = "";
+    el("financialAddBill").showModal();
+    el("onlinePayableTitle").focus();
   }
   function showBill(id) {
     el("financialBillFilter").value = "all";
@@ -290,7 +329,7 @@
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
-  root.FinancialTracker = { init, render, renderBills, setView, openEntry, openPayment, showBill, exportCsv, invalidate, openSpendingCategory, openStocksProfit,
+  root.FinancialTracker = { init, render, renderBills, setView, openEntry, openPayment, showBill, exportCsv, invalidate, openSpendingCategory, openStocksProfit, setBillFilter, openBillForm,
     page(delta) { ledgerPage += delta; renderLedger(); },
     goMonth(month) { el("monthlyTrackerMonth").value = month; loadMonthlyTracker(); },
     async reopenBill(id) { if (confirm("Mark this bill unpaid and remove its recorded payments? This also changes cash flow and payment history.")) await setOnlinePayableStatus(id, "Unpaid"); },

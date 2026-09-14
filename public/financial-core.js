@@ -15,6 +15,15 @@
   function remaining(bill) {
     return Math.max(0, cents(bill.amount) - paid(bill));
   }
+  function billBucket(bill, today) {
+    if (!remaining(bill)) return "paid";
+    const due = dateKey(bill.due_date);
+    if (!due) return "undated";
+    if (due < today) return "overdue";
+    const nextWeek = new Date(`${today}T12:00:00Z`);
+    nextWeek.setUTCDate(nextWeek.getUTCDate() + 7);
+    return due <= nextWeek.toISOString().slice(0, 10) ? "soon" : "upcoming";
+  }
   function payments(bill) {
     const rows = Array.isArray(bill.payments) ? bill.payments : [];
     if (rows.length) return rows;
@@ -120,5 +129,5 @@
       ...rows.map((row) => [row.date, row.type, row.category, row.description, row.source, row.model, row.quantity, row.method, row.inflow, row.outflow, row.movement, row.notes]),
     ].map((row) => row.map(cell).join(",")).join("\r\n");
   }
-  root.FinancialCore = { cents, dollars, dateKey, shiftMonth, endOfMonth, paid, remaining, payments, ledger, report, debts, csv };
+  root.FinancialCore = { cents, dollars, dateKey, shiftMonth, endOfMonth, paid, remaining, billBucket, payments, ledger, report, debts, csv };
 })(globalThis);

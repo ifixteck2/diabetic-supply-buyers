@@ -6,7 +6,7 @@
   <title>Phone Flipping Portal</title>
   <link rel="stylesheet" href="/styles.css?v=20260815-soft-phone-theme">
   <link rel="stylesheet" href="/monthly-tracker.css?v=20260904-financial-workspace">
-  <link rel="stylesheet" href="/financial-tracker.css?v=20260904-category-details">
+  <link rel="stylesheet" href="/financial-tracker.css?v=20260914-bills">
 </head>
 <body class="admin-body phone-admin-body">
   <main class="wrap admin-wrap">
@@ -493,12 +493,12 @@
         <section id="onlineOrdersPayablesPanel" class="online-order-tab-panel hidden" data-online-only="true">
           <section class="panel online-order-list-panel payables-panel">
             <div class="panel-head">
-              <div><span class="finance-eyebrow">iFixTeck / Payables</span><h2>Bills</h2></div>
-              <button class="btn phone-btn" type="button" onclick="document.getElementById('financialAddBill').open = true; document.getElementById('onlinePayableTitle').focus()">Add Bill</button>
+              <div><span class="finance-eyebrow">iFixTeck / Payables</span><h2>Bills</h2><span id="financialBillsAsOf" class="finance-eyebrow"></span></div>
+              <div class="finance-header-actions"><button class="btn secondary" type="button" onclick="openOnlineMainTab('tracker'); FinancialTracker.setView('plan')">Long-Term Balances</button><button class="btn phone-btn" type="button" onclick="FinancialTracker.openBillForm()">Add Bill</button></div>
             </div>
             <div id="onlinePayableStats" class="stats online-order-stats payables-stats"></div>
-            <details id="financialAddBill" class="online-order-form-section payables-form">
-              <summary>Add Bill</summary>
+            <dialog id="financialAddBill" class="finance-dialog" aria-labelledby="financialAddBillTitle">
+              <div class="finance-section-head"><h3 id="financialAddBillTitle">Add Bill</h3><button class="btn secondary" type="button" onclick="document.getElementById('financialAddBill').close()">Cancel</button></div>
               <div class="form-grid three">
                 <label>Bill Name<input id="onlinePayableTitle" placeholder="Rent, card, port numbers, supplier"></label>
                 <label>Amount<input id="onlinePayableAmount" type="number" min="0" step="0.01"></label>
@@ -526,13 +526,14 @@
               </datalist>
               <div class="actions"><button class="btn phone-btn" id="saveOnlinePayableBtn">Add Bill</button></div>
               <div id="onlinePayableStatus"></div>
-            </details>
-            <div class="finance-ledger-tools">
-              <label>Find a bill<input id="financialBillSearch" type="search" placeholder="Name or category"></label>
-              <label>Status<select id="financialBillFilter"><option value="open">Unpaid &amp; partially paid</option><option value="overdue">Overdue</option><option value="paid">Paid</option><option value="all">All bills</option></select></label>
-              <button class="btn secondary" type="button" onclick="openOnlineMainTab('tracker'); FinancialTracker.setView('plan')">Long-Term Balances</button>
+            </dialog>
+            <input id="financialBillFilter" type="hidden" value="open">
+            <div id="financialBillViews" class="finance-bill-views" role="group" aria-label="Bill status"></div>
+            <div class="finance-ledger-tools finance-bill-tools">
+              <label>Find a bill<input id="financialBillSearch" type="search" placeholder="Name, category, or notes"></label>
+              <label>Sort by<select id="financialBillSort"><option value="due">Due date</option><option value="balance">Highest balance</option><option value="name">Bill name</option></select></label>
             </div>
-            <div id="onlinePayablesList" class="payables-list"></div>
+            <div id="onlinePayablesList" class="payables-list" aria-live="polite"></div>
           </section>
         </section>
 
@@ -734,8 +735,8 @@
       <div id="financialPaymentStatus" role="status"></div>
     </form>
   </dialog>
-  <script src="/financial-core.js?v=20260910-stocks-profit"></script>
-  <script src="/financial-tracker.js?v=20260910-stocks-profit"></script>
-  <script src="/phone-admin.js?v=20260904-financial-workspace"></script>
+  <script src="/financial-core.js?v=20260914-bills"></script>
+  <script src="/financial-tracker.js?v=20260914-bills"></script>
+  <script src="/phone-admin.js?v=20260914-bills"></script>
 </body>
 </html>

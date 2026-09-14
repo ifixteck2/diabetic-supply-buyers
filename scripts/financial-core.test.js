@@ -88,6 +88,20 @@ test("long term balances decrease by payments without becoming negative", () => 
   assert.equal(F.debts([{ long_term_balance: 100, paid_amount: 101 }])[0].remaining, 0);
 });
 
+test("bill urgency groups respect remaining balance and seven-day calendar boundaries", () => {
+  const bill = (due_date, paid_amount = 0) => ({ amount: 100, due_date, paid_amount });
+  assert.equal(F.billBucket(bill("2026-09-13"), "2026-09-14"), "overdue");
+  assert.equal(F.billBucket(bill("2026-09-14"), "2026-09-14"), "soon");
+  assert.equal(F.billBucket(bill("2026-09-21"), "2026-09-14"), "soon");
+  assert.equal(F.billBucket(bill("2026-09-22"), "2026-09-14"), "upcoming");
+  assert.equal(F.billBucket(bill(null), "2026-09-14"), "undated");
+  assert.equal(F.billBucket(bill("2026-09-01", 50), "2026-09-14"), "overdue");
+  assert.equal(F.billBucket(bill("2026-09-01", 100), "2026-09-14"), "paid");
+  assert.equal(F.billBucket({ ...bill("2026-09-01"), status: "Paid" }, "2026-09-14"), "paid");
+  assert.equal(F.billBucket(bill("2027-01-04"), "2026-12-28"), "soon");
+  assert.equal(F.billBucket(bill("2027-01-05"), "2026-12-28"), "upcoming");
+});
+
 test("handles leap years, ended months, future months, target met, and no records", () => {
   assert.equal(report([], [], { month: "2024-02" }).days, 29);
   assert.equal(report([], [], { month: "2024-02" }).neededPerDay, null);
