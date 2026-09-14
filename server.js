@@ -850,7 +850,7 @@ app.post("/api/online-monthly-tracker", requireOnlineOrdersAuth, async (req, res
   if (!req.onlineOrdersOnly) return res.status(403).json({ error: "Monthly Tracker is only available in the Online Orders portal." });
   const input = req.body || {};
   const month = normalizeMonthInput(input.month || localDateInTimeZone().slice(0, 7));
-  const entryType = normalizeTrackerEntryType(input.entry_type || "", input.category, input.source);
+  const entryType = normalizeTrackerEntryType(input.entry_type || "", input.category, input.source, input.description);
   const amount = Number(input.amount || 0);
   const quantity = Math.max(1, Math.floor(Number(input.quantity || 1)));
   if (!entryType) return res.status(400).json({ error: "Choose phone profit, stocks profit, expense, cash in, or cash out." });
@@ -881,7 +881,7 @@ app.patch("/api/online-monthly-tracker/:id", requireOnlineOrdersAuth, async (req
   const id = Number(req.params.id);
   const input = req.body || {};
   if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: "A valid entry ID is required." });
-  const type = input.entry_type === undefined ? null : normalizeTrackerEntryType(input.entry_type, input.category, input.source);
+  const type = input.entry_type === undefined ? null : normalizeTrackerEntryType(input.entry_type, input.category, input.source, input.description);
   if (input.entry_type !== undefined && !type) return res.status(400).json({ error: "Choose phone profit, stocks profit, expense, cash in, or cash out." });
   const amount = input.amount === undefined ? null : Number(input.amount);
   if (amount !== null && (!Number.isFinite(amount) || amount <= 0)) return res.status(400).json({ error: "Enter an amount greater than zero." });
@@ -4990,14 +4990,15 @@ function normalizeMonthInput(value) {
   return `${match[1]}-${match[2]}`;
 }
 
-function normalizeTrackerEntryType(value, category = "", source = "") {
+function normalizeTrackerEntryType(value, category = "", source = "", description = "") {
   const text = String(value || "").trim().replace(/\s+/g, " ").toLowerCase();
   if (text === "phone profit" || text === "profit") return "Phone Profit";
   if (text === "stocks profit" || text === "stock profit") return "Stocks Profit";
   if (text === "expense" || text === "expenses") return "Expense";
   if (text === "cash in" || text === "income") {
-    // Older GPT schemas stored stock profits as Cash In. Do not infer profit from free-form descriptions or broker names.
+    // Older GPTs used Investments / Stocks / Stock profit. Require explicit profit wording before reclassifying investment cash.
     const label = String(category || "").trim() || String(source || "").trim();
+    if (/^investments?$/i.test(String(category).trim()) && /^stocks?$/i.test(String(source).trim()) && /^stocks?\s+profits?\.?$/i.test(String(description).trim())) return "Stocks Profit";
     return /^stocks?(?: market| trading)?(?: profits?| gains?)?$/i.test(label.replace(/\s+/g, " ")) ? "Stocks Profit" : "Cash In";
   }
   if (text === "cash out" || text === "cashout") return "Cash Out";
@@ -5005,7 +5006,7 @@ function normalizeTrackerEntryType(value, category = "", source = "") {
 }
 
 function serializeTrackerEntry(entry) {
-  const type = normalizeTrackerEntryType(entry.entry_type, entry.category, entry.source) || entry.entry_type;
+  const type = normalizeTrackerEntryType(entry.entry_type, entry.category, entry.source, entry.description) || entry.entry_type;
   return { ...entry, entry_type: type, category: type === "Stocks Profit" ? "Stocks Profit" : entry.category };
 }
 

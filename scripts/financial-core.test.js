@@ -35,6 +35,11 @@ test("stocks profit stays separate from cash deposits and phone metrics without 
   assert.equal(trackerTypes.normalizeTrackerEntryType("Cash In", "", "Robinhood"), "Cash In");
   assert.equal(trackerTypes.normalizeTrackerEntryType("Expense", "Stocks"), "Expense");
   assert.equal(trackerTypes.normalizeTrackerEntryType("Phone Profit", "Stocks"), "Phone Profit");
+  assert.equal(trackerTypes.normalizeTrackerEntryType("Cash In", "Investments", "Stocks", "Stock profit"), "Stocks Profit");
+  assert.equal(trackerTypes.normalizeTrackerEntryType("Cash In", "Investments", "Stocks", "Brokerage withdrawal"), "Cash In");
+  assert.equal(trackerTypes.normalizeTrackerEntryType("Cash In", "Investments", "Stocks", ""), "Cash In");
+  assert.equal(trackerTypes.normalizeTrackerEntryType("Cash In", "Investments", "Stocks", "Unrealized stock profit"), "Cash In");
+  assert.equal(trackerTypes.normalizeTrackerEntryType("Cash In", "Investments", "Bonds", "Stock profit"), "Cash In");
 });
 
 test("reconciles the user's starting figures without counting cash injections as profit", () => {

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "iFixTeck Online Orders API",
-    "version": "1.2.0",
+    "version": "1.2.1",
     "description": "Read and update the same financial records shown in the iFixTeck Financial Workspace. Authenticate with the saved Bearer API key. Use checkTrackerConnection to verify authentication. Record bill payments only through bill payment actions; never duplicate them as tracker expenses."
   },
   "servers": [

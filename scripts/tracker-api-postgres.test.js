@@ -81,6 +81,21 @@ test("all GPT tracker actions run against PostgreSQL with bearer authentication"
   }
   assert.equal((await db.query("select entry_type from online_order_portal_monthly_tracker where id = $1", [legacyId])).rows[0].entry_type, "Cash In", "Reading does not rewrite historical data");
   assert.ok(schema.components.schemas.TrackerEntry.properties.entry_type.enum.includes("Stocks Profit"));
+  const investmentProfit = await call("post", "/api/online-monthly-tracker", { body: { month: "2026-09", entry_type: "Cash In", category: "Investments", source: "Stocks", description: "Stock profit", amount: 5000 } });
+  assert.equal(investmentProfit.body.entry.entry_type, "Stocks Profit");
+  assert.equal(investmentProfit.body.entry.category, "Stocks Profit");
+  const investmentLegacy = await db.query("insert into online_order_portal_monthly_tracker (entry_month, entry_date, entry_type, category, source, description, amount) values ('2026-09-01', '2026-09-10', 'Cash In', 'Investments', 'Stocks', 'Stock profit', 600) returning id");
+  const investmentId = investmentLegacy.rows[0].id;
+  const investmentRead = await call("get", "/api/online-monthly-tracker", { query: { month: "2026-09", history_months: 6 } });
+  for (const rows of [investmentRead.body.entries, investmentRead.body.history_entries]) {
+    assert.equal(rows.find(row => row.id === investmentId).entry_type, "Stocks Profit");
+    assert.equal(rows.find(row => row.id === investmentId).amount, "600.00");
+  }
+  const reclassified = await call("patch", "/api/online-monthly-tracker/:id", { id: investmentId, body: { entry_type: "Stocks Profit", category: "Stocks Profit" } });
+  assert.equal(reclassified.body.entry.amount, "600.00");
+  const persisted = (await db.query("select entry_type, category from online_order_portal_monthly_tracker where id = $1", [investmentId])).rows[0];
+  assert.equal(persisted.entry_type, "Stocks Profit");
+  assert.equal(persisted.category, "Stocks Profit");
 
   await call("patch", "/api/online-monthly-tracker/settings", { body: { month: "2026-09", monthly_budget: 21150, food_budget: 800, notes: "Keep this note" } });
   const partial = await call("patch", "/api/online-monthly-tracker/settings", { body: { month: "2026-09", food_budget: 900 } });
