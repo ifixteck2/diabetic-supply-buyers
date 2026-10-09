@@ -294,6 +294,9 @@
           <section id="pastInvoicesPhoneTab" class="tab-panel hidden">
             <section class="panel"><div class="panel-head"><div><h2>Past Invoices</h2><p>All sold, shipped, and closed invoices by date and buyer.</p></div></div><div id="pastInvoicesList" class="invoice-list"></div></section>
           </section>
+          <section id="ktArchivePhoneTab" class="tab-panel hidden">
+            <section class="panel"><div class="panel-head"><div><h2>KT Archive</h2><p>Saved KT invoice history. Archived invoices are excluded from Pending, Past Invoices, and dashboard totals. Restore an invoice to return it to its original status.</p></div><button class="btn phone-btn" id="archiveAllKtBtn">Archive All Current KT Invoices</button></div><div id="ktArchiveStatus" role="status"></div><div id="ktArchiveList" class="invoice-list"></div></section>
+          </section>
         </section>
       </div>
 
@@ -409,9 +412,7 @@
             <div id="onlineOrderStatsDetail" class="online-order-stats-detail"></div>
             <div id="onlineOrderModelSummary" class="online-order-model-summary"></div>
           </section>
-          <section id="ktArchivePhoneTab" class="tab-panel hidden">
-            <section class="panel"><div class="panel-head"><div><h2>KT Archive</h2><p>Saved KT invoice history. Archived invoices are excluded from Pending, Past Invoices, and dashboard totals. Restore an invoice to return it to its original status.</p></div><button class="btn phone-btn" id="archiveAllKtBtn">Archive All Current KT Invoices</button></div><div id="ktArchiveStatus" role="status"></div><div id="ktArchiveList" class="invoice-list"></div></section>
-          </section>
+
         </section>
 
         <section id="onlineOrdersTrackerPanel" class="online-order-tab-panel hidden" data-online-only="true">
