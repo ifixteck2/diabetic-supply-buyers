@@ -184,6 +184,7 @@ app.get("/api/phone-invoices", requirePhoneAuth, async (req, res) => {
     where.push(`buyer = $${params.length}`);
   }
   if (status && status !== "All") {
+    where.push("archived_at is null");
     if (status === "Past") {
       where.push("status <> 'Pending'");
     } else {
@@ -1376,6 +1377,21 @@ app.patch("/api/phone-online-orders/:id/gift-card", requireOnlineOrdersAuth, asy
   }
 });
 
+app.post("/api/phone-invoices/archive-kt", requirePhoneAuth, async (req, res) => {
+  const ids = req.body?.invoice_ids;
+  if (!Array.isArray(ids) || !ids.length || ids.length > 200 || ids.some(id => !Number.isSafeInteger(id) || id <= 0)) return res.status(400).json({ error: "Choose the KT invoices to archive." });
+  const result = await pool.query("update phone_invoices set archived_at = now() where buyer = 'KT' and archived_at is null and id = any($1::int[]) returning id", [ids]);
+  res.json({ ok: true, archived_ids: result.rows.map(row => row.id) });
+});
+
+app.post("/api/phone-invoices/:id/unarchive", requirePhoneAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: "Invoice ID is required." });
+  const result = await pool.query("update phone_invoices set archived_at = null where id = $1 and buyer = 'KT' returning id", [id]);
+  if (!result.rows.length) return res.status(404).json({ error: "KT invoice not found." });
+  res.json({ ok: true });
+});
+
 app.post("/api/phone-invoices", requirePhoneAuth, async (req, res) => {
   const buyer = normalizeBuyer(req.body?.buyer || "");
   const label = String(req.body?.label || "").trim();
@@ -1708,7 +1724,7 @@ app.patch("/api/phone-purchases/:id/move-invoice", requirePhoneAuth, async (req,
       await client.query("rollback");
       return res.status(404).json({ error: "Active phone purchase not found." });
     }
-    const invoiceResult = await client.query("select * from phone_invoices where id = $1 and status = 'Pending'", [invoiceId]);
+    const invoiceResult = await client.query("select * from phone_invoices where id = $1 and status = 'Pending' and archived_at is null", [invoiceId]);
     const invoice = invoiceResult.rows[0];
     if (!invoice) {
       await client.query("rollback");
@@ -3608,6 +3624,7 @@ async function migrate() {
      where exists (select 1 from applied)
        and p.title = balances.title;
     alter table phone_invoices add column if not exists sale_price numeric(12,2);
+    alter table phone_invoices add column if not exists archived_at timestamptz;
     alter table phone_invoices add column if not exists sale_notes text not null default '';
     alter table phone_invoices add column if not exists status_updated_at timestamptz not null default now();
     alter table phone_invoices add column if not exists shipped_at timestamptz;
@@ -3711,7 +3728,7 @@ async function findBatch(client, batchId) {
 
 async function findPhoneInvoice(client, invoiceId, buyer) {
   const result = await client.query(
-    "select * from phone_invoices where id = $1 and buyer = $2 and status = 'Pending'",
+    "select * from phone_invoices where id = $1 and buyer = $2 and status = 'Pending' and archived_at is null",
     [invoiceId, buyer]
   );
   return result.rows[0] || null;
@@ -3719,7 +3736,7 @@ async function findPhoneInvoice(client, invoiceId, buyer) {
 
 async function findAnyPhoneInvoice(client, invoiceId, buyer) {
   const result = await client.query(
-    "select * from phone_invoices where id = $1 and buyer = $2",
+    "select * from phone_invoices where id = $1 and buyer = $2 and archived_at is null",
     [invoiceId, buyer]
   );
   return result.rows[0] || null;
@@ -3727,7 +3744,7 @@ async function findAnyPhoneInvoice(client, invoiceId, buyer) {
 
 async function getOrCreatePendingPhoneInvoice(client, buyer) {
   const existing = await client.query(
-    "select * from phone_invoices where buyer = $1 and status = 'Pending' order by created_at desc limit 1",
+    "select * from phone_invoices where buyer = $1 and status = 'Pending' and archived_at is null order by created_at desc limit 1",
     [buyer]
   );
   if (existing.rows[0]) return existing.rows[0];

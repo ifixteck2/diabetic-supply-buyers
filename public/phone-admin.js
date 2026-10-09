@@ -51,6 +51,7 @@ function bindPhoneEvents() {
   });
   $("phoneLogoutBtn").onclick = logoutPhonePortal;
   $("phoneRefreshBtn").onclick = refreshPhonePortal;
+  if ($("archiveAllKtBtn")) $("archiveAllKtBtn").onclick = archiveAllKtInvoices;
   $("createPhoneInvoiceBtn").onclick = createPhoneInvoice;
   $("savePhonePurchaseBtn").onclick = savePhonePurchase;
   $("clearPhonePurchaseBtn").onclick = resetPhonePurchase;
@@ -267,6 +268,7 @@ function openPhoneTab(name) {
     giftCards: "Gift Cards",
     ktReturns: "Returns",
     pastInvoices: "Past Invoices",
+    ktArchive: "KT Archive",
     onlineOrders: "Online Orders",
   };
   document.querySelectorAll("[data-phone-tab]").forEach((button) => button.classList.toggle("active", button.dataset.phoneTab === name));
@@ -865,7 +867,7 @@ function renderInvoiceSelect() {
     $("phoneInvoiceSelect").innerHTML = `<option value="">Holding - no invoice</option>`;
     return;
   }
-  const pending = phoneInvoices.filter((invoice) => invoice.buyer === buyer && invoice.status === "Pending");
+  const pending = phoneInvoices.filter((invoice) => !invoice.archived_at && invoice.buyer === buyer && invoice.status === "Pending");
   $("phoneInvoiceSelect").innerHTML = pending.map((invoice) => (
     `<option value="${invoice.id}">#${invoice.id} - ${escapeHtml(invoice.label)} (${invoiceTotals(invoice).units} phones)</option>`
   )).join("") || `<option value="">Create/select pending invoice</option>`;
@@ -3254,6 +3256,7 @@ async function saveOnlineOrderEdit() {
 
 function renderInvoiceGroup(id, buyer, view) {
   const list = phoneInvoices.filter((invoice) => {
+    if (invoice.archived_at) return false;
     if (invoice.buyer !== buyer) return false;
     return view === "Pending" ? invoice.status === "Pending" : invoice.status !== "Pending";
   });
@@ -3366,9 +3369,39 @@ function renderPendingBuyerSummary(buyer, invoices) {
 
 function renderPastInvoices() {
   const list = phoneInvoices
-    .filter((invoice) => invoice.status !== "Pending")
+    .filter((invoice) => !invoice.archived_at && invoice.status !== "Pending")
     .sort((a, b) => new Date(b.status_updated_at || b.closed_at || b.created_at) - new Date(a.status_updated_at || a.closed_at || a.created_at));
   $("pastInvoicesList").innerHTML = list.map(renderPastInvoiceCard).join("") || `<div class="empty">No past invoices yet.</div>`;
+  renderKtArchive();
+}
+
+function renderKtArchive() {
+  if (!$("ktArchiveList")) return;
+  const archived = phoneInvoices.filter(invoice => invoice.buyer === "KT" && invoice.archived_at);
+  $("archiveAllKtBtn").disabled = !phoneInvoices.some(invoice => invoice.buyer === "KT" && !invoice.archived_at);
+  $("ktArchiveList").innerHTML = archived.map(invoice => {
+    const totals = invoiceTotals(invoice);
+    const groups = [["Invoice phones", invoice.purchases], ["Returns", invoice.returns], ["Locally sold", invoice.local_sold], ["Gift cards", invoice.gift_cards]];
+    return `<article class="invoice-card phone-invoice-card"><h3>${escapeHtml(invoice.label)}</h3><p>Invoice #${invoice.id} · ${escapeHtml(invoice.status)} · Archived ${new Date(invoice.archived_at).toLocaleDateString()}</p><p>${totals.units} phones · Cost ${money(totals.totalCost)} · Sold for ${totals.salePrice === null ? "Not Set" : money(totals.salePrice)}</p><p>${escapeHtml(invoice.notes || "")} ${escapeHtml(invoice.sale_notes || "")}</p><details><summary>View saved phone details</summary>${groups.filter(([,rows])=>rows?.length).map(([title,rows])=>`<h4>${title}</h4><div class="table-wrap"><table><thead><tr><th>Phone</th><th>IMEI</th><th>Qty</th><th>Cost each</th><th>Notes</th></tr></thead><tbody>${rows.map(row=>`<tr><td>${escapeHtml(row.model)} ${escapeHtml(row.storage || "")}<br>${escapeHtml(row.carrier || "")} ${escapeHtml(phoneInvoiceItemCondition(row))}</td><td>${escapeHtml(row.imei || "—")}</td><td>${Number(row.quantity || 0)}</td><td>${money(row.cost_each)}</td><td>${escapeHtml(row.notes || "")}</td></tr>`).join("")}</tbody></table></div>`).join("")}</details><div class="actions"><a class="mini-btn" href="/api/phone-invoices/${invoice.id}/html" target="_blank">Buyer Invoice PDF</a><button class="mini-btn" onclick="restoreArchivedKtInvoice(${invoice.id})">Restore Invoice</button></div></article>`;
+  }).join("") || `<div class="empty">No archived KT invoices yet.</div>`;
+}
+
+async function archiveAllKtInvoices() {
+  const ids = phoneInvoices.filter(invoice => invoice.buyer === "KT" && !invoice.archived_at).map(invoice => Number(invoice.id));
+  if (!ids.length) return;
+  if (!confirm(`Archive all ${ids.length} current KT invoices? Their records and sale amounts will stay saved in KT Archive, and their totals will be removed from the dashboard.`)) return;
+  $("archiveAllKtBtn").disabled = true;
+  const result = await api("/api/phone-invoices/archive-kt", { method:"POST", body:{invoice_ids:ids} });
+  if (!result?.ok) { renderKtArchive(); return status("ktArchiveStatus", result?.error || "Could not archive KT invoices.", "bad"); }
+  await loadPhoneInvoices();
+  status("ktArchiveStatus", `Archived ${result.archived_ids.length} KT invoices. Ready to start fresh.`);
+}
+
+async function restoreArchivedKtInvoice(id) {
+  const result = await api(`/api/phone-invoices/${id}/unarchive`, {method:"POST",body:{}});
+  if (!result?.ok) return status("ktArchiveStatus",result?.error || "Could not restore invoice.","bad");
+  await loadPhoneInvoices();
+  status("ktArchiveStatus","Invoice restored with its original status and sale amounts.");
 }
 
 function renderKtReturns() {
@@ -4389,7 +4422,7 @@ window.movePhonePurchaseToInvoice = async (id) => {
   const purchase = currentInvoice?.purchases?.find((row) => Number(row.id) === Number(id));
   if (!currentInvoice || !purchase) return alert("Could not find that phone purchase.");
   const pendingInvoices = phoneInvoices
-    .filter((invoice) => invoice.status === "Pending" && Number(invoice.id) !== Number(currentInvoice.id))
+    .filter((invoice) => !invoice.archived_at && invoice.status === "Pending" && Number(invoice.id) !== Number(currentInvoice.id))
     .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
   if (!pendingInvoices.length) return alert("There are no other pending invoices to move this phone into.");
   const choices = pendingInvoices.map((invoice) => `#${invoice.id} - ${invoice.buyer} - ${invoice.label || "Pending Invoice"}`).join("\n");
@@ -4458,10 +4491,10 @@ function emptyPhoneStats(buyer = "All") {
 function buildCombinedPhoneStats(buyer = "All") {
   const stats = emptyPhoneStats(buyer);
   phoneInvoices
-    .filter((invoice) => buyer === "All" || invoice.buyer === buyer)
+    .filter((invoice) => !invoice.archived_at && (buyer === "All" || invoice.buyer === buyer))
     .forEach((invoice) => addInvoiceStats(stats, invoice));
   phoneInvoices
-    .filter((invoice) => buyer === "All" || invoice.buyer === buyer)
+    .filter((invoice) => !invoice.archived_at && (buyer === "All" || invoice.buyer === buyer))
     .forEach((invoice) => addRemovedPhoneStats(stats, invoice));
   manualPhoneReturns
     .filter((row) => buyer === "All" || (row.buyer || "KT") === buyer)
@@ -4559,6 +4592,7 @@ function renderPhoneMoneyDashboard() {
 function getPhoneMoneyEvents() {
   const events = [];
   phoneInvoices.forEach((invoice) => {
+    if (invoice.archived_at) return;
     const invoiceSale = invoice.sale_price === null || invoice.sale_price === undefined || invoice.sale_price === "" ? null : Number(invoice.sale_price);
     if (invoiceSale !== null && !isManualGiftCardInvoice(invoice)) {
       const cost = (invoice.purchases || []).reduce((sum, row) => sum + phoneLineCost(row), 0);
