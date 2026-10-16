@@ -857,6 +857,7 @@ function selectedAtlasPurchaseDeductions() {
 
 function renderInvoiceSelect() {
   const buyer = $("phoneBuyer").value;
+  const selectedInvoiceId = $("phoneInvoiceSelect").value;
   const isHolding = buyer === "Holding";
   $("phoneInvoiceSelect").disabled = isHolding;
   $("newPhoneInvoiceLabel").disabled = isHolding;
@@ -871,6 +872,7 @@ function renderInvoiceSelect() {
   $("phoneInvoiceSelect").innerHTML = pending.map((invoice) => (
     `<option value="${invoice.id}">#${invoice.id} - ${escapeHtml(invoice.label)} (${invoiceTotals(invoice).units} phones)</option>`
   )).join("") || `<option value="">Create/select pending invoice</option>`;
+  if (pending.some(invoice => String(invoice.id) === String(selectedInvoiceId))) $("phoneInvoiceSelect").value = selectedInvoiceId;
 }
 
 async function createPhoneInvoice() {
@@ -975,7 +977,10 @@ async function parseQuickPhoneText(saveAfterParse) {
     status("quickPhoneStatus", `Filled flow for ${escapeHtml($("phoneModel").value || parsed.modelText)}.`);
     return null;
   }
-  await savePhonePurchase();
+  const result = await savePhonePurchase();
+  if (!result?.ok) {
+    return status("quickPhoneStatus", escapeHtml(result?.error || "The phone was not saved. Your text is still here; check the purchase details and try again."), "bad");
+  }
   status("quickPhoneStatus", $("phoneBuyer").value === "Holding" ? `Added ${escapeHtml(parsed.modelText)} to Holding.` : `Added ${escapeHtml(parsed.modelText)} to the selected invoice.`);
   $("quickPhoneText").value = "";
   $("quickPhoneImei").value = "";
