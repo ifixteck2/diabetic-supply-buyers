@@ -73,3 +73,40 @@ test('failed text purchases retain input and display the actual error; successfu
   assert.match(control('quickPhoneStatus').innerHTML,/Added/);
   assert.equal(control('phoneInvoiceSelect').value,'21');
 });
+
+test('repeated create clicks send one request, reuse the empty invoice, and release the button on failure',async()=>{
+  const {control,run,context}=setup();
+  let finish;
+  let calls=0;
+  context.fetch=async()=>{calls++;return new Promise(resolve=>{finish=resolve;});};
+  run('loadPhoneInvoices=async()=>renderInvoiceSelect()');
+  const first=run('createPhoneInvoice()');
+  assert.equal(control('createPhoneInvoiceBtn').disabled,true);
+  run('renderInvoiceSelect()');
+  assert.equal(control('createPhoneInvoiceBtn').disabled,true);
+  await run('createPhoneInvoice()');
+  assert.equal(calls,1);
+  finish({ok:true,text:async()=>JSON.stringify({ok:true,invoice:{id:21},reused:true})});
+  await first;
+  assert.equal(control('phoneInvoiceSelect').value,'21');
+  assert.match(control('phonePurchaseStatus').innerHTML,/Using existing empty KT invoice #21/);
+  assert.equal(control('createPhoneInvoiceBtn').disabled,false);
+  const retry=run('createPhoneInvoice()');
+  finish({ok:false,text:async()=>JSON.stringify({error:'Try again'})});
+  await retry;
+  assert.equal(control('createPhoneInvoiceBtn').disabled,false);
+  assert.match(control('phonePurchaseStatus').innerHTML,/Try again/);
+});
+
+test('a pending create response does not select a KT invoice after switching buyers',async()=>{
+  const {control,run,context}=setup();
+  let finish;
+  context.fetch=async()=>new Promise(resolve=>{finish=resolve;});
+  run('loadPhoneInvoices=async()=>renderInvoiceSelect()');
+  const first=run('createPhoneInvoice()');
+  control('phoneBuyer').value='Holding';
+  finish({ok:true,text:async()=>JSON.stringify({ok:true,invoice:{id:21},reused:true})});
+  await first;
+  assert.equal(control('phoneInvoiceSelect').value,'');
+  assert.equal(control('createPhoneInvoiceBtn').disabled,true);
+});

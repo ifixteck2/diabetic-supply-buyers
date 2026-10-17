@@ -22,6 +22,7 @@ let editingMonthlyTrackerId = null;
 let monthlyTrackerSettings = defaultMonthlyTrackerSettings();
 let onlinePayables = [];
 let editingPhonePurchaseId = null;
+let creatingPhoneInvoice = false;
 let editingOnlineOrderId = null;
 let onlineOrderSubTab = "add";
 
@@ -861,7 +862,7 @@ function renderInvoiceSelect() {
   const isHolding = buyer === "Holding";
   $("phoneInvoiceSelect").disabled = isHolding;
   $("newPhoneInvoiceLabel").disabled = isHolding;
-  $("createPhoneInvoiceBtn").disabled = isHolding;
+  $("createPhoneInvoiceBtn").disabled = isHolding || creatingPhoneInvoice;
   $("phoneHoldingTypeWrap").classList.toggle("hidden", !isHolding);
   $("savePhonePurchaseBtn").textContent = editingPhonePurchaseId ? "Save Changes" : isHolding ? "Add To Holding" : "Add Purchase To Invoice";
   if (isHolding) {
@@ -876,17 +877,25 @@ function renderInvoiceSelect() {
 }
 
 async function createPhoneInvoice() {
+  if (creatingPhoneInvoice) return;
   const buyer = $("phoneBuyer").value;
   if (buyer === "Holding") return status("phonePurchaseStatus", "Holding phones do not need an invoice.", "bad");
-  const result = await api("/api/phone-invoices", {
-    method: "POST",
-    body: { buyer, label: $("newPhoneInvoiceLabel").value.trim() },
-  });
-  if (!result?.ok) return status("phonePurchaseStatus", result?.error || "Could not create invoice.", "bad");
-  $("newPhoneInvoiceLabel").value = "";
-  await loadPhoneInvoices();
-  $("phoneInvoiceSelect").value = result.invoice.id;
-  status("phonePurchaseStatus", `Created ${buyer} invoice #${result.invoice.id}.`);
+  creatingPhoneInvoice = true;
+  $("createPhoneInvoiceBtn").disabled = true;
+  try {
+    const result = await api("/api/phone-invoices", {
+      method: "POST",
+      body: { buyer, label: $("newPhoneInvoiceLabel").value.trim() },
+    });
+    if (!result?.ok) return status("phonePurchaseStatus", escapeHtml(result?.error || "Could not create invoice."), "bad");
+    $("newPhoneInvoiceLabel").value = "";
+    await loadPhoneInvoices();
+    if ($("phoneBuyer").value === buyer) $("phoneInvoiceSelect").value = String(result.invoice.id);
+    status("phonePurchaseStatus", `${result.reused ? "Using existing empty" : "Created"} ${buyer} invoice #${result.invoice.id}.`);
+  } finally {
+    creatingPhoneInvoice = false;
+    $("createPhoneInvoiceBtn").disabled = $("phoneBuyer").value === "Holding";
+  }
 }
 
 async function savePhonePurchase(options = {}) {

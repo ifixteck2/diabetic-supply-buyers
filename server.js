@@ -1397,13 +1397,19 @@ app.post("/api/phone-invoices", requirePhoneAuth, async (req, res) => {
   const label = String(req.body?.label || "").trim();
   const notes = String(req.body?.notes || "").trim();
   if (!buyer) return res.status(400).json({ error: "Choose KT or Atlas." });
-  const result = await pool.query(
-    `insert into phone_invoices (buyer, label, notes, status)
-     values ($1, $2, $3, 'Pending')
-     returning *`,
-    [buyer, label || defaultPhoneInvoiceLabel(buyer), notes]
-  );
-  res.json({ ok: true, invoice: result.rows[0] });
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    const result = await createOrReuseEmptyPhoneInvoice(client, buyer, label, notes);
+    await client.query("commit");
+    res.json({ ok: true, ...result });
+  } catch (error) {
+    await client.query("rollback");
+    console.error("Could not create phone invoice.", error);
+    res.status(500).json({ error: "Could not create invoice. Please try again." });
+  } finally {
+    client.release();
+  }
 });
 
 app.patch("/api/phone-invoices/:id/status", requirePhoneAuth, async (req, res) => {
@@ -3630,6 +3636,25 @@ async function migrate() {
     alter table phone_invoices add column if not exists shipped_at timestamptz;
     alter table phone_invoices add column if not exists sold_at timestamptz;
     alter table phone_invoices add column if not exists closed_at timestamptz;
+    -- One-time, reversible cleanup of unused automatically named KT drafts.
+    -- Any purchase history (including removed phones), notes, or sale history protects an invoice.
+    with applied as (
+      insert into app_migrations (migration_key)
+      values ('archive_duplicate_empty_kt_drafts_20261017')
+      on conflict do nothing
+      returning migration_key
+    ), empty_drafts as (
+      select pi.id, row_number() over (order by pi.created_at desc, pi.id desc) as draft_number
+      from phone_invoices pi
+      where pi.buyer = 'KT' and pi.status = 'Pending' and pi.archived_at is null
+        and pi.label ~ '^KT Phone Invoice [0-9]{4}-[0-9]{2}-[0-9]{2}$'
+        and trim(pi.notes) = '' and trim(pi.sale_notes) = '' and pi.sale_price is null
+        and pi.shipped_at is null and pi.sold_at is null and pi.closed_at is null
+        and not exists (select 1 from phone_purchases pp where pp.invoice_id = pi.id or pp.gift_card_closeout_invoice_id = pi.id)
+    )
+    update phone_invoices pi set archived_at = now()
+    from empty_drafts d
+    where pi.id = d.id and d.draft_number > 1 and exists (select 1 from applied);
     update invoices set status = 'Active' where status is null or status = '';
   `);
 
@@ -3742,7 +3767,34 @@ async function findAnyPhoneInvoice(client, invoiceId, buyer) {
   return result.rows[0] || null;
 }
 
+async function lockPhoneInvoiceCreation(client, buyer) {
+  // Both callers hold a transaction; serialize creation across tabs and server instances.
+  await client.query("select pg_advisory_xact_lock(hashtext($1))", [`phone-invoice:${buyer}`]);
+}
+
+async function createOrReuseEmptyPhoneInvoice(client, buyer, label, notes) {
+  await lockPhoneInvoiceCreation(client, buyer);
+  const existing = await client.query(
+    `select pi.* from phone_invoices pi
+     where pi.buyer = $1 and pi.status = 'Pending' and pi.archived_at is null
+       and (($2 <> '' and pi.label = $2) or ($2 = '' and pi.label ~ $4))
+       and pi.notes = $3 and trim(pi.sale_notes) = '' and pi.sale_price is null
+       and pi.shipped_at is null and pi.sold_at is null and pi.closed_at is null
+       and not exists (select 1 from phone_purchases pp where pp.invoice_id = pi.id or pp.gift_card_closeout_invoice_id = pi.id)
+     order by pi.created_at desc, pi.id desc limit 1`,
+    [buyer, label, notes, `^${buyer} Phone Invoice [0-9]{4}-[0-9]{2}-[0-9]{2}$`]
+  );
+  if (existing.rows[0]) return { invoice: existing.rows[0], reused: true };
+  const created = await client.query(
+    `insert into phone_invoices (buyer, label, notes, status)
+     values ($1, $2, $3, 'Pending') returning *`,
+    [buyer, label || defaultPhoneInvoiceLabel(buyer), notes]
+  );
+  return { invoice: created.rows[0], reused: false };
+}
+
 async function getOrCreatePendingPhoneInvoice(client, buyer) {
+  await lockPhoneInvoiceCreation(client, buyer);
   const existing = await client.query(
     "select * from phone_invoices where buyer = $1 and status = 'Pending' and archived_at is null order by created_at desc limit 1",
     [buyer]
