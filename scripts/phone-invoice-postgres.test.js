@@ -57,7 +57,7 @@ test('empty draft reuse and reversible KT cleanup preserve all phone and invoice
   const extra=await add();
   const latest=await add();
   const before=(await db.query('select * from phone_purchases order by id')).rows;
-  const cleanup=source.slice(source.indexOf('-- One-time, reversible cleanup'),source.indexOf("update invoices set status = 'Active'"));
+  const cleanup=source.slice(source.indexOf('-- One-time, reversible cleanup'),source.indexOf('-- Remove existing empty KT invoices'));
   await db.exec(cleanup);
   const invoices=(await db.query('select * from phone_invoices')).rows;
   for(const id of protectedIds) assert.equal(invoices.find(row=>row.id===id).archived_at,null,`Protected invoice ${id} stays active`);
@@ -68,4 +68,52 @@ test('empty draft reuse and reversible KT cleanup preserve all phone and invoice
   await db.query('update phone_invoices set archived_at=null where id=$1',[extra]);
   await db.exec(cleanup);
   assert.equal((await db.query('select archived_at from phone_invoices where id=$1',[extra])).rows[0].archived_at,null,'A restored invoice stays restored on subsequent deploys');
+});
+
+test('requested empty KT cleanup removes drafts from every list, backs them up, and preserves records with history', {skip: !process.env.PGLITE_TEST_MODULE}, async t => {
+  const {PGlite}=await import(pathToFileURL(process.env.PGLITE_TEST_MODULE).href);
+  const db=new PGlite();
+  t.after(()=>db.close());
+  const source=fs.readFileSync(new URL('../server.js',import.meta.url),'utf8');
+  await db.exec(source.slice(source.indexOf('create table if not exists phone_invoices ('),source.indexOf('create table if not exists phone_manual_returns (')));
+  await db.exec('alter table phone_invoices add column archived_at timestamptz; create table app_migrations (migration_key text primary key);');
+  const add=async(fields={})=>{
+    const record={buyer:'KT',label:'Empty draft',...fields};
+    return (await db.query(`insert into phone_invoices (${Object.keys(record).join(',')}) values (${Object.keys(record).map((_,i)=>'$'+(i+1)).join(',')}) returning *`,Object.values(record))).rows[0];
+  };
+  const empty=[];
+  for(const fields of [{}, {archived_at:new Date()}, {status:'Closed'}, {label:'Custom empty',notes:'Keep a recovery copy'}]) empty.push(await add(fields));
+  const protectedInvoices=[];
+  for(const fields of [{buyer:'Atlas'}, {buyer:'Apple GC'}, {sale_price:0}, {sale_price:500}, {sale_notes:'Paid in cash'}]) protectedInvoices.push(await add(fields));
+  const phones=await add();
+  const removedPhones=await add();
+  const returnedPhones=await add();
+  const giftCards=await add();
+  protectedInvoices.push(phones,removedPhones,returnedPhones,giftCards);
+  await db.query("insert into phone_purchases (invoice_id,buyer) values ($1,'KT')",[phones.id]);
+  await db.query("insert into phone_purchases (invoice_id,buyer,invoice_removed_at) values ($1,'KT',now())",[removedPhones.id]);
+  await db.query("insert into phone_purchases (invoice_id,buyer,returned_at,gift_card_closeout_invoice_id) values ($1,'KT',now(),$2)",[returnedPhones.id,giftCards.id]);
+  const phoneHistory=(await db.query('select * from phone_purchases order by id')).rows;
+  const cleanup=source.slice(source.indexOf('-- Remove existing empty KT invoices'),source.indexOf("update invoices set status = 'Active'"));
+  await db.exec(cleanup);
+  const remaining=(await db.query('select * from phone_invoices order by id')).rows;
+  assert.deepEqual(remaining,protectedInvoices);
+  const backups=(await db.query('select invoice_id,invoice_data from removed_empty_phone_invoices order by invoice_id')).rows;
+  assert.deepEqual(backups.map(row=>row.invoice_id),empty.map(row=>row.id));
+  for(const row of backups) {
+    const original=empty.find(invoice=>invoice.id===row.invoice_id);
+    assert.equal(row.invoice_data.label,original.label);
+    assert.equal(row.invoice_data.notes,original.notes);
+    assert.equal(row.invoice_data.status,original.status);
+  }
+  assert.deepEqual((await db.query('select * from phone_purchases order by id')).rows,phoneHistory);
+  // Seed imports must not recreate invoices that the user removed.
+  const seedStart=source.indexOf('async function seedGoogleDrivePhoneInvoices(');
+  const queryStart=source.indexOf('`select id from phone_invoices',seedStart)+1;
+  const seedQuery=source.slice(queryStart,source.indexOf('`',queryStart));
+  assert.equal((await db.query(seedQuery,['KT','Custom empty'])).rows[0].id,empty[3].id);
+  const fresh=await add({label:'New draft after cleanup'});
+  await db.exec(cleanup);
+  assert.equal((await db.query('select count(*)::int as count from phone_invoices where id=$1',[fresh.id])).rows[0].count,1,'Later deployments do not remove newly created drafts');
+  assert.equal((await db.query('select count(*)::int as count from removed_empty_phone_invoices')).rows[0].count,empty.length);
 });

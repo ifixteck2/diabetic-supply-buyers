@@ -3655,6 +3655,26 @@ async function migrate() {
     update phone_invoices pi set archived_at = now()
     from empty_drafts d
     where pi.id = d.id and d.draft_number > 1 and exists (select 1 from applied);
+    -- Remove existing empty KT invoices once, including archived drafts, with a recovery copy.
+    create table if not exists removed_empty_phone_invoices (
+      invoice_id integer primary key,
+      invoice_data jsonb not null,
+      removed_at timestamptz not null default now()
+    );
+    with applied as (
+      insert into app_migrations (migration_key)
+      values ('remove_empty_kt_invoices_20261017')
+      on conflict do nothing
+      returning migration_key
+    ), removed as (
+      delete from phone_invoices pi
+      where pi.buyer = 'KT' and exists (select 1 from applied)
+        and pi.sale_price is null and trim(pi.sale_notes) = ''
+        and not exists (select 1 from phone_purchases pp where pp.invoice_id = pi.id or pp.gift_card_closeout_invoice_id = pi.id)
+      returning pi.*
+    )
+    insert into removed_empty_phone_invoices (invoice_id, invoice_data)
+    select id, to_jsonb(removed) from removed;
     update invoices set status = 'Active' where status is null or status = '';
   `);
 
@@ -4076,7 +4096,11 @@ async function seedGoogleDrivePhoneInvoices() {
     await client.query("begin");
     for (const seed of seeds) {
       const existing = await client.query(
-        "select id from phone_invoices where buyer = $1 and label = $2 limit 1",
+        `select id from phone_invoices where buyer = $1 and label = $2
+         union all
+         select invoice_id as id from removed_empty_phone_invoices
+         where invoice_data->>'buyer' = $1 and invoice_data->>'label' = $2
+         limit 1`,
         [seed.buyer, seed.label]
       );
       if (existing.rows[0]) continue;
