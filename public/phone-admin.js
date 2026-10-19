@@ -8,6 +8,7 @@ const onlineOrdersOnly = document.body?.dataset.portal === "online-orders";
 
 let atlasPrices = [];
 let phoneInvoices = [];
+let phoneDashboardStartDate = '';
 let manualPhoneReturns = [];
 let phoneHoldingItems = [];
 let phoneOnlineOrders = [];
@@ -58,7 +59,7 @@ function bindPhoneEvents() {
   $("clearPhonePurchaseBtn").onclick = resetPhonePurchase;
   $("refreshPriceCheckerBtn").onclick = refreshPhonePortal;
   $("parseQuickPhoneBtn").onclick = () => parseQuickPhoneText(false);
-  $("addQuickPhoneBtn").onclick = () => parseQuickPhoneText(true);
+  $("addQuickPhoneBtn").onclick = previewQuickPhones;
   $("moveLatestPhonesBtn").onclick = moveLatestPhones;
   $("addManualReturnBtn").onclick = addManualKtReturn;
   $("addManualGiftCardBtn").onclick = addManualGiftCard;
@@ -147,6 +148,7 @@ async function showPhoneApp() {
 
 async function refreshPhonePortal() {
   if (onlineOrdersOnly) return refreshOnlineOrdersOnlyPortal();
+  if (typeof loadPhoneDashboardPeriod === 'function') await loadPhoneDashboardPeriod();
   await loadAtlasPrices();
   await loadPhoneInvoices();
   await loadManualPhoneReturns();
@@ -4232,7 +4234,7 @@ function renderPhoneInvoiceCard(invoice, options = {}) {
     itemNumber += phoneInvoiceQuantity(row);
     return `
     <tr class="pending-phone-row">
-      <td><strong>${escapeHtml(itemLabel)}</strong></td>
+      <td>${typeof renderPhoneSelection === 'function' ? renderPhoneSelection(invoice,row) : ''}<strong>${escapeHtml(itemLabel)}</strong></td>
       <td class="phone-device-cell">
         <strong>${escapeHtml(row.model)}</strong>
         <span>${escapeHtml(phoneInvoiceItemCondition(row))}</span>
@@ -4287,6 +4289,7 @@ function renderPhoneInvoiceCard(invoice, options = {}) {
         ` : ""}
         <span class="pill ${invoice.status?.toLowerCase()}">${escapeHtml(invoice.status)}</span>
       </div>
+      ${typeof renderPhoneBulkControls === 'function' ? renderPhoneBulkControls(invoice) : ''}
       ${isPending ? `
         <div class="table-wrap pending-table-wrap">
           <table class="phone-profit-table pending-phone-table">
@@ -4308,6 +4311,7 @@ function renderPhoneInvoiceCard(invoice, options = {}) {
         ${actualProfit === null ? "" : `<strong class="${actualProfit >= 0 ? "profit-good" : "profit-bad"}">Actual Profit ${profitMoney(actualProfit)}</strong>`}
       </div>
       ${isPending ? `<details class="phone-controls"><summary>Sale / Status Controls</summary>${saleControls}</details>` : saleControls}
+      ${typeof renderPhoneWorkflow === 'function' ? renderPhoneWorkflow(invoice) : ''}
       <div class="invoice-actions">
         <strong>${salePrice === null ? money(totalCost) : money(salePrice)}</strong>
         <div>
@@ -4505,15 +4509,26 @@ function emptyPhoneStats(buyer = "All") {
 function buildCombinedPhoneStats(buyer = "All") {
   const stats = emptyPhoneStats(buyer);
   phoneInvoices
-    .filter((invoice) => !invoice.archived_at && (buyer === "All" || invoice.buyer === buyer))
+    .filter((invoice) => !invoice.archived_at && phoneRecordInDashboardPeriod(invoice) && (buyer === "All" || invoice.buyer === buyer))
     .forEach((invoice) => addInvoiceStats(stats, invoice));
   phoneInvoices
-    .filter((invoice) => !invoice.archived_at && (buyer === "All" || invoice.buyer === buyer))
+    .filter((invoice) => !invoice.archived_at && phoneRecordInDashboardPeriod(invoice) && (buyer === "All" || invoice.buyer === buyer))
     .forEach((invoice) => addRemovedPhoneStats(stats, invoice));
   manualPhoneReturns
-    .filter((row) => buyer === "All" || (row.buyer || "KT") === buyer)
+    .filter((row) => phoneRecordInDashboardPeriod(row) && (buyer === "All" || (row.buyer || "KT") === buyer))
     .forEach((row) => addManualReturnStats(stats, row));
   return stats;
+}
+
+function phoneRecordInDashboardPeriod(record) {
+  if (phoneDashboardStartDate === null) return false;
+  if (!phoneDashboardStartDate) return true;
+  const raw = record.created_at || record.returned_at || record.purchase_date;
+  if (!raw) return false;
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return false;
+  const day = new Intl.DateTimeFormat('en-CA', {timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'}).format(date);
+  return day >= phoneDashboardStartDate;
 }
 
 function addInvoiceStats(acc, invoice) {
@@ -4606,7 +4621,7 @@ function renderPhoneMoneyDashboard() {
 function getPhoneMoneyEvents() {
   const events = [];
   phoneInvoices.forEach((invoice) => {
-    if (invoice.archived_at) return;
+    if (invoice.archived_at || !phoneRecordInDashboardPeriod(invoice)) return;
     const invoiceSale = invoice.sale_price === null || invoice.sale_price === undefined || invoice.sale_price === "" ? null : Number(invoice.sale_price);
     if (invoiceSale !== null && !isManualGiftCardInvoice(invoice)) {
       const cost = (invoice.purchases || []).reduce((sum, row) => sum + phoneLineCost(row), 0);
@@ -4656,6 +4671,7 @@ function getPhoneMoneyEvents() {
     });
   });
   manualPhoneReturns.forEach((row) => {
+    if (!phoneRecordInDashboardPeriod(row)) return;
     const sale = row.sale_price === null || row.sale_price === undefined || row.sale_price === "" ? null : Number(row.sale_price);
     if (sale === null) return;
     const cost = phoneLineCost(row);
@@ -5349,6 +5365,9 @@ async function api(url, options = {}) {
           ? `Server error ${response.status}. Please try again in a minute.`
           : cleanText.slice(0, 500) || `Request failed with status ${response.status}`,
       };
+    }
+    if (data.code === 'DUPLICATE_IMEI' && !options.silent && !options.body?.allow_duplicate_imei && typeof phoneDuplicateMessage === 'function') {
+      if (confirm(phoneDuplicateMessage(data))) return api(url,{...options,body:{...options.body,allow_duplicate_imei:true}});
     }
     if (!response.ok && !options.silent) return data;
     return data;

@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import express from "express";
 import pg from "pg";
+import { phoneWorkflowSchema, registerPhoneWorkflow, checkPhoneImei, phoneWorkflowError, getPhoneSaveRetry, phoneRequestFingerprint } from "./phone-workflow.js";
 
 const { Pool } = pg;
 const app = express();
@@ -74,6 +75,8 @@ app.use(express.urlencoded({ extended: false }));
 app.use(express.static("public", { extensions: ["html"] }));
 
 await migrate();
+await pool.query(phoneWorkflowSchema);
+registerPhoneWorkflow(app, pool, requirePhoneAuth, { getKtPrices, getAtlasPrices, findPhonePrice, nextPhoneInvoiceItemStart });
 await seedGoogleDrivePhoneInvoices();
 await backfillPhoneProjectedPrices();
 startAtlasDailyRefreshJob();
@@ -227,10 +230,19 @@ app.post("/api/phone-holding", requirePhoneAuth, async (req, res) => {
   const quantity = Number(input.quantity || 0);
   const costEach = Number(input.cost_each || 0);
   const holdingType = normalizeHoldingType(input.holding_type || "");
-  if (!quantity || quantity < 1) return res.status(400).json({ error: "Quantity must be at least 1." });
+  if (!Number.isSafeInteger(quantity) || quantity < 1) return res.status(400).json({ error: "Quantity must be a whole number of at least 1." });
   if (!Number.isFinite(costEach) || costEach < 0) return res.status(400).json({ error: "Enter your cost." });
   if (!String(input.model || "").trim()) return res.status(400).json({ error: "Choose a model." });
-  const result = await pool.query(
+  const client = await pool.connect();
+  try {
+  await client.query("begin");
+  const retry = await getPhoneSaveRetry(client, input, "phone_holding_purchases");
+  if (retry) {
+    await client.query("commit");
+    return res.json({ ok: true, item: retry, reused: true });
+  }
+  await checkPhoneImei(client, input);
+  const result = await client.query(
     `insert into phone_holding_purchases
        (purchase_date, device_type, condition_type, packaging, grade, model, carrier, quantity, cost_each, imei, placed_at, photo_file_name, photo_data_url, notes, holding_type)
      values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
@@ -253,7 +265,13 @@ app.post("/api/phone-holding", requirePhoneAuth, async (req, res) => {
       holdingType,
     ]
   );
+  if (input.client_request_id) await client.query("update phone_holding_purchases set client_request_id=$2,client_request_fingerprint=$3 where id=$1", [result.rows[0].id, input.client_request_id, phoneRequestFingerprint(input)]);
+  await client.query("commit");
   res.json({ ok: true, item: result.rows[0] });
+  } catch (error) {
+    await client.query("rollback");
+    res.status(error.status || 500).json(phoneWorkflowError(error));
+  } finally { client.release(); }
 });
 
 app.post("/api/phone-manual-returns", requirePhoneAuth, async (req, res) => {
@@ -1429,7 +1447,9 @@ app.patch("/api/phone-invoices/:id/status", requirePhoneAuth, async (req, res) =
     `update phone_invoices
      set status = $1,
        status_updated_at = now(),
-       shipped_at = case when $1 = 'Shipped' and shipped_at is null then now() else shipped_at end,
+       delivery_status = case when $1 = 'Pending' then 'Not Shipped' when $1 = 'Shipped' and delivery_status <> 'Delivered' then 'Shipped' else delivery_status end,
+       delivered_at = case when $1 = 'Pending' then null else delivered_at end,
+       shipped_at = case when $1 = 'Pending' then null when $1 = 'Shipped' and shipped_at is null then now() else shipped_at end,
        sold_at = case when $1 = 'Sold' and sold_at is null then now() else sold_at end,
        closed_at = case when $1 = 'Closed' and closed_at is null then now() else closed_at end
      where id = $2
@@ -1446,7 +1466,7 @@ app.patch("/api/phone-invoices/:id/sale", requirePhoneAuth, async (req, res) => 
   const salePrice = rawSalePrice === undefined || rawSalePrice === "" ? null : Number(String(rawSalePrice).replace(/[$,\s]/g, ""));
   const saleNotes = String(req.body?.sale_notes || "").trim();
   if (!id) return res.status(400).json({ error: "Invoice ID is required." });
-  if (salePrice !== null && (Number.isNaN(salePrice) || salePrice < 0)) {
+  if (salePrice !== null && (!Number.isFinite(salePrice) || salePrice < 0)) {
     return res.status(400).json({ error: "Sale amount must be a valid number." });
   }
   try {
@@ -1454,6 +1474,8 @@ app.patch("/api/phone-invoices/:id/sale", requirePhoneAuth, async (req, res) => 
       `update phone_invoices
        set sale_price = $1::numeric,
          sale_notes = $2,
+         payment_status = case when $1::numeric is null then 'Awaiting Payment' else payment_status end,
+         paid_at = case when $1::numeric is null then null else paid_at end,
          sold_at = case when $1::numeric is not null and sold_at is null then now() else sold_at end,
          status_updated_at = now()
        where id = $3
@@ -1476,12 +1498,19 @@ app.post("/api/phone-purchases", requirePhoneAuth, async (req, res) => {
   const costEach = Number(input.cost_each || 0);
   let projectedSellEach = Number(input.projected_sell_each || 0);
   if (!buyer) return res.status(400).json({ error: "Choose KT or Atlas." });
-  if (!quantity || quantity < 1) return res.status(400).json({ error: "Quantity must be at least 1." });
+  if (!Number.isSafeInteger(quantity) || quantity < 1) return res.status(400).json({ error: "Quantity must be a whole number of at least 1." });
+  if (!Number.isFinite(costEach) || costEach < 0) return res.status(400).json({ error: "Enter a valid purchase cost." });
   if (!String(input.model || "").trim()) return res.status(400).json({ error: "Choose a model." });
 
   const client = await pool.connect();
   try {
     await client.query("begin");
+    const retry = await getPhoneSaveRetry(client, input, "phone_purchases");
+    if (retry) {
+      const invoice = (await client.query("select * from phone_invoices where id=$1", [retry.invoice_id])).rows[0];
+      await client.query("commit");
+      return res.json({ ok: true, invoice, purchase: retry, reused: true });
+    }
     const invoice = invoiceId
       ? await findPhoneInvoice(client, invoiceId, buyer)
       : await getOrCreatePendingPhoneInvoice(client, buyer);
@@ -1489,6 +1518,7 @@ app.post("/api/phone-purchases", requirePhoneAuth, async (req, res) => {
       await client.query("rollback");
       return res.status(404).json({ error: "Pending invoice not found for that buyer." });
     }
+    await checkPhoneImei(client, input);
     const priceRows = buyer === "KT" ? await getKtPrices() : await getAtlasPrices();
     const matchedProjected = findPhonePrice(
       {
@@ -1531,12 +1561,13 @@ app.post("/api/phone-purchases", requirePhoneAuth, async (req, res) => {
         invoiceItemStart,
       ]
     );
+    if (input.client_request_id) await client.query("update phone_purchases set client_request_id=$2,client_request_fingerprint=$3 where id=$1", [purchase.rows[0].id, input.client_request_id, phoneRequestFingerprint(input)]);
     await client.query("commit");
     res.json({ ok: true, invoice, purchase: purchase.rows[0] });
   } catch (error) {
     await client.query("rollback");
     console.error(error);
-    res.status(500).json({ error: "Could not save phone purchase." });
+    res.status(error.status || 500).json(phoneWorkflowError(error));
   } finally {
     client.release();
   }
@@ -1604,7 +1635,8 @@ app.patch("/api/phone-purchases/:id", requirePhoneAuth, async (req, res) => {
   if (!id) return res.status(400).json({ error: "Purchase ID is required." });
   if (!buyer) return res.status(400).json({ error: "Choose KT or Atlas." });
   if (!invoiceId) return res.status(400).json({ error: "Choose an invoice." });
-  if (!quantity || quantity < 1) return res.status(400).json({ error: "Quantity must be at least 1." });
+  if (!Number.isSafeInteger(quantity) || quantity < 1) return res.status(400).json({ error: "Quantity must be a whole number of at least 1." });
+  if (!Number.isFinite(costEach) || costEach < 0) return res.status(400).json({ error: "Enter a valid purchase cost." });
   if (!String(input.model || "").trim()) return res.status(400).json({ error: "Choose a model." });
 
   const client = await pool.connect();
@@ -1620,6 +1652,7 @@ app.patch("/api/phone-purchases/:id", requirePhoneAuth, async (req, res) => {
       await client.query("rollback");
       return res.status(404).json({ error: "Phone purchase not found." });
     }
+    if (String(existing.rows[0].imei || "") !== String(input.imei || "")) await checkPhoneImei(client, input, id);
     const priceRows = buyer === "KT" ? await getKtPrices() : await getAtlasPrices();
     const matchedProjected = findPhonePrice(
       {
@@ -1694,7 +1727,7 @@ app.patch("/api/phone-purchases/:id", requirePhoneAuth, async (req, res) => {
   } catch (error) {
     await client.query("rollback");
     console.error(error);
-    res.status(500).json({ error: "Could not update phone purchase." });
+    res.status(error.status || 500).json(phoneWorkflowError(error));
   } finally {
     client.release();
   }

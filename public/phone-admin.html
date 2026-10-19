@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="/styles.css?v=20260815-soft-phone-theme">
   <link rel="stylesheet" href="/monthly-tracker.css?v=20260904-financial-workspace">
   <link rel="stylesheet" href="/financial-tracker.css?v=20260914-bills">
+  <link rel="stylesheet" href="/phone-workflow.css?v=20261019-workflow">
 </head>
 <body class="admin-body phone-admin-body">
   <main class="wrap admin-wrap">
@@ -48,6 +49,7 @@
             </div>
             <button class="btn secondary" id="phoneRefreshBtn">Refresh</button>
           </header>
+          <div id="phoneWorkflowNotice" role="status" aria-live="polite"></div>
 
           <section id="purchasePhoneTab" class="tab-panel">
             <section class="panel">
@@ -66,7 +68,7 @@
 
             <section class="panel quick-phone-panel">
               <div class="panel-head">
-                <div><h2>Quick Add</h2><p>Type a phone line and add it to the selected invoice.</p></div>
+                <div><h2>Quick Add</h2><p>Paste one or more phones, review the details, then add your selected rows.</p></div>
               </div>
               <label>Phone Text<textarea id="quickPhoneText" rows="4" placeholder="1x 17 pro max 256GB unlocked grade A $880 IMEI 123456789012345&#10;1x 17 pro 512GB locked grade A $600"></textarea></label>
               <div class="form-grid quick-phone-extra">
@@ -74,9 +76,10 @@
               </div>
               <div class="actions">
                 <button class="btn secondary" id="parseQuickPhoneBtn">Fill Flow</button>
-                <button class="btn phone-btn" id="addQuickPhoneBtn">Add From Text</button>
+                <button class="btn phone-btn" id="addQuickPhoneBtn">Preview From Text</button>
               </div>
               <div id="quickPhoneStatus"></div>
+              <div id="quickPhonePreview"></div>
             </section>
 
             <section class="panel">
@@ -198,6 +201,7 @@
           </section>
 
           <section id="dashboardPhoneTab" class="tab-panel hidden">
+            <section class="panel"><div class="panel-head"><div><h2>Fresh start</h2><p>The same reporting period applies to all buyers, sales, gift cards, and returns below.</p></div></div><div class="actions"><label>Include records created from<input id="phoneDashboardStartDate" type="date"></label><button class="btn secondary" onclick="savePhoneDashboardPeriod(this)">Apply date</button></div><div id="phoneDashboardPeriodStatus" role="status"></div></section>
             <section class="panel">
               <div class="panel-head"><div><h2>Profit Dashboard</h2><p>Combined totals from buyer invoices, local sales, gift cards, and manual return sales.</p></div></div>
               <div id="phoneDashboardStats" class="stats phone-dashboard-stats"></div>
@@ -742,6 +746,7 @@
   </dialog>
   <script src="/financial-core.js?v=20260914-bills"></script>
   <script src="/financial-tracker.js?v=20260914-bills"></script>
-  <script src="/phone-admin.js?v=20261017-empty-invoices-removed"></script>
+  <script src="/phone-workflow.js?v=20261019-workflow"></script>
+  <script src="/phone-admin.js?v=20261019-workflow"></script>
 </body>
 </html>

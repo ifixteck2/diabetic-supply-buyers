@@ -42,7 +42,7 @@ test("financial screen wiring renders records, filters, edits, and saves a dated
   };
   sandbox.window = sandbox;
   vm.createContext(sandbox);
-  for (const name of ["financial-core.js", "financial-tracker.js", "phone-admin.js"]) vm.runInContext(fs.readFileSync(new URL(`../public/${name}`, import.meta.url), "utf8"), sandbox, { filename: name });
+  for (const name of ["financial-core.js", "financial-tracker.js", "phone-workflow.js", "phone-admin.js"]) vm.runInContext(fs.readFileSync(new URL(`../public/${name}`, import.meta.url), "utf8"), sandbox, { filename: name });
   controls.get("monthlyTrackerMonth").value = "2026-09";
   await vm.runInContext("loadMonthlyTracker()", sandbox);
   await vm.runInContext("loadOnlinePayables()", sandbox);
