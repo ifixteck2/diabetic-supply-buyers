@@ -5,7 +5,7 @@ import vm from 'node:vm';
 import {pathToFileURL} from 'node:url';
 import {phoneWorkflowSchema,registerPhoneWorkflow,checkPhoneImei,phoneWorkflowError,getPhoneSaveRetry,phoneRequestFingerprint} from '../phone-workflow.js';
 
-test('phone workflow integrates duplicate protection, retry-safe imports, bulk moves, prices, tracking, and history', {skip:!process.env.PGLITE_TEST_MODULE}, async t=>{
+test('phone workflow allows duplicate IMEIs while preserving retry-safe imports, bulk moves, prices, tracking, and history', {skip:!process.env.PGLITE_TEST_MODULE}, async t=>{
   const {PGlite}=await import(pathToFileURL(process.env.PGLITE_TEST_MODULE).href);
   const db=new PGlite();t.after(()=>db.close());
   const source=fs.readFileSync(new URL('../server.js',import.meta.url),'utf8');
@@ -53,19 +53,16 @@ test('phone workflow integrates duplicate protection, retry-safe imports, bulk m
   assert.equal(retry.body.reused,true);
   assert.equal((await call('post','/api/phone-purchases',{body:{...body,cost_each:10}})).statusCode,409,'A retry cannot silently change an already saved phone');
   const duplicate=await call('post','/api/phone-purchases',{body:{...body,imei:'123456789',client_request_id:'test-save-reference-0002'}});
-  assert.equal(duplicate.statusCode,409);
-  assert.equal(duplicate.body.code,'DUPLICATE_IMEI');
-  assert.equal(duplicate.body.matches[0].invoice_id,sourceInvoice.id);
-  assert.equal((await db.query('select count(*)::int as n from phone_purchases')).rows[0].n,1);
-  const approved=await call('post','/api/phone-purchases',{body:{...body,client_request_id:'test-save-reference-0002',allow_duplicate_imei:true}});
-  assert.equal(approved.statusCode,200,'Acknowledged duplicates can be recorded');
-  const secondId=approved.body.purchase.id;
+  assert.equal(duplicate.statusCode,200,'Duplicate IMEIs save without acknowledgement');
+  assert.equal(duplicate.body.code,undefined);
+  assert.equal((await db.query('select count(*)::int as n from phone_purchases')).rows[0].n,2);
+  const secondId=duplicate.body.purchase.id;
   const holdingBlocked=await call('post','/api/phone-holding',{body:{...body,client_request_id:'test-holding-reference-0001'}});
-  assert.equal(holdingBlocked.statusCode,409);
+  assert.equal(holdingBlocked.statusCode,200,'Holding also accepts an existing IMEI');
   const holding=await call('post','/api/phone-holding',{body:{...body,imei:'SERIAL-HOLD',client_request_id:'test-holding-reference-0002'}});
   assert.equal(holding.statusCode,200);
   assert.equal((await call('post','/api/phone-holding',{body:{...body,imei:'SERIAL-HOLD',client_request_id:'test-holding-reference-0002'}})).body.item.id,holding.body.item.id);
-  assert.equal((await call('post','/api/phone-purchases',{body:{...body,imei:'serial hold',client_request_id:'test-save-reference-0003'}})).statusCode,409);
+  assert.equal((await call('post','/api/phone-purchases',{body:{...body,imei:'serial hold',client_request_id:'test-save-reference-0003'}})).statusCode,200);
   const blank=await call('post','/api/phone-purchases',{body:{...body,imei:'',client_request_id:'test-save-reference-0004',quantity:2,cost_each:700.25}});
   assert.equal(blank.statusCode,200,'Mike may omit IMEI');
   assert.equal((await call('post','/api/phone-purchases',{body:{...body,quantity:1.5}})).statusCode,400);
@@ -119,8 +116,8 @@ test('phone workflow integrates duplicate protection, retry-safe imports, bulk m
   await db.query('update phone_invoices set archived_at=now() where id=$1',[target.id]);
   assert.equal((await call('patch','/api/phone-invoices/:id/workflow',{id:target.id,body:{payment_status:'Awaiting Payment'}})).statusCode,404);
   const checks=await call('post','/api/phone-imei-check',{body:{imeis:['123 456 789','serial-hold','']}});
-  assert.equal(checks.body.matches.length,2);
-  assert.ok(checks.body.matches[0].records.some(record=>record.location==='Archived'));
+  assert.equal(checks.body.matches.length,0);
+  assert.equal(checks.body.checks_enabled,false);
   await db.exec(phoneWorkflowSchema);
   current=(await db.query('select * from phone_invoices where id=$1',[target.id])).rows[0];
   assert.equal(current.delivery_status,'Not Shipped','Reopening is preserved after redeploy');

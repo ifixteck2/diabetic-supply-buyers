@@ -1,4 +1,6 @@
 import crypto from 'node:crypto';
+// Temporarily disabled at the owner's request; save-reference retry protection stays enabled.
+const duplicateImeiChecksEnabled = false;
 // Additive phone-portal features; existing invoices and prices are not rewritten.
 export const phoneWorkflowSchema = `
 create table if not exists phone_dashboard_settings (
@@ -123,6 +125,7 @@ export async function findPhoneImeiDuplicates(db, imei, excludePurchaseId = 0) {
   return result.rows;
 }
 export async function checkPhoneImei(db, input, excludePurchaseId = 0) {
+  if (!duplicateImeiChecksEnabled) return;
   const imei = normalizePhoneImei(input.imei);
   if (!imei) return;
   await db.query('select pg_advisory_xact_lock(hashtext($1))', [`phone-imei:${imei}`]);
@@ -161,6 +164,7 @@ export function registerPhoneWorkflow(app, pool, auth, helpers) {
     return {start_date:date};
   });
   route('post','/api/phone-imei-check',async(db,req)=>{
+    if (!duplicateImeiChecksEnabled) return {matches:[],checks_enabled:false};
     const values = req.body?.imeis;
     if (!Array.isArray(values) || values.length > 100) fail('Check at most 100 phones at a time.');
     const matches = [];

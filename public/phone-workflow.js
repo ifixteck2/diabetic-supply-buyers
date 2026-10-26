@@ -1,5 +1,7 @@
 let phoneImportPreview = [];
 let phoneImportBusy = false;
+// Keep in sync with the temporary duplicate-check setting in the server workflow.
+const phoneDuplicateImeiChecksEnabled = false;
 const phoneWorkflowBusy = new Set();
 const normalizedImei = value => String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 
@@ -61,6 +63,7 @@ async function previewQuickPhones() {
 }
 
 async function checkPhonePreviewDuplicates() {
+  if (!phoneDuplicateImeiChecksEnabled) return;
   const snapshot = phoneImportPreview;
   const result = await api('/api/phone-imei-check',{method:'POST',silent:true,body:{imeis:snapshot.filter(row=>!row.saved).map(row=>row.body.imei)}});
   if (snapshot!==phoneImportPreview) return;
@@ -76,10 +79,10 @@ function phonePreviewProblems(row) {
   if (body.cost_each==='' || !Number.isFinite(Number(body.cost_each)) || Number(body.cost_each)<0) issues.push('Enter a cost');
   if (!body.placed_at.trim()) issues.push('Enter the source');
   if (!/^mike$/i.test(body.placed_at.trim()) && !body.imei.trim()) issues.push('Enter IMEI / serial (optional for Mike)');
-  if (body.imei && Number(body.quantity)>1) issues.push('Use one phone per row when entering an IMEI');
+  if (phoneDuplicateImeiChecksEnabled && body.imei && Number(body.quantity)>1) issues.push('Use one phone per row when entering an IMEI');
   const normalized=normalizedImei(body.imei);
   const duplicateInPreview = normalized && phoneImportPreview.some(other=>other!==row && other.selected && normalizedImei(other.body.imei)===normalized);
-  if ((row.matches.length || duplicateInPreview) && !body.allow_duplicate_imei) issues.push('Duplicate IMEI: review and acknowledge below');
+  if (phoneDuplicateImeiChecksEnabled && (row.matches.length || duplicateInPreview) && !body.allow_duplicate_imei) issues.push('Duplicate IMEI: review and acknowledge below');
   return issues;
 }
 
@@ -100,12 +103,12 @@ function renderPhoneImportPreview() {
         <div class="phone-workflow-grid">${input('model','Model / storage')}${input('quantity','Quantity','number')}${input('cost_each','Cost each','number')}${input('imei','IMEI / serial')}${input('placed_at','Source')}${input('carrier','Carrier')}${input('grade','Grade')}
         <label>Buyer<select ${disabled} onchange="editPhonePreview(${i},'buyer',this.value)">${['KT','Atlas','Holding'].map(buyer=>`<option ${buyer===b.buyer?'selected':''}>${buyer}</option>`).join('')}</select></label>
         ${b.buyer==='Holding'?`<label>Holding section<select ${disabled} onchange="editPhonePreview(${i},'holding_type',this.value)">${['Holding For Sale','Holding For Trade In'].map(value=>`<option ${b.holding_type===value?'selected':''}>${value}</option>`).join('')}</select></label>`:`<label>Invoice<select ${disabled} onchange="editPhonePreview(${i},'invoice_id',this.value)"><option value="">Use latest pending / create if needed</option>${invoiceOptions.map(inv=>`<option value="${inv.id}" ${Number(b.invoice_id)===inv.id?'selected':''}>#${inv.id} ${escapeHtml(inv.label)}</option>`).join('')}</select></label>`}</div>
-        ${row.matches.length?`<p class="phone-warning">Already recorded: ${row.matches.map(match=>escapeHtml(`${match.invoice_id?'Invoice #'+match.invoice_id:'Holding'} — ${match.model} (${match.location})`)).join('; ')}</p>`:''}
-        ${b.imei?`<label class="phone-check"><input type="checkbox" ${b.allow_duplicate_imei?'checked':''} ${disabled} onchange="editPhonePreview(${i},'allow_duplicate_imei',this.checked)">I reviewed this IMEI and intend to add it again if it already exists.</label>`:''}
+        ${phoneDuplicateImeiChecksEnabled && row.matches.length?`<p class="phone-warning">Already recorded: ${row.matches.map(match=>escapeHtml(`${match.invoice_id?'Invoice #'+match.invoice_id:'Holding'} — ${match.model} (${match.location})`)).join('; ')}</p>`:''}
+        ${phoneDuplicateImeiChecksEnabled && b.imei?`<label class="phone-check"><input type="checkbox" ${b.allow_duplicate_imei?'checked':''} ${disabled} onchange="editPhonePreview(${i},'allow_duplicate_imei',this.checked)">I reviewed this IMEI and intend to add it again if it already exists.</label>`:''}
         ${!row.saved && issues.length?`<p class="phone-warning">${issues.map(escapeHtml).join(' · ')}</p>`:''}${row.error?`<p class="phone-warning">${escapeHtml(row.error)}</p>`:''}
       </fieldset>`;
     }).join('')}
-    <div class="actions"><button class="btn phone-btn" ${phoneImportBusy || !selected.length?'disabled':''} onclick="savePhoneImportPreview()">${phoneImportBusy?'Saving…':'Add selected phones'}</button><button class="btn secondary" ${phoneImportBusy?'disabled':''} onclick="checkPhonePreviewDuplicates()">Check IMEIs</button><button class="btn secondary" ${phoneImportBusy?'disabled':''} onclick="closePhoneImportPreview()">Close preview</button></div></div>`;
+    <div class="actions"><button class="btn phone-btn" ${phoneImportBusy || !selected.length?'disabled':''} onclick="savePhoneImportPreview()">${phoneImportBusy?'Saving…':'Add selected phones'}</button>${phoneDuplicateImeiChecksEnabled?`<button class="btn secondary" ${phoneImportBusy?'disabled':''} onclick="checkPhonePreviewDuplicates()">Check IMEIs</button>`:''}<button class="btn secondary" ${phoneImportBusy?'disabled':''} onclick="closePhoneImportPreview()">Close preview</button></div></div>`;
 }
 
 function editPhonePreview(index,field,value) {
