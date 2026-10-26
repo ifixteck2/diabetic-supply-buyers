@@ -5379,7 +5379,7 @@ function phoneInvoiceLinesWithPrices(purchases, priceOverrides) {
   let itemNumber = 1;
   return purchases.flatMap((row) => {
     const quantity = Math.max(1, Number(row.quantity || 1));
-    const itemStart = Number(row.invoice_item_start || itemNumber || 1);
+    const itemStart = itemNumber;
     const overridePrices = Array.isArray(priceOverrides[row.id]) ? priceOverrides[row.id] : [];
     const condition = row.condition_type === "New" ? "NEW" : "USED";
     if (overridePrices.length > 1 || quantity > 1) {

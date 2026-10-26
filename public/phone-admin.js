@@ -3740,7 +3740,7 @@ function renderGiftCardRows(rows, cardNumbers, options = {}) {
     const value = Number(row.gift_card_value || 0);
     const profit = value - cost;
     const cardNumber = cardNumbers.get(row.id) || "";
-    const invoiceItemLabel = phoneInvoiceItemNumber(row, cardNumber);
+    const invoiceItemLabel = phoneInvoiceItemNumber(row, cardNumber, true);
     const cardPhotoId = `giftCardPhoto${row.id}_${fieldContext}`;
     const receiptPhotoId = `giftCardReceipt${row.id}_${fieldContext}`;
     const receiptIsPdf = isPdfDataUrl(row.gift_card_receipt_data_url) || /\.pdf$/i.test(row.gift_card_receipt_file_name || "");
@@ -4423,9 +4423,9 @@ function phoneInvoiceQuantity(row) {
   return Math.max(1, Number(row.quantity || 1));
 }
 
-function phoneInvoiceItemNumber(row, start) {
+function phoneInvoiceItemNumber(row, start, useSavedNumber = false) {
   const quantity = phoneInvoiceQuantity(row);
-  const itemStart = Number(row.invoice_item_start || start || 1);
+  const itemStart = Number((useSavedNumber ? row.invoice_item_start : start) || start || 1);
   return quantity > 1 ? `${itemStart}-${itemStart + quantity - 1}` : String(itemStart);
 }
 
