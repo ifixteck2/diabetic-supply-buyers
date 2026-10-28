@@ -1402,11 +1402,19 @@ app.post("/api/phone-invoices/archive-kt", requirePhoneAuth, async (req, res) =>
   res.json({ ok: true, archived_ids: result.rows.map(row => row.id) });
 });
 
+app.post("/api/phone-invoices/:id/archive", requirePhoneAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: "Invoice ID is required." });
+  const result = await pool.query("update phone_invoices set archived_at = coalesce(archived_at, now()) where id = $1 and status <> 'Pending' returning id", [id]);
+  if (!result.rows.length) return res.status(409).json({ error: "Only past invoices can be archived here. Refresh and try again." });
+  res.json({ ok: true });
+});
+
 app.post("/api/phone-invoices/:id/unarchive", requirePhoneAuth, async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: "Invoice ID is required." });
-  const result = await pool.query("update phone_invoices set archived_at = null where id = $1 and buyer = 'KT' returning id", [id]);
-  if (!result.rows.length) return res.status(404).json({ error: "KT invoice not found." });
+  const result = await pool.query("update phone_invoices set archived_at = null where id = $1 returning id", [id]);
+  if (!result.rows.length) return res.status(404).json({ error: "Invoice not found." });
   res.json({ ok: true });
 });
 

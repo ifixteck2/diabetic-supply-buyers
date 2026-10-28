@@ -35,4 +35,13 @@ test('KT archive preserves history and excludes archived invoices from active li
   assert.equal(control('archiveAllKtBtn').disabled,false);
   assert.equal(run('phoneInvoices[0].sale_price'),160);
   assert.equal(run('phoneInvoices[0].status'),'Sold');
+  run("phoneInvoices[2].archived_at='2026-10-28'; renderPastInvoices();");
+  assert.match(control('ktArchiveList').innerHTML,/Atlas history/);
+  assert.match(control('ktArchiveList').innerHTML,/restoreArchivedKtInvoice\(3\)/);
+  assert.doesNotMatch(control('pastInvoicesList').innerHTML,/Atlas history/);
+  assert.equal(run("buildCombinedPhoneStats('Atlas').actualSale"),0);
+  run("phoneInvoices[2].archived_at=null; renderPastInvoices();");
+  assert.match(control('pastInvoicesList').innerHTML,/archivePastInvoice\(3\)/);
+  assert.match(control('pastInvoicesList').innerHTML,/Atlas history/);
+  assert.equal(run("buildCombinedPhoneStats('Atlas').actualSale"),250);
 });

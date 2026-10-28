@@ -271,7 +271,7 @@ function openPhoneTab(name) {
     giftCards: "Gift Cards",
     ktReturns: "Returns",
     pastInvoices: "Past Invoices",
-    ktArchive: "KT Archive",
+    ktArchive: "Invoice Archive",
     onlineOrders: "Online Orders",
   };
   document.querySelectorAll("[data-phone-tab]").forEach((button) => button.classList.toggle("active", button.dataset.phoneTab === name));
@@ -3393,19 +3393,19 @@ function renderPastInvoices() {
 
 function renderKtArchive() {
   if (!$("ktArchiveList")) return;
-  const archived = phoneInvoices.filter(invoice => invoice.buyer === "KT" && invoice.archived_at);
+  const archived = phoneInvoices.filter(invoice => invoice.archived_at);
   $("archiveAllKtBtn").disabled = !phoneInvoices.some(invoice => invoice.buyer === "KT" && !invoice.archived_at);
   $("ktArchiveList").innerHTML = archived.map(invoice => {
     const totals = invoiceTotals(invoice);
     const groups = [["Invoice phones", invoice.purchases], ["Returns", invoice.returns], ["Locally sold", invoice.local_sold], ["Gift cards", invoice.gift_cards]];
     return `<article class="invoice-card phone-invoice-card"><h3>${escapeHtml(invoice.label)}</h3><p>Invoice #${invoice.id} · ${escapeHtml(invoice.status)} · Archived ${new Date(invoice.archived_at).toLocaleDateString()}</p><p>${totals.units} phones · Cost ${money(totals.totalCost)} · Sold for ${totals.salePrice === null ? "Not Set" : money(totals.salePrice)}</p><p>${escapeHtml(invoice.notes || "")} ${escapeHtml(invoice.sale_notes || "")}</p><details><summary>View saved phone details</summary>${groups.filter(([,rows])=>rows?.length).map(([title,rows])=>`<h4>${title}</h4><div class="table-wrap"><table><thead><tr><th>Phone</th><th>IMEI</th><th>Qty</th><th>Cost each</th><th>Notes</th></tr></thead><tbody>${rows.map(row=>`<tr><td>${escapeHtml(row.model)} ${escapeHtml(row.storage || "")}<br>${escapeHtml(row.carrier || "")} ${escapeHtml(phoneInvoiceItemCondition(row))}</td><td>${escapeHtml(row.imei || "—")}</td><td>${Number(row.quantity || 0)}</td><td>${money(row.cost_each)}</td><td>${escapeHtml(row.notes || "")}</td></tr>`).join("")}</tbody></table></div>`).join("")}</details><div class="actions"><a class="mini-btn" href="/api/phone-invoices/${invoice.id}/html" target="_blank">Buyer Invoice PDF</a><button class="mini-btn" onclick="restoreArchivedKtInvoice(${invoice.id})">Restore Invoice</button></div></article>`;
-  }).join("") || `<div class="empty">No archived KT invoices yet.</div>`;
+  }).join("") || `<div class="empty">No archived invoices yet.</div>`;
 }
 
 async function archiveAllKtInvoices() {
   const ids = phoneInvoices.filter(invoice => invoice.buyer === "KT" && !invoice.archived_at).map(invoice => Number(invoice.id));
   if (!ids.length) return;
-  if (!confirm(`Archive all ${ids.length} current KT invoices? Their records and sale amounts will stay saved in KT Archive, and their totals will be removed from the dashboard.`)) return;
+  if (!confirm(`Archive all ${ids.length} current KT invoices? Their records and sale amounts will stay saved in Invoice Archive, and their totals will be removed from the dashboard.`)) return;
   $("archiveAllKtBtn").disabled = true;
   const result = await api("/api/phone-invoices/archive-kt", { method:"POST", body:{invoice_ids:ids} });
   if (!result?.ok) { renderKtArchive(); return status("ktArchiveStatus", result?.error || "Could not archive KT invoices.", "bad"); }
@@ -3418,6 +3418,15 @@ async function restoreArchivedKtInvoice(id) {
   if (!result?.ok) return status("ktArchiveStatus",result?.error || "Could not restore invoice.","bad");
   await loadPhoneInvoices();
   status("ktArchiveStatus","Invoice restored with its original status and sale amounts.");
+}
+
+async function archivePastInvoice(id) {
+  const invoice = phoneInvoices.find(row => Number(row.id) === Number(id));
+  if (!invoice || invoice.archived_at || invoice.status === "Pending") return;
+  if (!confirm(`Move ${invoice.label || invoice.buyer + " Invoice"} to Invoice Archive? All phone records and sale amounts will stay saved, and you can restore it later.`)) return;
+  const result = await api(`/api/phone-invoices/${id}/archive`, {method:"POST",body:{}});
+  if (!result?.ok) return alert(result?.error || "Could not archive invoice.");
+  await loadPhoneInvoices();
 }
 
 function renderKtReturns() {
@@ -4193,6 +4202,7 @@ function renderPastInvoiceCard(invoice) {
       </button>
       <div id="pastInvoiceDetail${invoice.id}" class="past-invoice-detail hidden">
         ${renderPhoneInvoiceCard(invoice, { allowPastDelete: true })}
+        <div class="actions"><button class="mini-btn" onclick="archivePastInvoice(${invoice.id})">Archive Invoice</button></div>
       </div>
     </article>
   `;
