@@ -3420,13 +3420,17 @@ async function restoreArchivedKtInvoice(id) {
   status("ktArchiveStatus","Invoice restored with its original status and sale amounts.");
 }
 
-async function archivePastInvoice(id) {
+async function archivePastInvoice(id, button) {
   const invoice = phoneInvoices.find(row => Number(row.id) === Number(id));
   if (!invoice || invoice.archived_at || invoice.status === "Pending") return;
-  if (!confirm(`Move ${invoice.label || invoice.buyer + " Invoice"} to Invoice Archive? All phone records and sale amounts will stay saved, and you can restore it later.`)) return;
+  if (button) button.disabled = true;
   const result = await api(`/api/phone-invoices/${id}/archive`, {method:"POST",body:{}});
-  if (!result?.ok) return alert(result?.error || "Could not archive invoice.");
+  if (!result?.ok) {
+    if (button) button.disabled = false;
+    return status("pastInvoicesStatus", result?.error || "Could not archive invoice.", "bad");
+  }
   await loadPhoneInvoices();
+  status("pastInvoicesStatus", "Invoice archived. You can restore it from Invoice Archive.");
 }
 
 function renderKtReturns() {
@@ -4202,7 +4206,7 @@ function renderPastInvoiceCard(invoice) {
       </button>
       <div id="pastInvoiceDetail${invoice.id}" class="past-invoice-detail hidden">
         ${renderPhoneInvoiceCard(invoice, { allowPastDelete: true })}
-        <div class="actions"><button class="mini-btn" onclick="archivePastInvoice(${invoice.id})">Archive Invoice</button></div>
+        <div class="actions"><button class="mini-btn" onclick="archivePastInvoice(${invoice.id}, this)">Archive Invoice</button><span>Saved records can be restored from Invoice Archive.</span></div>
       </div>
     </article>
   `;

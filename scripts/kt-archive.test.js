@@ -41,7 +41,7 @@ test('KT archive preserves history and excludes archived invoices from active li
   assert.doesNotMatch(control('pastInvoicesList').innerHTML,/Atlas history/);
   assert.equal(run("buildCombinedPhoneStats('Atlas').actualSale"),0);
   run("phoneInvoices[2].archived_at=null; renderPastInvoices();");
-  assert.match(control('pastInvoicesList').innerHTML,/archivePastInvoice\(3\)/);
+  assert.match(control('pastInvoicesList').innerHTML,/archivePastInvoice\(3, this\)/);
   assert.match(control('pastInvoicesList').innerHTML,/Atlas history/);
   assert.equal(run("buildCombinedPhoneStats('Atlas').actualSale"),250);
 });
