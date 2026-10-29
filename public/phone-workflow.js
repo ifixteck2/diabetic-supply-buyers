@@ -80,7 +80,7 @@ function phonePreviewProblems(row) {
   if (!body.placed_at.trim()) issues.push('Enter the source');
   if (!['New','Used'].includes(body.condition_type)) issues.push('Choose New or Used');
   if (body.condition_type==='New' && !['Sealed','Open'].includes(body.packaging)) issues.push('Choose sealed or open box');
-  if (!/^mike$/i.test(body.placed_at.trim()) && !body.imei.trim()) issues.push('Enter IMEI / serial (optional for Mike)');
+  if (!isPartsPhonePurchase(body) && !/^mike$/i.test(body.placed_at.trim()) && !body.imei.trim()) issues.push('Enter IMEI / serial (optional for Parts phones or Mike)');
   if (phoneDuplicateImeiChecksEnabled && body.imei && Number(body.quantity)>1) issues.push('Use one phone per row when entering an IMEI');
   const normalized=normalizedImei(body.imei);
   const duplicateInPreview = normalized && phoneImportPreview.some(other=>other!==row && other.selected && normalizedImei(other.body.imei)===normalized);

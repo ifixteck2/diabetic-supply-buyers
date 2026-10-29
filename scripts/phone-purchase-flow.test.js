@@ -28,6 +28,27 @@ function setup() {
   return {control,run,context};
 }
 
+test('Parts phones bypass IMEI requirements for every buyer and source, while other phones retain their checks',()=>{
+  const {run,context}=setup();
+  run(fs.readFileSync(new URL('../public/phone-workflow.js',import.meta.url),'utf8'));
+  const base={model:'iPhone 18 Pro',condition_type:'Used',grade:'Grade A',carrier:'Unlocked',quantity:1,cost_each:100,placed_at:'Chris',imei:''};
+  context.sample=base;
+  assert.match(run('phonePreviewProblems({body:sample}).join()'),/Enter IMEI/);
+  for(const buyer of ['Atlas','KT','Holding'])for(const field of ['grade','carrier','condition_type']){
+    context.sample={...base,buyer,[field]:'Parts'};
+    assert.doesNotMatch(run('phonePreviewProblems({body:sample}).join()'),/Enter IMEI/);
+  }
+  context.sample={...base,grade:' parts ',placed_at:''};
+  assert.match(run('phonePreviewProblems({body:sample}).join()'),/Enter the source/);
+  assert.doesNotMatch(run('phonePreviewProblems({body:sample}).join()'),/Enter IMEI/);
+  context.window.prompt=()=>{throw new Error('Parts phone must not prompt for IMEI');};
+  assert.equal(run(`completeQuickRequiredDetails({grade:'Parts',priceSource:'Chris',imei:''})`),true);
+  const prompts=[];
+  context.window.prompt=message=>{prompts.push(message);return 'Chris';};
+  assert.equal(run(`completeQuickRequiredDetails({grade:'Parts',imei:''})`),true);
+  assert.equal(prompts.length,1);assert.match(prompts[0],/Who did you get/);
+});
+
 test('refresh and quick fill retain the chosen pending invoice but never an archived or other-buyer invoice',()=>{
   const {control,run}=setup();
   control('phoneInvoiceSelect').value='21';

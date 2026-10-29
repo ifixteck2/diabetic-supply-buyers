@@ -114,6 +114,13 @@ test('manual purchases work for every catalog model without pricing, and save ne
   assert.equal(multiplier.quantity,3);assert.equal(multiplier.cost,695);assert.equal(multiplier.priceSource,'Mike');
   const parts=await page.evaluate(()=>parseQuickPhoneLine('18 pro parts $100 Mike'));
   assert.equal(parts.buyer,'Atlas');assert.equal(parts.grade,'Parts');
+  await page.locator('#quickPhoneText').fill('18 pro parts $100 Chris');
+  await page.locator('#addQuickPhoneBtn').click();
+  assert.deepEqual(await page.evaluate(()=>phoneImportPreview.flatMap(phonePreviewProblems)),[]);
+  await page.getByRole('button',{name:'Add selected phones',exact:true}).click();
+  await page.getByText('Saved 1 phone row.',{exact:true}).waitFor();
+  const partsSaved=requests.filter(row=>row.method==='POST').at(-1).body;
+  assert.equal(partsSaved.grade,'Parts');assert.equal(partsSaved.imei,'');assert.equal(partsSaved.placed_at,'Chris');
   for(const buyer of ['KT','Atlas','Holding'])for(const condition of ['New','Used']){
     await page.locator('[data-phone-tab="purchase"]').click();
     await page.locator('#phoneBuyer').selectOption(buyer);
