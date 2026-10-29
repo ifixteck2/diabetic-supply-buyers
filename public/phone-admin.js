@@ -1134,8 +1134,8 @@ function parseQuickPhoneLine(value) {
   const purchaseLocation = entry.purchaseLocation || sellerLocation?.purchaseLocation || extractQuickInlinePurchaseLocation(raw) || "";
   const itemRaw = removeQuickSellerAndLocation(raw, seller, purchaseLocation);
   const text = raw.toLowerCase();
-  const atlasPurchase = entry.invoiceLane === "atlas" || /\b(?:atlas|parts|for parts|part out|parts only)\b/i.test(raw);
-  const buyer = atlasPurchase || /\batlas\b/i.test(raw) ? "Atlas" : /\bkt\b|kt corp/i.test(raw) ? "KT" : $("phoneBuyer").value;
+  const partsPurchase = /\b(?:parts|for parts|part out|parts only)\b/i.test(raw);
+  const buyer = entry.invoiceLane === "atlas" || partsPurchase || /\batlas\b/i.test(raw) ? "Atlas" : /\bkt\b|kt corp/i.test(raw) ? "KT" : $("phoneBuyer").value;
   const quantityResult = extractQuickQuantity(itemRaw);
   let itemText = quantityResult.text;
   const priceResult = extractQuickPrice(itemText);
@@ -1150,16 +1150,16 @@ function parseQuickPhoneLine(value) {
     }
   }
   const storageResult = extractQuickStorage(itemText);
-  const storage = atlasPurchase ? "N/A" : storageResult.storage || "N/A";
+  const storage = partsPurchase ? "N/A" : storageResult.storage || "N/A";
   itemText = storageResult.text;
   const conditionResult = extractQuickCondition(itemText);
-  const conditionValue = atlasPurchase ? "Parts" : conditionResult.condition;
+  const conditionValue = partsPurchase ? "Parts" : conditionResult.condition;
   itemText = conditionResult.text;
   const carrierResult = extractQuickCarrier(itemText);
-  const carrier = atlasPurchase ? "Parts" : mapQuickCarrier(carrierResult.carrier);
+  const carrier = partsPurchase ? "Parts" : mapQuickCarrier(carrierResult.carrier);
   itemText = carrierResult.text;
   const gradeResult = extractQuickGrade(itemText);
-  const grade = atlasPurchase ? "Parts" : gradeResult.grade || "Grade A";
+  const grade = partsPurchase ? "Parts" : /^(New|Open Box)$/.test(conditionValue) ? "" : gradeResult.grade || "Grade A";
   itemText = gradeResult.text;
   const colorResult = extractQuickColor(itemText);
   itemText = colorResult.text;
@@ -1182,7 +1182,7 @@ function parseQuickPhoneLine(value) {
     purchaseLocation ? `Bought at ${purchaseLocation}` : "",
     gradeResult.raw ? gradeResult.raw : "",
     colorResult.color ? colorResult.color : "",
-    atlasPurchase ? "Parts" : "",
+    partsPurchase ? "Parts" : "",
   ].filter(Boolean).join(" | ");
   const placedAt = priceSource || purchaseLocation || seller || "";
   return { raw, buyer, deviceType, brand, conditionType, packaging, grade, storage, carrier, quantity: quantityResult.quantity, cost, imei, deductions, modelText, notes, placedAt, seller, purchaseLocation, priceSource };
@@ -1359,6 +1359,8 @@ function extractQuickQuantity(value) {
   }
   const leading = text.match(/^(\d+)\s+(?=(?:iphone\s*)?(?:1[0-9]|se|xr|xs)\b|(?:1[0-9])\s*(?:p|pm|pro|max|plus|mini)|s\d{1,2}\b)/i);
   if (leading) return { quantity: Number(leading[1]), text: text.slice(leading[0].length).trim() };
+  const priceQuantity = text.match(/(\$\s*[0-9][0-9,]*(?:\.\d{1,2})?)\s*[x×]\s*(\d+)\b/i);
+  if (priceQuantity) return { quantity: Number(priceQuantity[2]), text: text.replace(priceQuantity[0], priceQuantity[1]) };
   return { quantity: 1, text };
 }
 
@@ -1372,7 +1374,7 @@ function extractQuickPrice(value) {
   });
   if (!matches.length) return { price: 0, text, source: "" };
   const match = matches[matches.length - 1];
-  const afterPrice = text.slice(match.index + match[0].length);
+  const afterPrice = text.slice(match.index + match[0].length).replace(/^\s*[x×]\s*\d+\b\s*/i, '');
   const source = quickTitle(stripQuickNoise(afterPrice.replace(/^[\s,;:-]+/, "")));
   const cleanedText = source ? text.slice(0, match.index).trim() : removeQuickMatch(text, match);
   return { price: Number(match[1].replace(/,/g, "")), text: cleanedText, source };
@@ -1445,7 +1447,7 @@ function extractQuickGrade(value) {
 }
 
 function extractQuickColor(value) {
-  const colors = ["lavender", "black", "white", "silver", "gold", "blue", "pink", "orange", "green", "purple", "natural", "desert", "teal", "ultramarine"];
+  const colors = ["lavender", "black", "white", "silver", "gold", "blue", "red", "pink", "orange", "green", "purple", "natural", "desert", "teal", "ultramarine"];
   for (const color of colors) {
     const pattern = color === "lavender" ? /\blav(?:e|a)?nd(?:e|a)r\b|\blavdener\b/i : new RegExp(`\\b${color}\\b`, "i");
     const match = String(value || "").match(pattern);

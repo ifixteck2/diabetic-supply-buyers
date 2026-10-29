@@ -1527,7 +1527,10 @@ app.post("/api/phone-purchases", requirePhoneAuth, async (req, res) => {
       return res.status(404).json({ error: "Pending invoice not found for that buyer." });
     }
     await checkPhoneImei(client, input);
-    const priceRows = buyer === "KT" ? await getKtPrices() : await getAtlasPrices();
+    const priceRows = await (buyer === "KT" ? getKtPrices() : getAtlasPrices()).catch(error => {
+      console.error("Price lookup unavailable; saving the entered phone purchase.", error);
+      return [];
+    });
     const matchedProjected = findPhonePrice(
       {
         device_type: normalizeDeviceType(input.device_type || ""),
@@ -1661,7 +1664,10 @@ app.patch("/api/phone-purchases/:id", requirePhoneAuth, async (req, res) => {
       return res.status(404).json({ error: "Phone purchase not found." });
     }
     if (String(existing.rows[0].imei || "") !== String(input.imei || "")) await checkPhoneImei(client, input, id);
-    const priceRows = buyer === "KT" ? await getKtPrices() : await getAtlasPrices();
+    const priceRows = await (buyer === "KT" ? getKtPrices() : getAtlasPrices()).catch(error => {
+      console.error("Price lookup unavailable; saving the entered phone purchase.", error);
+      return [];
+    });
     const matchedProjected = findPhonePrice(
       {
         device_type: normalizeDeviceType(input.device_type || ""),
@@ -4790,7 +4796,7 @@ async function getAtlasPrices() {
     const url = source.gid
       ? `https://docs.google.com/spreadsheets/d/${source.sheetId}/export?format=csv&gid=${source.gid}`
       : `https://docs.google.com/spreadsheets/d/${source.sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(source.sheet)}`;
-    const response = await fetch(url);
+    const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
     if (!response.ok) throw new Error(`${source.sheet} returned ${response.status}`);
     const csv = await response.text();
     if (source.parser === "newBox") return parseAtlasNewBoxCsv(csv, source);

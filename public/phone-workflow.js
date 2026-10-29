@@ -39,7 +39,7 @@ function phonePreviewPayload(parsed, count) {
   return {
     buyer:parsed.buyer, invoice_id:selected?.id || fallback?.id || null,
     model:[parsed.brand==='Apple' && /^\d/.test(parsed.modelText)?`iPhone ${parsed.modelText}`:parsed.modelText,parsed.storage==='N/A'?'':parsed.storage].filter(Boolean).join(' '),
-    device_type:parsed.deviceType,condition_type:parsed.conditionType,packaging:parsed.conditionType==='New'?parsed.packaging:'',grade:parsed.grade,
+    device_type:parsed.deviceType,condition_type:parsed.conditionType,packaging:parsed.conditionType==='New'?parsed.packaging:'',grade:parsed.conditionType==='Used'?parsed.grade:'',
     quantity:parsed.quantity,cost_each:parsed.cost,imei:parsed.imei,carrier:parsed.carrier,
     placed_at:parsed.priceSource || parsed.seller || parsed.placedAt || '',notes,
     purchase_date:$('phonePurchaseDate').value || localTodayInput(),
@@ -78,6 +78,8 @@ function phonePreviewProblems(row) {
   if (!Number.isSafeInteger(Number(body.quantity)) || Number(body.quantity)<1) issues.push('Enter a whole quantity');
   if (body.cost_each==='' || !Number.isFinite(Number(body.cost_each)) || Number(body.cost_each)<0) issues.push('Enter a cost');
   if (!body.placed_at.trim()) issues.push('Enter the source');
+  if (!['New','Used'].includes(body.condition_type)) issues.push('Choose New or Used');
+  if (body.condition_type==='New' && !['Sealed','Open'].includes(body.packaging)) issues.push('Choose sealed or open box');
   if (!/^mike$/i.test(body.placed_at.trim()) && !body.imei.trim()) issues.push('Enter IMEI / serial (optional for Mike)');
   if (phoneDuplicateImeiChecksEnabled && body.imei && Number(body.quantity)>1) issues.push('Use one phone per row when entering an IMEI');
   const normalized=normalizedImei(body.imei);
@@ -100,7 +102,9 @@ function renderPhoneImportPreview() {
       const invoiceOptions=phoneInvoices.filter(inv=>inv.buyer===b.buyer && inv.status==='Pending' && !inv.archived_at);
       const input=(field,label,type='text')=>`<label>${label}<input aria-label="${label}, row ${i+1}" type="${type}" ${type==='number'?'min="0" step="'+(field==='quantity'?'1':'0.01')+'"':''} value="${escapeAttr(b[field] ?? '')}" ${disabled} onchange="editPhonePreview(${i},'${field}',this.value)"></label>`;
       return `<fieldset class="phone-preview-row" ${disabled}><legend><label class="phone-check"><input type="checkbox" ${row.selected?'checked':''} ${disabled} onchange="selectPhonePreview(${i},this.checked)">Phone row ${i+1}${row.saved?' — Saved':''}</label></legend>
-        <div class="phone-workflow-grid">${input('model','Model / storage')}${input('quantity','Quantity','number')}${input('cost_each','Cost each','number')}${input('imei','IMEI / serial')}${input('placed_at','Source')}${input('carrier','Carrier')}${input('grade','Grade')}
+        <div class="phone-workflow-grid">${input('model','Model / storage')}${input('quantity','Quantity','number')}${input('cost_each','Cost each','number')}${input('imei','IMEI / serial')}${input('placed_at','Source')}${input('carrier','Carrier')}
+        <label>New or Used<select aria-label="New or Used, row ${i+1}" ${disabled} onchange="editPhonePreview(${i},'condition_type',this.value)">${['New','Used'].map(value=>`<option ${b.condition_type===value?'selected':''}>${value}</option>`).join('')}</select></label>
+        ${b.condition_type==='New'?`<label>Packaging<select aria-label="Packaging, row ${i+1}" ${disabled} onchange="editPhonePreview(${i},'packaging',this.value)">${['Sealed','Open'].map(value=>`<option ${b.packaging===value?'selected':''}>${value}</option>`).join('')}</select></label>`:input('grade','Grade')}
         <label>Buyer<select ${disabled} onchange="editPhonePreview(${i},'buyer',this.value)">${['KT','Atlas','Holding'].map(buyer=>`<option ${buyer===b.buyer?'selected':''}>${buyer}</option>`).join('')}</select></label>
         ${b.buyer==='Holding'?`<label>Holding section<select ${disabled} onchange="editPhonePreview(${i},'holding_type',this.value)">${['Holding For Sale','Holding For Trade In'].map(value=>`<option ${b.holding_type===value?'selected':''}>${value}</option>`).join('')}</select></label>`:`<label>Invoice<select ${disabled} onchange="editPhonePreview(${i},'invoice_id',this.value)"><option value="">Use latest pending / create if needed</option>${invoiceOptions.map(inv=>`<option value="${inv.id}" ${Number(b.invoice_id)===inv.id?'selected':''}>#${inv.id} ${escapeHtml(inv.label)}</option>`).join('')}</select></label>`}</div>
         ${phoneDuplicateImeiChecksEnabled && row.matches.length?`<p class="phone-warning">Already recorded: ${row.matches.map(match=>escapeHtml(`${match.invoice_id?'Invoice #'+match.invoice_id:'Holding'} — ${match.model} (${match.location})`)).join('; ')}</p>`:''}
@@ -115,6 +119,10 @@ function editPhonePreview(index,field,value) {
   const row=phoneImportPreview[index];
   if (!row || row.saved || phoneImportBusy) return;
   row.body[field]=value;
+  if (field==='condition_type') {
+    row.body.packaging=value==='New'?'Sealed':'';
+    row.body.grade=value==='Used'?'Grade A':'';
+  }
   if (field==='buyer') row.body.invoice_id=null;
   if (field==='imei') {row.matches=[];row.body.allow_duplicate_imei=false;}
   row.error='';

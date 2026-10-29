@@ -87,6 +87,33 @@ test('manual purchases work for every catalog model without pricing, and save ne
     return failures;
   });
   assert.deepEqual(failures,[]);
+  // Reproduce the user's exact Atlas import, including repeated quantity and color.
+  await page.locator('#phoneBuyer').selectOption('Atlas');
+  await page.locator('#quickPhoneText').fill('3x 18 pro 256Gb New locked Red $695x3 mike');
+  await page.locator('#addQuickPhoneBtn').click();
+  const preview=page.locator('.phone-preview-row').first();
+  assert.equal(await preview.getByLabel('Model / storage, row 1',{exact:true}).inputValue(),'iPhone 18 Pro 256GB');
+  assert.equal(await preview.getByLabel('New or Used, row 1',{exact:true}).inputValue(),'New');
+  assert.equal(await preview.getByLabel('Packaging, row 1',{exact:true}).inputValue(),'Sealed');
+  assert.equal(await preview.getByLabel('Grade, row 1',{exact:true}).count(),0);
+  await preview.getByLabel('New or Used, row 1',{exact:true}).selectOption('Used');
+  assert.equal(await preview.getByLabel('Grade, row 1',{exact:true}).inputValue(),'Grade A');
+  await preview.getByLabel('New or Used, row 1',{exact:true}).selectOption('New');
+  await preview.getByLabel('Packaging, row 1',{exact:true}).selectOption('Open');
+  assert.deepEqual(await page.evaluate(()=>phoneImportPreview.flatMap(phonePreviewProblems)),[]);
+  await page.getByRole('button',{name:'Add selected phones',exact:true}).click();
+  await page.getByText('Saved 1 phone row.',{exact:true}).waitFor();
+  const imported=requests.filter(row=>row.method==='POST').at(-1).body;
+  assert.equal(imported.condition_type,'New');assert.equal(imported.packaging,'Open');assert.equal(imported.grade,'');
+  assert.equal(imported.buyer,'Atlas');assert.equal(imported.invoice_id,41);
+  assert.equal(imported.quantity,3);assert.equal(imported.cost_each,695);assert.equal(imported.placed_at,'Mike');
+  assert.match(imported.notes,/Color Red/);
+  const explicit=await page.evaluate(()=>parseQuickPhoneLine('Atlas 18 pro 256GB new locked red $695 Mike'));
+  assert.equal(explicit.conditionType,'New');assert.equal(explicit.storage,'256GB');assert.equal(explicit.carrier,'Carrier Locked');
+  const multiplier=await page.evaluate(()=>parseQuickPhoneLine('18 pro 256GB new locked red $695x3 Mike'));
+  assert.equal(multiplier.quantity,3);assert.equal(multiplier.cost,695);assert.equal(multiplier.priceSource,'Mike');
+  const parts=await page.evaluate(()=>parseQuickPhoneLine('18 pro parts $100 Mike'));
+  assert.equal(parts.buyer,'Atlas');assert.equal(parts.grade,'Parts');
   for(const buyer of ['KT','Atlas','Holding'])for(const condition of ['New','Used']){
     await page.locator('[data-phone-tab="purchase"]').click();
     await page.locator('#phoneBuyer').selectOption(buyer);
