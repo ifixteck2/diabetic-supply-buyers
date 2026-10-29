@@ -4523,21 +4523,29 @@ function emptyPhoneStats(buyer = "All") {
 function buildCombinedPhoneStats(buyer = "All") {
   const stats = emptyPhoneStats(buyer);
   phoneInvoices
-    .filter((invoice) => !invoice.archived_at && phoneRecordInDashboardPeriod(invoice) && (buyer === "All" || invoice.buyer === buyer))
+    .filter((invoice) => !invoice.archived_at && phoneRecordInDashboardPeriod(invoice, phoneInvoiceReportingDate(invoice)) && (buyer === "All" || invoice.buyer === buyer))
     .forEach((invoice) => addInvoiceStats(stats, invoice));
   phoneInvoices
-    .filter((invoice) => !invoice.archived_at && phoneRecordInDashboardPeriod(invoice) && (buyer === "All" || invoice.buyer === buyer))
+    .filter((invoice) => !invoice.archived_at && (buyer === "All" || invoice.buyer === buyer))
     .forEach((invoice) => addRemovedPhoneStats(stats, invoice));
   manualPhoneReturns
-    .filter((row) => phoneRecordInDashboardPeriod(row) && (buyer === "All" || (row.buyer || "KT") === buyer))
+    .filter((row) => phoneRecordInDashboardPeriod(row, row.sold_at || row.returned_at) && (buyer === "All" || (row.buyer || "KT") === buyer))
     .forEach((row) => addManualReturnStats(stats, row));
   return stats;
 }
 
-function phoneRecordInDashboardPeriod(record) {
+function phoneInvoiceReportingDate(invoice) {
+  const hasSale = invoice.sale_price !== null && invoice.sale_price !== undefined && invoice.sale_price !== "";
+  if (hasSale) return invoice.sold_at || invoice.closed_at || invoice.status_updated_at || invoice.created_at;
+  if (invoice.status === "Shipped") return invoice.shipped_at || invoice.status_updated_at || invoice.created_at;
+  if (invoice.status === "Closed") return invoice.closed_at || invoice.status_updated_at || invoice.created_at;
+  return invoice.created_at;
+}
+
+function phoneRecordInDashboardPeriod(record, activityDate) {
   if (phoneDashboardStartDate === null) return false;
   if (!phoneDashboardStartDate) return true;
-  const raw = record.created_at || record.returned_at || record.purchase_date;
+  const raw = activityDate || record.created_at || record.returned_at || record.purchase_date;
   if (!raw) return false;
   const date = new Date(raw);
   if (Number.isNaN(date.getTime())) return false;
@@ -4570,9 +4578,9 @@ function isManualGiftCardInvoice(invoice) {
 }
 
 function addRemovedPhoneStats(acc, invoice) {
-  (invoice.local_sold || []).forEach((row) => addCompletedPhoneLineStats(acc, row, row.local_sale_price));
-  (invoice.gift_cards || []).forEach((row) => addCompletedPhoneLineStats(acc, row, row.gift_card_value));
-  (invoice.returns || []).forEach((row) => {
+  (invoice.local_sold || []).filter(row => phoneRecordInDashboardPeriod(row, row.local_sold_at || row.invoice_removed_at || row.created_at || invoice.created_at)).forEach((row) => addCompletedPhoneLineStats(acc, row, row.local_sale_price));
+  (invoice.gift_cards || []).filter(row => phoneRecordInDashboardPeriod(row, row.gift_card_at || row.invoice_removed_at || row.created_at || invoice.created_at)).forEach((row) => addCompletedPhoneLineStats(acc, row, row.gift_card_value));
+  (invoice.returns || []).filter(row => phoneRecordInDashboardPeriod(row, row.returned_at || row.invoice_removed_at || row.created_at || invoice.created_at)).forEach((row) => {
     acc.units += phoneLineQuantity(row);
     acc.cost += phoneLineCost(row);
   });
@@ -4635,12 +4643,12 @@ function renderPhoneMoneyDashboard() {
 function getPhoneMoneyEvents() {
   const events = [];
   phoneInvoices.forEach((invoice) => {
-    if (invoice.archived_at || !phoneRecordInDashboardPeriod(invoice)) return;
+    if (invoice.archived_at) return;
     const invoiceSale = invoice.sale_price === null || invoice.sale_price === undefined || invoice.sale_price === "" ? null : Number(invoice.sale_price);
-    if (invoiceSale !== null && !isManualGiftCardInvoice(invoice)) {
+    if (invoiceSale !== null && !isManualGiftCardInvoice(invoice) && phoneRecordInDashboardPeriod(invoice, phoneInvoiceReportingDate(invoice))) {
       const cost = (invoice.purchases || []).reduce((sum, row) => sum + phoneLineCost(row), 0);
       events.push({
-        date: eventDate(invoice.sold_at || invoice.closed_at || invoice.status_updated_at || invoice.created_at),
+        date: eventDate(phoneInvoiceReportingDate(invoice)),
         label: invoice.label || `${invoice.buyer} Invoice`,
         type: "Buyer Invoice",
         buyer: invoice.buyer || "",
@@ -4652,11 +4660,13 @@ function getPhoneMoneyEvents() {
       });
     }
     (invoice.local_sold || []).forEach((row) => {
+      const activityDate = row.local_sold_at || row.invoice_removed_at || row.created_at || invoice.created_at;
+      if (!phoneRecordInDashboardPeriod(row, activityDate)) return;
       const sale = row.local_sale_price === null || row.local_sale_price === undefined || row.local_sale_price === "" ? null : Number(row.local_sale_price);
       if (sale === null) return;
       const cost = phoneLineCost(row);
       events.push({
-        date: eventDate(row.local_sold_at || row.invoice_removed_at || row.created_at),
+        date: eventDate(activityDate),
         label: row.model || "Local sale",
         type: "Local sale",
         buyer: invoice.buyer || row.buyer || "",
@@ -4668,11 +4678,13 @@ function getPhoneMoneyEvents() {
       });
     });
     (invoice.gift_cards || []).forEach((row) => {
+      const activityDate = row.gift_card_at || row.invoice_removed_at || row.created_at || invoice.created_at;
+      if (!phoneRecordInDashboardPeriod(row, activityDate)) return;
       const sale = row.gift_card_value === null || row.gift_card_value === undefined || row.gift_card_value === "" ? null : Number(row.gift_card_value);
       if (sale === null) return;
       const cost = phoneLineCost(row);
       events.push({
-        date: eventDate(row.gift_card_at || row.invoice_removed_at || row.created_at),
+        date: eventDate(activityDate),
         label: row.model || "Apple gift card",
         type: "Apple Gift Card",
         buyer: invoice.buyer || row.buyer || "",
@@ -4685,7 +4697,7 @@ function getPhoneMoneyEvents() {
     });
   });
   manualPhoneReturns.forEach((row) => {
-    if (!phoneRecordInDashboardPeriod(row)) return;
+    if (!phoneRecordInDashboardPeriod(row, row.sold_at || row.returned_at)) return;
     const sale = row.sale_price === null || row.sale_price === undefined || row.sale_price === "" ? null : Number(row.sale_price);
     if (sale === null) return;
     const cost = phoneLineCost(row);

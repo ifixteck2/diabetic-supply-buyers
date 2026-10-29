@@ -14,7 +14,7 @@ async function loadPhoneDashboardPeriod() {
   }
   phoneDashboardStartDate=result.start_date;
   $('phoneDashboardStartDate').value=result.start_date;
-  status('phoneDashboardPeriodStatus',`Showing records created on or after ${escapeHtml(result.start_date)}. Earlier records remain saved in their original sections.`);
+  status('phoneDashboardPeriodStatus',`Showing activity on or after ${escapeHtml(result.start_date)}. Sales use their sale date, even when the invoice was created earlier. Archived invoices stay excluded.`);
 }
 async function savePhoneDashboardPeriod(button) {
   button.disabled=true;
@@ -23,7 +23,7 @@ async function savePhoneDashboardPeriod(button) {
     if (!result?.ok) return status('phoneDashboardPeriodStatus',escapeHtml(result?.error || 'Could not save reporting date.'),'bad');
     phoneDashboardStartDate=result.start_date;
     renderPhoneDashboard();
-    status('phoneDashboardPeriodStatus',`Showing records created on or after ${escapeHtml(result.start_date)}. Earlier records remain saved in their original sections.`);
+    status('phoneDashboardPeriodStatus',`Showing activity on or after ${escapeHtml(result.start_date)}. Sales use their sale date, even when the invoice was created earlier. Archived invoices stay excluded.`);
   } finally {button.disabled=false;}
 }
 
