@@ -164,7 +164,7 @@ async function refreshOnlineOrdersOnlyPortal() {
 
 async function loadAtlasPrices() {
   const result = await api("/api/phone-price-sheet", { silent: true });
-  atlasPrices = result.rows || [];
+  atlasPrices = result?.rows || [];
   renderModelOptions();
   renderPhoneStorageOptions();
   renderCarrierOptions();
@@ -442,8 +442,7 @@ function renderModelOptions() {
 function renderPhoneStorageOptions() {
   const selectedModel = $("phoneModel").value;
   const rows = matchingRows().filter((row) => checkerModelName(row) === selectedModel);
-  const storageOptions = [...new Set([...rows.map((row) => row.storage || "N/A").filter(Boolean), ...fallbackPhoneStorage($("deviceType").value, $("phoneBrand").value, selectedModel)])]
-    .sort((a, b) => storageSortValue(a) - storageSortValue(b) || a.localeCompare(b));
+  const storageOptions = phoneStorageOptions($("deviceType").value, $("phoneBrand").value, selectedModel, rows);
   const previous = $("phoneStorage").value;
   $("phoneStorage").innerHTML = `<option value="">Choose gigabytes</option>` + storageOptions.map((storage) => `<option value="${escapeAttr(storage)}">${escapeHtml(storage)}</option>`).join("")
     || `<option value="">Choose model first</option>`;
@@ -518,8 +517,7 @@ function renderPriceCheckerModels() {
 function renderPriceCheckerStorage() {
   const selectedModel = $("checkerModel").value;
   const rows = checkerRows().filter((row) => checkerModelName(row) === selectedModel);
-  const storageOptions = [...new Set([...rows.map((row) => row.storage || "N/A").filter(Boolean), ...fallbackPhoneStorage($("checkerDeviceType").value, $("checkerBrand").value, selectedModel)])]
-    .sort((a, b) => storageSortValue(a) - storageSortValue(b) || a.localeCompare(b));
+  const storageOptions = phoneStorageOptions($("checkerDeviceType").value, $("checkerBrand").value, selectedModel, rows);
   const previous = $("checkerStorage").value;
   $("checkerStorage").innerHTML = storageOptions.map((storage) => `<option value="${escapeAttr(storage)}">${escapeHtml(storage)}</option>`).join("")
     || `<option value="">Choose model first</option>`;
@@ -575,17 +573,33 @@ function renderPriceCheckerResults() {
 }
 
 function checkerModelName(row) {
-  return row.base_model || String(row.model || "").replace(/\b\d+\s*(GB|TB)\b/i, "").replace(/AT&T\s*\(Clean\)|Carrier Locked|Unlocked|T-Mobile|Verizon|Cricket|Metro|Spectrum|Xfinity|US Cellular|Boost/ig, "").replace(/\s+/g, " ").trim();
+  const name = row.base_model || String(row.model || "").replace(/\b\d+\s*(GB|TB)\b/i, "").replace(/AT&T\s*\(Clean\)|Carrier Locked|Unlocked|T-Mobile|Verizon|Cricket|Metro|Spectrum|Xfinity|US Cellular|Boost/ig, "").replace(/\s+/g, " ").trim();
+  return canonicalPhoneModel(name);
+}
+
+function canonicalPhoneModel(name) {
+  return String(name || '').trim().replace(/\s+/g,' ').replace(/^iphone/i,'iPhone')
+    .replace(/\b(\d+)E\b/gi,'$1e').replace(/\bmini\b/gi,'Mini').replace(/\bair\b/gi,'Air')
+    .replace(/\bXr\b/gi,'XR').replace(/\bXs\b/gi,'XS')
+    .replace(/^(?:iPhone\s+)?SE\s*\(2020\)$/i,'iPhone SE (2nd Gen)')
+    .replace(/^(?:iPhone\s+)?SE\s*\(2022\)$/i,'iPhone SE (3rd Gen)')
+    .replace(/SE\s+(2nd|3rd)(?:\s+Gen)?$/i,'SE ($1 Gen)')
+    .replace(/^Google\s+(Pixel)/i,'$1').replace(/\bXl\b/gi,'XL')
+    .replace(/^(?:Samsung\s+)?(?:Galaxy\s+)?(Z\s+(?:Flip|Fold)\s*\d.*)$/i,'Galaxy $1')
+    .replace(/\s*\(\s*FE Model[^)]*\)\s*$/i,'');
 }
 
 function rowBrand(row) {
   const text = `${row.base_model || ""} ${row.model || ""}`.toLowerCase();
   if (/pixel|google/.test(text)) return "Google";
-  if (/samsung|galaxy|\bs\d{2}/.test(text)) return "Samsung";
+  if (/samsung|galaxy|\bs\d{2}|\bnote\s*\d|\bz\s*(?:flip|fold)/.test(text)) return "Samsung";
   return "Apple";
 }
 
 const APPLE_FALLBACK_MODELS = [
+  "iPhone 18 Pro Max",
+  "iPhone 18 Pro",
+  "iPhone 17e",
   "iPhone 17 Pro Max",
   "iPhone 17 Pro",
   "iPhone 17 Air",
@@ -642,20 +656,39 @@ const APPLE_TRADE_IN_VALUES = [
 ];
 
 function fallbackPhoneModels(deviceType, brand) {
-  if (deviceType !== "Phone" || brand !== "Apple") return [];
-  return APPLE_FALLBACK_MODELS;
+  if (deviceType !== "Phone") return [];
+  const catalog = typeof PHONE_MODEL_CATALOG === 'undefined' ? [] : PHONE_MODEL_CATALOG;
+  return [...new Set([...catalog.filter(row=>row.brand===brand).map(row=>row.model), ...(brand==='Apple'?APPLE_FALLBACK_MODELS.map(canonicalPhoneModel):[])])];
 }
 
 function fallbackPhoneStorage(deviceType, brand, model) {
-  if (deviceType !== "Phone" || brand !== "Apple" || !model) return [];
+  if (deviceType !== "Phone" || !model) return [];
+  const catalog = typeof PHONE_MODEL_CATALOG === 'undefined' ? [] : PHONE_MODEL_CATALOG;
+  const entry = catalog.find(row=>row.brand===brand && row.model===canonicalPhoneModel(model));
+  if (entry?.storages.length) return entry.storages;
+  if (brand !== 'Apple') return ['N/A'];
+  if (/^iPhone 18 Pro(?: Max)?$/i.test(model)) return ['256GB','512GB','1TB','2TB'];
   if (/17 Pro Max|17 Pro|16 Pro Max|16 Pro|15 Pro Max|15 Pro/i.test(model)) return ["128GB", "256GB", "512GB", "1TB"];
   if (/17|16 Plus|16e|16|15 Plus|15|14 Plus|14|13/i.test(model)) return ["128GB", "256GB", "512GB"];
   return ["128GB", "256GB", "512GB"];
 }
 
+function phoneStorageOptions(deviceType, brand, model, rows) {
+  if (!model) return [];
+  const catalog = typeof PHONE_MODEL_CATALOG === 'undefined' ? [] : PHONE_MODEL_CATALOG;
+  const entry = deviceType === 'Phone' && catalog.find(row => row.brand === brand && row.model === canonicalPhoneModel(model));
+  // The saved model reference keeps older pricing rows from adding invalid capacities.
+  const options = entry?.storages.length ? [...entry.storages] : [...new Set([
+    ...rows.map(row => row.storage || 'N/A'), ...fallbackPhoneStorage(deviceType, brand, model),
+  ])];
+  const hasCapacity = options.some(storage => /^\d+\s*(GB|TB)$/i.test(storage));
+  return options.filter(storage => storage && (!hasCapacity || storage !== 'N/A'))
+    .sort((a, b) => storageSortValue(a) - storageSortValue(b) || a.localeCompare(b));
+}
+
 function fallbackPhoneCarriers(deviceType, brand) {
-  if (deviceType !== "Phone" || brand !== "Apple") return [];
-  return ["Unlocked", "Carrier Locked", "AT&T (Clean)"];
+  if (deviceType !== "Phone") return [];
+  return brand === 'Apple' ? ["Unlocked", "Carrier Locked", "AT&T (Clean)", "Parts"] : ["Unlocked", "Carrier Locked", "Parts"];
 }
 
 function normalizeCheckerCarrier(carrier) {
@@ -1503,10 +1536,9 @@ function applyQuickPhoneFields(parsed) {
 
 function bestQuickModel(parsed) {
   const wanted = normalizePhonePriceMatchText(parsed.modelText);
-  const options = [...new Set(matchingRows().map(checkerModelName).filter(Boolean))];
+  const options = [...new Set([...matchingRows().map(checkerModelName).filter(Boolean), ...fallbackPhoneModels(parsed.deviceType, parsed.brand)])];
   return options.find((model) => normalizePhonePriceMatchText(model) === wanted)
-    || options.find((model) => normalizePhonePriceMatchText(model).includes(wanted) || wanted.includes(normalizePhonePriceMatchText(model)))
-    || parsed.modelText;
+    || canonicalPhoneModel(parsed.brand === 'Apple' && /^\d/.test(parsed.modelText) ? `iPhone ${parsed.modelText}` : parsed.modelText);
 }
 
 function normalizePhonePriceMatchText(value) {

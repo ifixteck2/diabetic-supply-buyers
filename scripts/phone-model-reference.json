@@ -1,0 +1,344 @@
+{
+  "checked_on": "2026-10-29",
+  "sources": [
+    "https://docs.google.com/spreadsheets/d/1f3b0rW1d5xTonDtkoPmLIAOjKc-CUF6clMBalPWyS80/edit",
+    "https://docs.google.com/spreadsheets/d/1pu4Adxq4MGB6Qour0k__4gBdgnggWRoSVYnJUKgxzEw/edit"
+  ],
+  "note": "Model and storage reference only. Existing Atlas workbooks direct users to a private current price list; this snapshot does not certify current prices.",
+  "models": [
+    {
+      "model": "iPhone 18 Pro Max",
+      "storages": [
+        "256GB",
+        "512GB",
+        "1TB",
+        "2TB"
+      ]
+    },
+    {
+      "model": "iPhone 18 Pro",
+      "storages": [
+        "256GB",
+        "512GB",
+        "1TB",
+        "2TB"
+      ]
+    },
+    {
+      "model": "iPhone 17 Pro Max",
+      "storages": [
+        "256GB",
+        "512GB",
+        "1TB",
+        "2TB"
+      ]
+    },
+    {
+      "model": "iPhone 17 Pro",
+      "storages": [
+        "256GB",
+        "512GB",
+        "1TB"
+      ]
+    },
+    {
+      "model": "iPhone 17 Air",
+      "storages": [
+        "256GB",
+        "512GB",
+        "1TB"
+      ]
+    },
+    {
+      "model": "iPhone 17",
+      "storages": [
+        "256GB",
+        "512GB"
+      ]
+    },
+    {
+      "model": "iPhone 17e",
+      "storages": [
+        "256GB",
+        "512GB"
+      ]
+    },
+    {
+      "model": "iPhone 16 Pro Max",
+      "storages": [
+        "256GB",
+        "512GB",
+        "1TB"
+      ]
+    },
+    {
+      "model": "iPhone 16 Pro",
+      "storages": [
+        "128GB",
+        "256GB",
+        "512GB",
+        "1TB"
+      ]
+    },
+    {
+      "model": "iPhone 16 Plus",
+      "storages": [
+        "128GB",
+        "256GB",
+        "512GB"
+      ]
+    },
+    {
+      "model": "iPhone 16",
+      "storages": [
+        "128GB",
+        "256GB",
+        "512GB"
+      ]
+    },
+    {
+      "model": "iPhone 16e",
+      "storages": [
+        "128GB",
+        "256GB",
+        "512GB"
+      ]
+    },
+    {
+      "model": "iPhone 15 Pro Max",
+      "storages": [
+        "256GB",
+        "512GB",
+        "1TB"
+      ]
+    },
+    {
+      "model": "iPhone 15 Pro",
+      "storages": [
+        "128GB",
+        "256GB",
+        "512GB",
+        "1TB"
+      ]
+    },
+    {
+      "model": "iPhone 15 Plus",
+      "storages": [
+        "128GB",
+        "256GB",
+        "512GB"
+      ]
+    },
+    {
+      "model": "iPhone 15",
+      "storages": [
+        "128GB",
+        "256GB",
+        "512GB"
+      ]
+    },
+    {
+      "model": "iPhone 14 Plus",
+      "storages": [
+        "128GB",
+        "256GB",
+        "512GB"
+      ]
+    },
+    {
+      "model": "iPhone 14",
+      "storages": [
+        "128GB",
+        "256GB",
+        "512GB"
+      ]
+    },
+    {
+      "model": "iPhone 13",
+      "storages": [
+        "128GB",
+        "256GB",
+        "512GB"
+      ]
+    },
+    {
+      "model": "iPhone 12",
+      "storages": [
+        "64GB",
+        "128GB",
+        "256GB"
+      ]
+    },
+    {
+      "model": "iPhone 11",
+      "storages": [
+        "64GB",
+        "128GB",
+        "256GB"
+      ]
+    },
+    {
+      "model": "iPhone 14 Pro Max",
+      "storages": [
+        "128GB",
+        "256GB",
+        "512GB",
+        "1TB"
+      ]
+    },
+    {
+      "model": "iPhone 14 Pro",
+      "storages": [
+        "128GB",
+        "256GB",
+        "512GB",
+        "1TB"
+      ]
+    },
+    {
+      "model": "iPhone 13 Pro Max",
+      "storages": [
+        "128GB",
+        "256GB",
+        "512GB",
+        "1TB"
+      ]
+    },
+    {
+      "model": "iPhone 13 Pro",
+      "storages": [
+        "128GB",
+        "256GB",
+        "512GB",
+        "1TB"
+      ]
+    },
+    {
+      "model": "iPhone 13 Mini",
+      "storages": [
+        "128GB",
+        "256GB",
+        "512GB"
+      ]
+    },
+    {
+      "model": "iPhone SE (3rd Gen)",
+      "storages": [
+        "64GB",
+        "128GB",
+        "256GB"
+      ]
+    },
+    {
+      "model": "iPhone 12 Pro Max",
+      "storages": [
+        "128GB",
+        "256GB",
+        "512GB"
+      ]
+    },
+    {
+      "model": "iPhone 12 Pro",
+      "storages": [
+        "128GB",
+        "256GB",
+        "512GB"
+      ]
+    },
+    {
+      "model": "iPhone 12 Mini",
+      "storages": [
+        "64GB",
+        "128GB",
+        "256GB"
+      ]
+    },
+    {
+      "model": "iPhone 11 Pro Max",
+      "storages": [
+        "64GB",
+        "256GB",
+        "512GB"
+      ]
+    },
+    {
+      "model": "iPhone 11 Pro",
+      "storages": [
+        "64GB",
+        "256GB",
+        "512GB"
+      ]
+    },
+    {
+      "model": "iPhone SE (2nd Gen)",
+      "storages": [
+        "64GB",
+        "128GB",
+        "256GB"
+      ]
+    },
+    {
+      "model": "iPhone XS Max",
+      "storages": [
+        "64GB",
+        "256GB",
+        "512GB"
+      ]
+    },
+    {
+      "model": "iPhone XS",
+      "storages": [
+        "64GB",
+        "256GB",
+        "512GB"
+      ]
+    },
+    {
+      "model": "iPhone XR",
+      "storages": [
+        "64GB",
+        "128GB",
+        "256GB"
+      ]
+    },
+    {
+      "model": "iPhone X",
+      "storages": [
+        "64GB",
+        "256GB"
+      ]
+    },
+    {
+      "model": "iPhone 8 Plus",
+      "storages": [
+        "64GB",
+        "128GB",
+        "256GB"
+      ]
+    },
+    {
+      "model": "iPhone 8",
+      "storages": [
+        "64GB",
+        "128GB",
+        "256GB"
+      ]
+    },
+    {
+      "model": "iPhone 7 Plus",
+      "storages": [
+        "32GB",
+        "128GB",
+        "256GB"
+      ]
+    },
+    {
+      "model": "iPhone 7",
+      "storages": [
+        "32GB",
+        "128GB",
+        "256GB"
+      ]
+    }
+  ]
+}
