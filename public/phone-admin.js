@@ -873,7 +873,7 @@ function renderInvoiceSelect() {
   }
   const pending = phoneInvoices.filter((invoice) => !invoice.archived_at && invoice.buyer === buyer && invoice.status === "Pending");
   $("phoneInvoiceSelect").innerHTML = pending.map((invoice) => (
-    `<option value="${invoice.id}">#${invoice.id} - ${escapeHtml(invoice.label)} (${invoiceTotals(invoice).units} phones)</option>`
+    `<option value="${invoice.id}">${escapeHtml(invoice.label)} (${invoiceTotals(invoice).units} phones)</option>`
   )).join("") || `<option value="">Create/select pending invoice</option>`;
   if (pending.some(invoice => String(invoice.id) === String(selectedInvoiceId))) $("phoneInvoiceSelect").value = selectedInvoiceId;
 }
@@ -887,13 +887,13 @@ async function createPhoneInvoice() {
   try {
     const result = await api("/api/phone-invoices", {
       method: "POST",
-      body: { buyer, label: $("newPhoneInvoiceLabel").value.trim() },
+      body: { buyer },
     });
     if (!result?.ok) return status("phonePurchaseStatus", escapeHtml(result?.error || "Could not create invoice."), "bad");
     $("newPhoneInvoiceLabel").value = "";
     await loadPhoneInvoices();
     if ($("phoneBuyer").value === buyer) $("phoneInvoiceSelect").value = String(result.invoice.id);
-    status("phonePurchaseStatus", `${result.reused ? "Using existing empty" : "Created"} ${buyer} invoice #${result.invoice.id}.`);
+    status("phonePurchaseStatus", `${result.reused ? "Using existing empty" : "Created"} ${escapeHtml(result.invoice.label || `${buyer} invoice #${result.invoice.id}`)}.`);
   } finally {
     creatingPhoneInvoice = false;
     $("createPhoneInvoiceBtn").disabled = $("phoneBuyer").value === "Holding";

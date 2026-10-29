@@ -1420,7 +1420,7 @@ app.post("/api/phone-invoices/:id/unarchive", requirePhoneAuth, async (req, res)
 
 app.post("/api/phone-invoices", requirePhoneAuth, async (req, res) => {
   const buyer = normalizeBuyer(req.body?.buyer || "");
-  const label = String(req.body?.label || "").trim();
+  const label = ""; // New invoice names are assigned by the shared date-and-number counter.
   const notes = String(req.body?.notes || "").trim();
   if (!buyer) return res.status(400).json({ error: "Choose KT or Atlas." });
   const client = await pool.connect();
@@ -3717,6 +3717,16 @@ async function migrate() {
     insert into removed_empty_phone_invoices (invoice_id, invoice_data)
     select id, to_jsonb(removed) from removed;
     update invoices set status = 'Active' where status is null or status = '';
+    -- Sequential phone invoice names start after the current fresh-start invoices.
+    create table if not exists phone_invoice_numbering (
+      id boolean primary key default true check (id),
+      next_number integer not null check (next_number > 0)
+    );
+    insert into phone_invoice_numbering (id, next_number)
+    select true, greatest(3, count(*)::integer + 1)
+    from phone_invoices where buyer in ('Atlas', 'KT') and archived_at is null
+    on conflict (id) do nothing;
+    -- End sequential phone invoice names.
   `);
 
   await pool.query(`
@@ -3833,6 +3843,17 @@ async function lockPhoneInvoiceCreation(client, buyer) {
   await client.query("select pg_advisory_xact_lock(hashtext($1))", [`phone-invoice:${buyer}`]);
 }
 
+async function allocatePhoneInvoiceLabel(client, buyer) {
+  // The row update serializes numbering across buyers; rollback also restores the number.
+  const result = await client.query(`
+    update phone_invoice_numbering set next_number = next_number + 1 where id = true
+    returning next_number - 1 as invoice_number,
+      to_char(current_timestamp at time zone 'America/New_York', 'MM-DD-YY') as invoice_date
+  `);
+  if (!result.rows[0]) throw new Error("Phone invoice numbering is not initialized.");
+  return defaultPhoneInvoiceLabel(buyer, result.rows[0].invoice_number, result.rows[0].invoice_date);
+}
+
 async function createOrReuseEmptyPhoneInvoice(client, buyer, label, notes) {
   await lockPhoneInvoiceCreation(client, buyer);
   const existing = await client.query(
@@ -3843,13 +3864,13 @@ async function createOrReuseEmptyPhoneInvoice(client, buyer, label, notes) {
        and pi.shipped_at is null and pi.sold_at is null and pi.closed_at is null
        and not exists (select 1 from phone_purchases pp where pp.invoice_id = pi.id or pp.gift_card_closeout_invoice_id = pi.id)
      order by pi.created_at desc, pi.id desc limit 1`,
-    [buyer, label, notes, `^${buyer} Phone Invoice [0-9]{4}-[0-9]{2}-[0-9]{2}$`]
+    [buyer, label, notes, `^${buyer} (Phone Invoice [0-9]{4}-[0-9]{2}-[0-9]{2}|[0-9]{2}-[0-9]{2}-[0-9]{2} #[0-9]+)$`]
   );
   if (existing.rows[0]) return { invoice: existing.rows[0], reused: true };
   const created = await client.query(
     `insert into phone_invoices (buyer, label, notes, status)
      values ($1, $2, $3, 'Pending') returning *`,
-    [buyer, label || defaultPhoneInvoiceLabel(buyer), notes]
+    [buyer, label || await allocatePhoneInvoiceLabel(client, buyer), notes]
   );
   return { invoice: created.rows[0], reused: false };
 }
@@ -3865,7 +3886,7 @@ async function getOrCreatePendingPhoneInvoice(client, buyer) {
     `insert into phone_invoices (buyer, label, status)
      values ($1, $2, 'Pending')
      returning *`,
-    [buyer, defaultPhoneInvoiceLabel(buyer)]
+    [buyer, await allocatePhoneInvoiceLabel(client, buyer)]
   );
   return created.rows[0];
 }
@@ -5250,9 +5271,8 @@ function normalizeConditionType(value) {
   return /^new$/i.test(String(value || "")) ? "New" : "Used";
 }
 
-function defaultPhoneInvoiceLabel(buyer) {
-  const stamp = new Date().toISOString().slice(0, 10);
-  return `${buyer} Phone Invoice ${stamp}`;
+function defaultPhoneInvoiceLabel(buyer, invoiceNumber, dateStamp) {
+  return `${buyer} ${dateStamp} #${invoiceNumber}`;
 }
 
 function createPhoneInvoiceHtml(invoice, priceOverrides = {}) {

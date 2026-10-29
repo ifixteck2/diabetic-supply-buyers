@@ -11,6 +11,7 @@ test('empty draft reuse and reversible KT cleanup preserve all phone and invoice
   const source=fs.readFileSync(new URL('../server.js',import.meta.url),'utf8');
   await db.exec(source.slice(source.indexOf('create table if not exists phone_invoices ('),source.indexOf('create table if not exists phone_manual_returns (')));
   await db.exec('alter table phone_invoices add column archived_at timestamptz; create table app_migrations (migration_key text primary key);');
+  await db.exec(source.slice(source.indexOf('-- Sequential phone invoice names'),source.indexOf('-- End sequential phone invoice names.')));
   const context={};
   vm.createContext(context);
   vm.runInContext(source.slice(source.indexOf('async function lockPhoneInvoiceCreation('),source.indexOf('async function getOrCreateWeeklyGiftCardInvoice(')),context);
